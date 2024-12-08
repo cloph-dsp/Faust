@@ -2,7 +2,7 @@ declare name "Granul8or";
 declare author "CLOPH";
 declare description "Granular Synthesis Engine";
 import("stdfaust.lib");
-granulator = * <: stereo*grain_engine : (_,_)
+granulator = * <: stereo_grain_engine : (_,_)
 with {
     // MAIN CONTROLS
     speed = hgroup("[1]Main Controls", hslider("[1]Speed[style:knob]", 1, 0.01, 20, 0.01));
@@ -70,7 +70,7 @@ with {
     frac = smoothedPos - index;
     
     // Stereo grain engine
-    stereo_grain_engine = * <: (left*channel, right_channel)
+    stereo_grain_engine = * <: (left_channel, right_channel)
     with {
         left_channel = process_channel(0);
         right_channel = process_channel(spread);
