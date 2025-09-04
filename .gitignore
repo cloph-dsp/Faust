@@ -1,0 +1,37 @@
+# Ignore archived and reference folders
+OLD/
+**/OLD/
+References/
+**/References/
+references/
+**/references/
+OLD/
+References/
+*.wav
+*.cpp
+*.c
+*.h
+*.o
+*.obj
+*.dll
+*.dylib
+*.so
+*.exe
+/build/
+/.faust/
+
+# Faust/auxiliary artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+*.user
+*.log
+*.dsp.tmp
+*.svg
+*.json
+*.wav
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
