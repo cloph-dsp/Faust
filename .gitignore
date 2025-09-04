@@ -1,0 +1,14 @@
+# Ignore archived and reference folders
+OLD/
+References/
+
+# Faust/auxiliary artifacts
+*.dsp.tmp
+*.svg
+*.json
+*.wav
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
