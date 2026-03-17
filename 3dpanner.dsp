@@ -21,76 +21,126 @@ deg2rad(d) = d * PI / 180.0;
 clamp(x,a,b) = min(max(x,a),b);
 
 //==========================================================================
-// 3. PHYSICAL CUES & ENHANCED REVERB
+// 3. ENHANCED PHYSICAL CUES
 //==========================================================================
-airAbs(d)      = fi.lowpass(2, 20000.0 / (1.0 + d*0.5));
-headSh(p)      = fi.lowpass(1, 20000.0 - abs(p) * 14000.0);
-elevHRTF(e)    = fi.peak_eq_cq(-12.0, 8000.0 + e * 50.0, 5.0);
 
-// Enhanced reverb with early reflections and late reverb
-earlyRefl(sz) = _ <: 
-    @(220) * 0.3,   // ~5ms at 44.1kHz
-    @(529) * 0.25,  // ~12ms at 44.1kHz
-    @(838) * 0.2,   // ~19ms at 44.1kHz
-    @(1147) * 0.15  // ~26ms at 44.1kHz
-    :> _;
+// Multi-stage frequency-dependent air absorption (ISO 9613-1 inspired)
+airAbs(d) = fi.lowpass(1, 20000.0 / (1.0 + d * 0.15)) : 
+            fi.lowpass(1, 20000.0 / (1.0 + d * 0.25)) :
+            fi.lowpass(1, 20000.0 / (1.0 + d * 0.35));
 
-lateReverb(sz,dmp) = re.stereo_freeverb(sz, dmp, 1.0, 0.0) : select2(0);
+// Enhanced head shadow approximation (two-stage)
+headSh(p) = fi.lowpass(1, 20000.0 - abs(p) * 14000.0) : 
+            fi.lowpass(1, 18000.0 - abs(p) * 12000.0);
 
-// Frequency-dependent damping based on room characteristics
-roomDamping(sz) = 0.3 + (1.0 - sz) * 0.4; // smaller rooms = more damping
+// Improved elevation HRTF (adds more perceptual realism)
+elevHRTF(e) = fi.peak_eq_cq(-12.0, 8000.0 + e * 60.0, 5.0) : 
+               fi.peak_eq_cq(-6.0, 6000.0 + e * 40.0, 3.0);
 
-// Enhanced reverb processor
-enhancedRev(sz) = _ <: (earlyRefl(sz), (lateReverb(sz, roomDamping(sz)) * 0.7)) :> _ : 
-    fi.lowpass(2, 12000.0 - sz * 4000.0); // room size affects brightness
+// Natural stereo reverb using Freeverb (adjusted parameters)
+simpleReverb = re.stereo_freeverb(room, 0.5, 0.8, 0.0);
 
-distAtt(d)     = 1.0 / (1.0 + d*d);
-revFac(d)      = clamp(0.05 + 0.55 * (1.0 - exp(-d/2.0)), 0.0, 0.6);
+// Distance attenuation (inverse square law)
+distAtt(d) = 1.0 / sqrt(1.0 + d * d * 0.5);
+
+// Distance-based reverb factor (reduced intensity)
+revFac(d) = clamp(0.02 + 0.5 * (1.0 - exp(-d / 3.0)), 0.0, 0.5);
+
+// Simple pinna notch filter for elevation cues (refined notch)
+notch(x, freq, Q) = x - fi.resonbp(freq, Q)(x);
+pinnaNotch(e, x) = notch(x, 7500.0 + e * 70.0, 0.8);
+
+// Precedence effect (Haas effect): add a short delayed copy to reinforce direction
+precedence(in, ms) = in + (in : @(int(ma.SR * ms / 1000.0)) * 0.5);
+
+// Elevation gain (smoother and more perceptually accurate)
+elevGain(e) = sqrt(0.5 + 0.5 * cos(deg2rad(e * 0.8)));
+
+// Equal-power panning with elevation
+panPos(a) = sin(deg2rad(a));
+gainL(a, e) = sqrt(cos((panPos(a) + 1.0) * PI / 4.0)) * elevGain(e);
+gainR(a, e) = sqrt(sin((panPos(a) + 1.0) * PI / 4.0)) * elevGain(e);
 
 //==========================================================================
-// 4. PANNING (ITD + ILD)
+// 4. ADVANCED PANNING & LOCALIZATION (ITD, ILD, PINNA, PRECEDENCE)
 //==========================================================================
-panPos(a)      = sin(deg2rad(a));
-delayL(a)      = 0.5 * MAX_ITD * (panPos(a) + 1.0);
-delayR(a)      = 0.5 * MAX_ITD * (1.0 - panPos(a));
-elevGain(e)    = 0.5 + 0.5 * cos(deg2rad(e)); // smooth elevation gain (1.0 at 0°, 0.5 at 90°)
-gainL(a,e)     = cos((panPos(a) + 1.0) * PI / 4.0) * elevGain(e);
-gainR(a,e)     = sin((panPos(a) + 1.0) * PI / 4.0) * elevGain(e);
+
+// Woodworth's formula for ITD (head radius ~8.75cm)
+headRadius = 0.0875;
+speedOfSound = 343.0;
+woodworthITD(a) = (headRadius / speedOfSound) * select2(a >= 0, deg2rad(a) - sin(deg2rad(a)), deg2rad(a) + sin(deg2rad(a)));
+delayL(a) = MAX_ITD * (0.5 + 0.5 * clamp(woodworthITD(a) / 0.0008, -1, 1));
+delayR(a) = MAX_ITD * (0.5 - 0.5 * clamp(woodworthITD(a) / 0.0008, -1, 1));
+
+// Frequency-dependent ILD (shadowing increases with frequency)
+ildFreq(f, a) = 1.0 - 0.4 * abs(sin(deg2rad(a))) * min(f/8000.0, 1.0);
+ildL(a) = fi.lowpass(1, 4000.0) : *(ildFreq(4000, a));
+ildR(a) = fi.lowpass(1, 4000.0) : *(ildFreq(4000, -a));
+
+// Simple pinna notch filter for elevation cues (notch moves with elevation)
+notch(x, freq, Q) = x - fi.resonbp(freq, Q)(x);
+pinnaNotch(e, x) = notch(x, 8000.0 + e * 60.0, 0.7);
+
+// Precedence effect (Haas effect): add a short delayed copy to reinforce direction
+precedence(in, ms) = in + (in : @(int(ma.SR * ms / 1000.0)) * 0.5);
+
+// Elevation gain (smoother transition)
+elevGain(e) = sqrt(0.5 + 0.5 * cos(deg2rad(e)));
+
+// Equal-power panning with elevation
+panPos(a) = sin(deg2rad(a));
+gainL(a, e) = sqrt(cos((panPos(a) + 1.0) * PI / 4.0)) * elevGain(e);
+gainR(a, e) = sqrt(sin((panPos(a) + 1.0) * PI / 4.0)) * elevGain(e);
 
 //==========================================================================
-// 5. SPATIALIZER (stereo output)
+// 5. SPATIALIZER (ADVANCED)
 //==========================================================================
-spatializer(inL, inR, a, e, d, sz) = wetL, wetR
+spatializer(inL, inR, a, e, d) = outL, outR
 with {
     mono   = (inL + inR) * 0.5;
     hrtf   = mono : elevHRTF(e);
-    dAir   = hrtf : airAbs(d);
+    hrtf_pinna = pinnaNotch(e, hrtf);
+    dAir   = hrtf_pinna : airAbs(d);
     p      = panPos(a);
 
-    // direct sound
-    dL     = dAir : de.fdelay(FDELAYBUF, delayL(a)) : headSh(p) * gainL(a,e);
-    dR     = dAir : de.fdelay(FDELAYBUF, delayR(a)) : headSh(-p) * gainR(a,e);
+    // Direct sound with advanced cues
+    dL0    = dAir : de.fdelay(FDELAYBUF, delayL(a)) : headSh(p) : ildL(a) * gainL(a, e);
+    dR0    = dAir : de.fdelay(FDELAYBUF, delayR(a)) : headSh(-p) : ildR(a) * gainR(a, e);
+    // Precedence effect (short delay, 1.1ms)
+    dL     = precedence(dL0, 1.1);
+    dR     = precedence(dR0, 1.1);
 
-    // enhanced spatialized reverb
-    revSig = hrtf : enhancedRev(sz); // use enhanced reverb
-    revL   = revSig : de.fdelay(FDELAYBUF, delayL(a)) : headSh(p) * gainL(a,e);
-    revR   = revSig : de.fdelay(FDELAYBUF, delayR(a)) : headSh(-p) * gainR(a,e);
+    // Spatialized reverb with decorrelation
+    // Apply elevation filtering to reverb for more perceptual realism
+    revInput = pinnaNotch(e, hrtf); // elevation cues for reverb
+    revSig = revInput, revInput : simpleReverb;
+    revSigL = revSig : select2(0);
+    revSigR = revSig : select2(1);
+    // Optionally, modulate reverb wetness with elevation (higher elevation, less reverb)
+    elevRevWet = revWet * (0.8 - 0.4 * (clamp(e, -45, 90) / 90.0));
+    revL   = revSigL : de.fdelay(FDELAYBUF, delayL(a) * 0.7) : headSh(p * 0.6) * gainL(a, e);
+    revR   = revSigR : de.fdelay(FDELAYBUF, delayR(a) * 0.7 + 127) : headSh(-p * 0.6) * gainR(a, e);
 
-    // combine with distance attenuation and user‑controlled wetness
     att    = distAtt(d);
     fac    = revFac(d);
-    wetL   = (dL + revL * fac * revWet) * att;
-    wetR   = (dR + revR * fac * revWet) * att;
+
+    // Always binaural output (for headphones)
+    outL   = (dL + revL * fac * elevRevWet) * att;
+    outR   = (dR + revR * fac * elevRevWet) * att;
 };
 
 //==========================================================================
-// 6. FINAL MIX
+// 6. FINAL MIX (equal-power crossfade, binaural option)
 //==========================================================================
 process(inL, inR) = outL, outR
 with {
-    wet   = spatializer(inL, inR, az, el, dist, room);
+    wet   = spatializer(inL, inR, az, el, dist);
     wetL  = wet : select2(0);
     wetR  = wet : select2(1);
-    outL  = inL * (1.0 - mix) + wetL * mix;
-    outR  = inR * (1.0 - mix) + wetR * mix;
+    // Equal-power dry/wet mix
+    dryGain = sqrt(1.0 - mix);
+    wetGain = sqrt(mix);
+    dry = (inL + inR) * 0.5;
+    outL  = dry * dryGain + wetL * wetGain;
+    outR  = dry * dryGain + wetR * wetGain;
 };

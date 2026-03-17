@@ -1,76 +1,103 @@
 import("stdfaust.lib");
 
 // ===============================================
-// Side Sculpt: Unified Compression & Stereo Enhancement (1 knob)
+// SideSculpt v2.0: Stereo Enhancement & Spatial Processing
+// ===============================================
+// 
+// Single-knob stereo enhancer focusing on:
+// - Intelligent stereo widening with psychoacoustic enhancement
+// - Subtle frequency-dependent spatial processing
+// - Natural stereo depth with modulated delays
+// - Gentle harmonic enhancement for presence
+// - Minimal dynamics processing for transparency
+//
+// Improvements in v2.0:
+// - Focus on stereo enhancement over compression
+// - Linkwitz-Riley crossovers for better phase coherence
+// - Modulated delay for organic stereo movement
+// - Frequency-dependent width processing
+// - Transparent operation with minimal artifacts
 // ===============================================
 
-// ---------- Utils
+// ---------- Utils & Safety
 db2lin(db) = pow(10.0, db/20.0);
-max2(a,b)  = (a + b + abs(a - b)) / 2.0; // max sem condicionais
+max2(a,b)  = (a + b + abs(a - b)) / 2.0;    // max without conditionals
+min2(a,b)  = (a + b - abs(a - b)) / 2.0;    // min without conditionals
+clip(lo,hi) = max2(lo) : min2(hi);          // safe clipping
+safediv(x,y) = x / max(abs(y), 1e-12);      // division by zero protection
 
-// UI (unified single knob)
-amt = hslider("Amount [unit:0..1]", 0.5, 0, 1, 0.01) : si.smoo;
+// UI (unified single knob with musical response)
+amt = hslider("Amount [unit:0..1]", 0.5, 0, 1, 0.01) : si.smoo : clip(0.0, 1.0);
 
-// Crossovers (adaptive)
-fcLow  = 180.0 + 200.0*amt;   // adaptive low crossover
-fcHigh = 6000.0 - 2000.0*amt; // adaptive high crossover
+// Crossovers (adaptive with musical spacing)
+fcLow  = 200.0 * pow(2.0, amt);        // 200Hz to 400Hz (1 octave range)
+fcHigh = 4000.0 / pow(1.5, amt);       // 4kHz to ~2.7kHz (smoother transition)
 
-// Filtros (4ª ordem)
+// Enhanced filters with better phase coherence
 lp4(f) = fi.lowpass(4, f);
 hp4(f) = fi.highpass(4, f);
+bp4(fl, fh) = hp4(fl) : lp4(fh);       // bandpass for mid band
+
+// Linkwitz-Riley crossover for better phase alignment
+lr_lp(f) = fi.lowpass(2, f) : fi.lowpass(2, f);
+lr_hp(f) = fi.highpass(2, f) : fi.highpass(2, f);
 
 // Mid/Side matrix (√2 normalizado)
 toMS(L,R) = ((L+R)*0.70710678, (L-R)*0.70710678);
 toLR(M,S) = ((M+S)*0.70710678, (M-S)*0.70710678);
 
-// Envelope follower (peak-ish, AR)
-arEnv(a, r) = abs : en.ar(a, r) : +(1e-12);
+// Enhanced envelope followers (simplified for stereo enhancement)
+simpleEnv(t) = abs : fi.lowpass(1, 1.0/(2*ma.PI*t));
 
-// Mapping do knob
-ratioLow  = 1.0 + 40.0*amt;   // 1:1 .. ~41:1 (compressor)
-ratioHigh = 1.0 + 20.0*amt;   // 1:1 .. ~21:1 (expander)
-thrLow    = db2lin(-30.0 + 30.0*amt);
-thrHigh   = db2lin(-42.0 + 30.0*amt);
+// Simplified parameter mapping focused on stereo enhancement
+widthLow  = 1.0;                         // keep bass centered
+widthMid  = 1.0 + 1.2*amt;               // moderate mid widening
+widthHigh = 1.0 + 2.0*amt;               // stronger high widening
 
-// Stereo enhancement
-delaySamples = 44 + 352 * (1 - amt); // 1ms to 9ms delay for depth
+// Gentle presence boost (optional light compression for fullness)
+compRatio = 1.0 + 0.5 * amt;             // very gentle 1:1 to 1.5:1
+compThresh = db2lin(-30.0);              // fixed gentle threshold
 
-// ---------- Processamento do canal Side
-sideProcess(S) = S_low * gL * widthLow + S_mid * widthMid + S_high_enh * gH * widthHigh
+// Stereo enhancement with natural depth
+delaySamples = 3 + 15 * amt;             // 0.07ms to 0.4ms delay for width
+modDepth = 0.02 * amt;                   // very subtle modulation
+modRate = 1.0;                           // fixed 1Hz modulation rate
+
+// Chorus-like modulation for stereo width
+lfo = os.osc(modRate) * modDepth;
+delayMod = delaySamples * (1.0 + lfo * 0.1);
+
+// ---------- Stereo Enhancement Processing (minimal compression)
+sideProcess(S) = S_low * widthLow + S_mid * widthMid * gM + S_high_enh * widthHigh * gH
 with {
-  // Split de bandas
-  S_low  = S : lp4(fcLow);
-  S_high = S : hp4(fcHigh);
-  S_mid  = S - S_low - S_high;
+  // Improved band splitting with Linkwitz-Riley crossovers
+  S_low  = S : lr_lp(fcLow);
+  S_high = S : lr_hp(fcHigh);
+  S_mid  = S : lr_hp(fcLow) : lr_lp(fcHigh);
 
-  // Harmonic enhancement (psychoacoustic)
-  S_high_enh = S_high : ef.cubicnl(0.2 * amt, 0) : *(1 + 0.5*amt) + S_high * (1 - 0.5*amt);
+  // Subtle harmonic enhancement for presence (very gentle)
+  satAmount = 0.01 * amt;
+  S_high_enh = S_high * (1 - 0.02*amt) + (S_high : ef.cubicnl(satAmount, 0) : *(0.02*amt));
 
-  // Frequency-dependent stereo widening (Ozone-style)
-  widthLow  = 1.0;                    // keep lows mono for tight bass
-  widthMid  = 1.0 + 2.0*amt;          // moderate widening for mids
-  widthHigh = 1.0 + 4.0*amt;          // strong widening for highs
-
-  // Envelopes
-  envL = S_low  : arEnv(0.005, 0.100); // attack 5ms, release 100ms
-  envH = S_high : arEnv(0.002, 0.040); // attack 2ms, release 40ms
-
-  // Ganhos dinâmicos (branchless)
-  overL  = envL / thrLow;
-  overH  = envH / thrHigh;
-  overLc = max2(1.0, overL);
-  overHc = max2(1.0, overH);
-
-  // Compressor (downward) nos graves do Side
-  gL = pow(overLc, (1.0/ratioLow) - 1.0);
-
-  // Expander (upward) nos agudos do Side
-  gH = pow(overHc, 1.0 - (1.0/ratioHigh));
+  // Optional very gentle compression for fullness (minimal processing)
+  envM = S_mid : simpleEnv(0.050);     // slow envelope for musicality
+  envH = S_high : simpleEnv(0.020);    // faster for highs
+  
+  // Very gentle gain reduction (barely perceptible)
+  overM = (envM + 1e-12) / compThresh;
+  overH = (envH + 1e-12) / compThresh;
+  
+  gM = select2(overM > 1.0 * (1 + amt), 
+    pow(overM, (1.0/compRatio) - 1.0), 1.0);  // only compress at higher amounts
+    
+  gH = select2(overH > 1.0 * (1 + amt), 
+    pow(overH, (1.0/compRatio) - 1.0), 1.0);  // only compress at higher amounts
 };
 
-// ---------- Cadeia estéreo completa
+// ---------- Clean stereo processing chain
 process = _,_
+  : (fi.dcblocker, fi.dcblocker)         // DC blocking for safety
   : toMS
-  : ( _, de.delay(4410, delaySamples) )  // add depth delay to side
-  : ( _, sideProcess )   // Mid clean; Side processed with frequency-dependent widening
+  : ( _, de.delay(882, delayMod) )       // short delay buffer (20ms max)
+  : ( _, sideProcess )                   // Mid clean; Side stereo enhanced
   : toLR;

@@ -1,37 +1,183 @@
-# Ignore archived and reference folders
-OLD/
-**/OLD/
-References/
-**/References/
-references/
-**/references/
-OLD/
-References/
-*.wav
-*.cpp
-*.c
-*.h
-*.o
-*.obj
+# ===========================================
+# VST3 Plugin Development Workspace Gitignore
+# ===========================================
+
+# -------------------------------------------
+# Build Outputs & Compiled Binaries
+# -------------------------------------------
+*.vst3/
+*.vst/
+*.component/
+*.app/
+build-win/
+build-mac/
+build/
+Build/
 *.dll
 *.dylib
 *.so
 *.exe
-/build/
-/.faust/
+*.bin
 
-# Faust/auxiliary artifacts
-.DS_Store
-Thumbs.db
-.vscode/
+# -------------------------------------------
+# IDE & Project Files
+# -------------------------------------------
+*.dsp
+*.dsw
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.suo
 *.user
-*.log
-*.dsp.tmp
-*.svg
-*.json
-*.wav
+*.useross
+*.userprefs
+*.sln.docstates
+*.ncb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.opendb
+*.vcxcheck
+*.jucer
+.jucer~
+*~
+CMakeLists.txt.user
 
-# OS/editor noise
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vscode/
+
+# JetBrains
+.idea/
+*.iml
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# -------------------------------------------
+# iPlug2 Framework (local copies, typically submodules)
+# -------------------------------------------
+iPlug2/
+*/iPlug2/
+*/iPlug2/WDL/
+*/iPlug2/**
+
+# -------------------------------------------
+# VST3 SDK (typically a submodule)
+# -------------------------------------------
+vst3sdk/
+*/vst3sdk/
+*/vst3sdk/**
+
+# -------------------------------------------
+# Backup Files
+# -------------------------------------------
+backups/
+backup/
+*.bak
+*.tmp
+*.temp
+*~
+
+# -------------------------------------------
+# Audio & Resource Files (optional - uncomment if needed)
+# -------------------------------------------
+# *.wav
+# *.aiff
+# *.mp3
+# *.ogg
+# *.flac
+# *.nam
+
+# Resource files that might be generated
+*.rc
+
+# -------------------------------------------
+# OS-Specific Files
+# -------------------------------------------
 .DS_Store
 Thumbs.db
-.vscode/
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.xml
+*.stackdump
+[Dd]esktop.ini
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+*.lsb
+
+# -------------------------------------------
+# Logs & Debug Files
+# -------------------------------------------
+*.log
+logs/
+*.crash
+
+# -------------------------------------------
+# Temporary & Cache Files
+# -------------------------------------------
+.cache/
+*.cache
+*.pch
+*.ilk
+*.exp
+*.lib
+*.idb
+*.pdb
+*.iobj
+
+# -------------------------------------------
+# Deprecated/Old Project Files
+# -------------------------------------------
+OLD/
+old/
+OLD/
+References/
+references/
+
+# -------------------------------------------
+# Third-Party Libraries (if not using submodules)
+# -------------------------------------------
+external/
+External/
+3rdparty/
+3rd_party/
+vendor/
+
+# -------------------------------------------
+# Development Tools
+# -------------------------------------------
+.faust/
+faust-compiler/
+skills/
+.agents/
+.claude/
+.kilocode/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env

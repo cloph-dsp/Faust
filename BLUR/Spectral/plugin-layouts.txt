@@ -1,0 +1,202 @@
+Spectral Weave Controls Schema
+-----------------------------
+threshold: range [-60, 0] dB
+number_of_threads: range [1, 15]
+thread_life: range [1, 120] s
+max_stability: range [1, 10] dB
+min_stability_length: range [0, 5] s
+hold_length: range [0.1, 5] s
+hold_length_2: range [0, 30] s
+hold_length_variance: range [0, 5] s
+fade_in_percentage: range [0, 50] %
+fade_out_percentage: range [0, 50] %
+silence_length: range [0, 20] s
+silence_length_variance: range [0, 10] s
+hold_out_length: range [0, 10] s
+pulse_frequency: range [0, 10] Hz
+pulse_gain: range [-60, 0] dB
+toggle_normalized: boolean
+normalized_level: range [-60, 0] dB
+low_bin_cutoff: range [0, 100] %
+high_bin_cutoff: range [0, 100] %
+toggle_randomized_phases: boolean
+fft_size: enum [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+gain: range [-40, 40] dB
+wet_dry: range [0, 1]
+------------------------------------
+
+Spectral Gate & Hold Controls Schema
+------------------------------------
+gate_type: enum [All partials above Threshold, Use n loudest partials, n loudest above Threshold, Use n loudest (wait until done), n loudest above Threshold (wait)]
+threshold: range [-60, 0] dB
+threshold_brightness: range [-100, 100] %
+num_partials: range [0, 50]
+fade_in_length: range [0, 10] s
+hold_length: range [0, 10] s
+hold_variance: range [0, 5] s
+fade_out_length: range [0, 10] s
+silence_length: range [0, 20] s
+silence_length_variance: range [0, 10] s
+decay_factor: range [0, 100] %
+bin_shift: range [-100, 100] %
+bin_shift_variance: range [0, 100] %
+delay_vs_frequency: range [0, 100] %
+pulsing_rate: range [0, 5] Hz
+pulsing_rate_variance: range [0, 5] Hz
+toggle_zero_partials_under_threshold: boolean
+toggle_normalize_held_partials: boolean
+normalize_level: range [-60, 0] dB
+toggle_hold_silence_first: boolean
+low_bin_cutoff: range [0, 100] %
+high_bin_cutoff: range [0, 100] %
+toggle_randomize_phases: boolean
+fft_size: enum [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+gain: range [-40, 40] dB
+------------------------------------
+
+Spectral Partial Glide Controls Schema
+-------------------------------------
+pitch_shift_per_second: range [-1200, 1200] cents
+pitch_shift_variance: range [0, 1200] cents
+mirror_bin: range [0, 100] %
+fade_in_windows: range [0, 100] %
+fuzziness: range [0, 10]
+max_bins_per_partial: range [0, 50]
+zero_transients: boolean
+lo_bin_cutoff: range [0, 100] %
+hi_bin_cutoff: range [0, 100] %
+toggle_randomize_phases: boolean
+fft_size: enum [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+gain: range [-40, 40] dB
+------------------------------------
+
+Spectral Shimmer Controls Schema
+-------------------------------
+jitter_amount: range [0, 100] %
+jitter_only_above: range [0, 11025] Hz
+low_frequency_jitter: range [0, 30] dB
+high_frequency_jitter: range [0, 30] dB
+jitter_gate_level: range [-60, 0] dB
+jitter_hold_windows: range [0, 100] %
+jitter_hold_variance: range [0, 100] %
+amplitude_pulse_type: enum [square, sin, triangle]
+pulse_level_max: range [0, 20] dB
+pulse_level_min: range [-60, 0] dB
+pulse_width: range [1, 1024]
+pulse_rate: range [-1000, 1000] Hz
+delay_variance_type: enum [none, random, lfo, link amplitude, link inverted amplitude] (could add sweep_up, sweep_down, sample_and_hold)
+lfo_rate: range [0.01, 50] Hz
+delay_variance: range [0, 300]
+brightness: range [-100, 100] %
+feedback: range [0, 100] %
+lo_bin_cutoff: range [0, 100] %
+hi_bin_cutoff: range [0, 100] %
+randomize_phases: boolean
+fft_size: enum [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+gain: range [-40, 40] dB
+lfo_waveform: enum [sine, triangle, square, saw]  # (doesn't exist but could be added)
+------------------------------------
+
+Chorus
+---
+delay_time: range [0.1, 200] ms
+delay_variance_type: enum [none, random, lfo, link amplitude, link inverted amplitude]
+delay_variance: range [0, 100] ms
+lfo_rate: range [0.01, 200] Hz
+feedback: range [0, 100] %
+wet_dry_mix: range [0, 100] %
+gain: range [-40, 40] dB
+---
+
+Comb Filter Bank 
+---
+fundamental_frequency: range [20, 20000] Hz
+scale: enum [None, Octaves, Fifths, Major triad, Minor triad, Dorian sca, Lydian scale, Mixolydian scale, Acolian scale] (to add maybe: chromatic, pentatonic, phrygian)
+number_of_octaves: range [1, 10]
+filter_resonance: range [0, 100.0] %
+wet_dry_mix: range [0, 100] %
+gain: range [-40, 40] dB
+---
+
+Grain Stream
+---
+freeze_probability: range [0, 100] %
+grain_repetitions: range [1, 100]
+repetitions_variation: range [0, 100]
+grain_length_start: range [1, 200] ms
+grain_length_start_variance: [1, 200] ms
+grain_length_end: range [1, 200] ms
+grain_length_end_variance: [1, 200] ms
+toggle_zero_non_frozen_grains: boolean
+fade_amount: range [0, 100] %
+gain: range [-40, 40] dB
+---
+
+Spectral Blurring
+---
+blur_amount: range [0, 100] %
+variance_type: enum[none, random, lfo, link amplitude, link inverted amplitude]
+blur_variance: range [0, 100] %
+lfo_rate: range [0.1, 50] Hz
+lo_bin_cutoff: range [0, 100] %
+hi_bin_cutoff: range [0, 100] %
+randomize_phases: boolean
+fft_size: enum [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+gain: range [-40, 40] dB
+---
+
+Spectral Filter Bank
+---
+number_of_filters: range [1, 400]
+base_frequency: range [20, 20000] Hz
+interval: range [0, 2400] cents
+transposition_type: enum [Stacked, None, Custom]
+harmonic_gain: range [-5, 1]
+side_bins: range [0, 40]
+side_bin_gain: range [-10, 0]
+brightness: range [-100, 100] %
+lo_bin_cutoff: range [0, 100] %
+hi_bin_cutoff: range [0, 100] %
+feedback: range [0, 100] %
+wet_dry_mix: range [0, 100] %
+randomize_phases: boolean
+fft_size: enum [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+gain: range [-40, 40] dB
+---
+
+Spectral Freezing
+---
+freeze_factor: range [0, 100] %
+use_threshold: boolean
+threshold: range [-60, 0] dB
+zero_bins_under_threshold: boolean
+lo_bin_cutoff: range [0, 100] %
+hi_bin_cutoff: range [0, 100] %
+randomize_phases: boolean
+fft_size: enum [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+gain: range [-40, 40] dB
+---
+
+Spectral Pitch Shift
+---
+manufacturer: string — "Michael Norris"
+pitch_shift: range [-2400, 2400] cents
+use_bins_to_shift: boolean
+bins_to_shift: [-50, 50]
+rotate: boolean
+feedback: range [0, 100] %
+gain: range [-40, 40] dB
+---
+
+Spectral Shuffle
+---
+manufacturer: string — "Michael Norris"
+shuffle_factor: range [0, 100] %
+shuffle_range: range [0, 50] %
+bins_per_group: range [1, 50]
+lo_bin_cutoff: range [0, 100] %
+hi_bin_cutoff: range [0, 100] %
+randomize_phases: boolean
+fft_size: enum [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+gain: range [-40, 40] dB
+---
