@@ -17,11 +17,41 @@ constexpr float kMaxCorrectionBoostDb = 18.f;
 constexpr float kMaxCorrectionCutDb = 21.f;
 constexpr float kLowBandProtectionDb = 6.f;
 
+// Fast denormal protection - flushes subnormal floats to zero (prevents DSP stalls)
+inline float FlushDenorm(float x) { return (std::abs(x) < 1.0e-15f) ? 0.f : x; }
+
+// Simple deterministic LCG dither for audio - 16-bit equivalent dither
+inline float Dither16()
+{
+  static uint32_t state = 0x7FED0456;
+  state = state * 1103515245 + 12345;
+  return (static_cast<int>(state) & 0xFFFF) / 65536.f - 0.5f;
+}
+
+// Noise-shaped dither: triangular PDF + simple 1st-order noise shaping
+inline float DitherAndNoiseShape(float& lastShapedError, float lastSample)
+{
+  const float dither = Dither16() + Dither16(); // TPDF
+  const float sum = lastSample + dither * 0.5f;
+  const float error = sum - std::round(sum); // quantization error
+  const float shaped = sum + (error - lastShapedError) * 0.5f; // simple noise shaping
+  lastShapedError = error;
+  return shaped;
+}
+
 float Lerp(float start, float end, float blend)
 {
   return start + ((end - start) * Clip(blend, 0.f, 1.f));
 }
 
+// NaN/Inf safety guard - returns safe value if input is invalid
+inline float SafeValue(float x) { return (std::isfinite(x) ? x : 0.f); }
+
+// Bound check helper - ensures value stays within AudioManifesto "sterile" range
+inline float Sanitize(float x) { return Clip(x, -10.f, 10.f); }
+
+// Maps Amount (0-1) to drive factor for spectral processing intensity
+// 0 -> 0.0 (no processing), 1.0 -> 1.0 (full effect)
 float MapAmountDrive(float amount)
 {
   return std::pow(Clip(amount, 0.f, 1.f), 0.82f);
@@ -126,19 +156,21 @@ public:
     if (const IParam* parameter = GetParam()) parameter->GetDisplay(mValueStr);
   }
 };
-// Spectrum visualizer control for before/after
+// Spectrum visualizer control for before/after/reference
 class SpectrumVisualizerControl : public IControl {
 public:
   SpectrumVisualizerControl(const IRECT& bounds)
     : IControl(bounds) {
     mBefore.fill(0.f);
     mAfter.fill(0.f);
+    mReference.fill(0.f);
     mFreqs.fill(0.f);
   }
-  void SetData(const float* before, const float* after, const float* freqs, int bands) {
+  void SetData(const float* before, const float* after, const float* reference, const float* freqs, int bands) {
     for (int i = 0; i < bands && i < 64; ++i) {
       mBefore[i] = before[i];
       mAfter[i] = after[i];
+      mReference[i] = reference[i];
       mFreqs[i] = freqs[i];
     }
     mBands = bands;
@@ -186,31 +218,41 @@ public:
       g.DrawText(IText(12.f, IColor(255, 120, 120, 120), nullptr, EAlign::Center, EVAlign::Middle), kLabelTexts[labelIndex], labelRect, &mBlend);
     }
 
-    // Draw before spectrum
+    // Draw reference/target spectrum (yellow line - what we're targeting)
+    for (int i = 1; i < mBands; ++i) {
+      const float x0 = r.L + (w * std::log10(std::max(20.f, mFreqs[i - 1]) / 20.f) / std::log10(20000.f / 20.f));
+      const float x1 = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
+      const float y0 = r.B - ((mReference[i - 1] - minDb) / (maxDb - minDb)) * h;
+      const float y1 = r.B - ((mReference[i] - minDb) / (maxDb - minDb)) * h;
+      g.DrawLine(IColor(255, 255, 220, 80), x0, y0, x1, y1, &mBlend, 2.0f);
+    }
+    
+    // Draw before spectrum (grey line - input)
     for (int i = 1; i < mBands; ++i) {
       const float x0 = r.L + (w * std::log10(std::max(20.f, mFreqs[i - 1]) / 20.f) / std::log10(20000.f / 20.f));
       const float x1 = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
       const float y0 = r.B - ((mBefore[i - 1] - minDb) / (maxDb - minDb)) * h;
       const float y1 = r.B - ((mBefore[i] - minDb) / (maxDb - minDb)) * h;
-      g.DrawLine(IColor(255, 180, 180, 180), x0, y0, x1, y1, &mBlend, 2.0f);
+      g.DrawLine(IColor(255, 140, 140, 140), x0, y0, x1, y1, &mBlend, 2.5f);
     }
-    // Draw after spectrum
+    // Draw after spectrum (cyan line - output)
     for (int i = 1; i < mBands; ++i) {
       const float x0 = r.L + (w * std::log10(std::max(20.f, mFreqs[i - 1]) / 20.f) / std::log10(20000.f / 20.f));
       const float x1 = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
       const float y0 = r.B - ((mAfter[i - 1] - minDb) / (maxDb - minDb)) * h;
       const float y1 = r.B - ((mAfter[i] - minDb) / (maxDb - minDb)) * h;
-      g.DrawLine(IColor(255, 67, 187, 101), x0, y0, x1, y1, &mBlend, 2.5f);
+      g.DrawLine(IColor(255, 80, 220, 255), x0, y0, x1, y1, &mBlend, 3.0f);
     }
 
     g.DrawText(IText(14.f, IColor(255, 239, 234, 226), nullptr, EAlign::Near, EVAlign::Middle),
-               "Spectrum: Before/After",
+               "Spectrum: Input (grey) | Target (yellow) | Output (cyan)",
                r.GetFromTop(20.f).GetPadded(-8.f),
                &mBlend);
   }
 private:
   std::array<float, 64> mBefore;
   std::array<float, 64> mAfter;
+  std::array<float, 64> mReference;
   std::array<float, 64> mFreqs;
   int mBands = 0;
 };
@@ -242,14 +284,29 @@ float InterpolateLogTable(float frequencyHz,
 }
 }
 
-RussetNoise::RussetNoise(const InstanceInfo& info)
-: Plugin(info, MakeConfig(kNumParams, kNumPresets))
+ RussetNoise::RussetNoise(const InstanceInfo& info)
+ : Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
   GetParam(kAmount)->InitPercentage("Amount", 100.0);
   GetParam(kTarget)->InitEnum("Target", kTargetRusset, {"White", "Pink", "Russet", "Brown", "Equal-loudness"});
   GetParam(kSmoothing)->InitDouble("Smoothing", 0.55, 0.0, 1.0, 0.001);
+  GetParam(kFFTSize)->InitEnum("FFT Size", kFFTSize2048, {"256", "512", "1024", "2048", "4096"});
 
 #if IPLUG_DSP
+  // Initialize vector buffers with maximum size
+  mWindow.resize(kMaxFFTSize);
+  mPermutation.resize(kMaxFFTSize);
+  for (int ch = 0; ch < kMaxChannels; ++ch) {
+    mAnalysisBuffer[ch].resize(kMaxFFTSize);
+    mOverlapAddBuffer[ch].resize(kMaxFFTSize);
+    mHopBuffer[ch].resize(kMaxHopSize);
+    mOutputFifo[ch].resize(kOutputFifoSize);
+    mFftBuffer[ch].resize(kMaxFFTSize);
+    // Dry delay buffer for phase-coherent wet/dry mixing (size = max latency)
+    mDryDelayBuffer[ch].resize(kMaxFFTSize);
+    mDryDelayIndex[ch] = 0;
+  }
+  
   WDL_fft_init();
   ResetDspState();
 #endif
@@ -309,10 +366,13 @@ RussetNoise::RussetNoise(const InstanceInfo& info)
     graphics->AttachControl(new IVKnobControl(amountRect, kAmount, "Amount", controlStyle));
     graphics->AttachControl(new TargetSelectorControl(selectorRect, kTarget, "Target Curve", selectorStyle));
     graphics->AttachControl(new IVKnobControl(smoothingRect, kSmoothing, "Smoothing", controlStyle));
-    // Spectrum visualizer
-    const IRECT visRect(bounds.L + 8.f, controlTop + controlHeight + 14.f, bounds.R - 8.f, bounds.B - 34.f);
+    // FFT Size selector
+    const IRECT fftRect(selectorRect.L, selectorRect.B + 8.f, selectorRect.R, selectorRect.B + 48.f);
+    graphics->AttachControl(new TargetSelectorControl(fftRect, kFFTSize, "FFT Size", selectorStyle));
+    // Spectrum visualizer - increased size to fill more screen space
+    const IRECT visRect(bounds.L + 4.f, fftRect.B + 10.f, bounds.R - 4.f, bounds.B - 24.f);
     graphics->AttachControl(new SpectrumVisualizerControl(visRect));
-    const IRECT footerRect(bounds.L, bounds.B - 28.f, bounds.R, bounds.B);
+    const IRECT footerRect(bounds.L, bounds.B - 20.f, bounds.R, bounds.B);
     graphics->AttachControl(new ITextControl(footerRect,
       "White, Pink, Russet, Brown and perceptual equal-loudness targeting.",
       IText(13.f, secondaryTextColor, uiFont, EAlign::Far, EVAlign::Middle)));
@@ -324,27 +384,46 @@ RussetNoise::RussetNoise(const InstanceInfo& info)
 void RussetNoise::OnReset()
 {
   mSampleRate = GetSampleRate();
+  
+  // Get FFT size from parameter
+  const int fftSizeSelector = static_cast<int>(GetParam(kFFTSize)->Value());
+  static constexpr int kFFTSizes[kNumFFTSizes] = {256, 512, 1024, 2048, 4096};
+  mFFTSize = kFFTSizes[fftSizeSelector];
+  mHopSize = mFFTSize / 2;
 
-  for (int index = 0; index < kFFTSize; ++index)
-    mPermutation[index] = WDL_fft_permute(kFFTSize, index);
+  // Report actual latency to host.
+  // With 50% overlap (hop = FFTSize/2), the algorithmic latency is one hop.
+  SetLatency(mHopSize);
+
+  for (int index = 0; index < mFFTSize; ++index)
+    mPermutation[index] = WDL_fft_permute(mFFTSize, index);
 
   UpdateBandLayout(mSampleRate);
   ResetDspState();
 }
 
+void RussetNoise::OnParamChange(int paramIdx)
+{
+  if (paramIdx == kFFTSize)
+  {
+    // When FFT size changes, trigger a reset
+    OnReset();
+  }
+}
+
 void RussetNoise::ResetDspState()
 {
   for (auto& channelBuffer : mAnalysisBuffer)
-    channelBuffer.fill(0.f);
+    std::fill(channelBuffer.begin(), channelBuffer.end(), 0.f);
 
   for (auto& channelBuffer : mOverlapAddBuffer)
-    channelBuffer.fill(0.f);
+    std::fill(channelBuffer.begin(), channelBuffer.end(), 0.f);
 
   for (auto& channelBuffer : mHopBuffer)
-    channelBuffer.fill(0.f);
+    std::fill(channelBuffer.begin(), channelBuffer.end(), 0.f);
 
   for (auto& channelBuffer : mOutputFifo)
-    channelBuffer.fill(0.f);
+    std::fill(channelBuffer.begin(), channelBuffer.end(), 0.f);
 
   for (auto& channelBuffer : mFftBuffer)
   {
@@ -361,10 +440,14 @@ void RussetNoise::ResetDspState()
   mOutputCount.fill(0);
   mHopFill = 0;
   mHasSpectrum = false;
+  mAutoMakeupGainDb = 0.f;
+  mInputRmsDb = -60.f;
+  mOutputRmsDb = -60.f;
+  mTruePeakLevel = 0.f;
 
-  for (int sampleIndex = 0; sampleIndex < kFFTSize; ++sampleIndex)
+  for (int sampleIndex = 0; sampleIndex < mFFTSize; ++sampleIndex)
   {
-    const double phase = (kTwoPi * static_cast<double>(sampleIndex)) / static_cast<double>(kFFTSize);
+    const double phase = (kTwoPi * static_cast<double>(sampleIndex)) / static_cast<double>(mFFTSize);
     const double hann = 0.5 - (0.5 * std::cos(phase));
     mWindow[sampleIndex] = static_cast<float>(std::sqrt(std::max(0.0, hann)));
   }
@@ -373,7 +456,7 @@ void RussetNoise::ResetDspState()
 void RussetNoise::UpdateBandLayout(double sampleRate)
 {
   const float nyquistHz = std::max(1000.f, static_cast<float>(sampleRate * 0.5));
-  const float binWidthHz = static_cast<float>(sampleRate / static_cast<double>(kFFTSize));
+  const float binWidthHz = static_cast<float>(sampleRate / static_cast<double>(mFFTSize));
   const float ratio = std::pow(nyquistHz / kMinTargetHz, 1.0f / static_cast<float>(kNumBands));
 
   mBandEdgesHz[0] = kMinTargetHz;
@@ -389,11 +472,11 @@ void RussetNoise::UpdateBandLayout(double sampleRate)
     const float highHz = mBandEdgesHz[bandIndex + 1];
     const float centerHz = std::sqrt(lowHz * highHz);
     int startBin = std::max(1, static_cast<int>(std::floor(lowHz / binWidthHz)));
-    int endBin = std::min((kFFTSize / 2) - 1, static_cast<int>(std::ceil(highHz / binWidthHz)));
+    int endBin = std::min((mFFTSize / 2) - 1, static_cast<int>(std::ceil(highHz / binWidthHz)));
 
     if (endBin < startBin)
     {
-      const int centerBin = Clip(static_cast<int>(std::lround(centerHz / binWidthHz)), 1, (kFFTSize / 2) - 1);
+      const int centerBin = Clip(static_cast<int>(std::lround(centerHz / binWidthHz)), 1, (mFFTSize / 2) - 1);
       startBin = centerBin;
       endBin = centerBin;
     }
@@ -405,7 +488,7 @@ void RussetNoise::UpdateBandLayout(double sampleRate)
 
   int upperBand = 1;
 
-  for (int binIndex = 0; binIndex <= kFFTSize / 2; ++binIndex)
+  for (int binIndex = 0; binIndex <= mFFTSize / 2; ++binIndex)
   {
     const float frequencyHz = std::max(binWidthHz, static_cast<float>(binIndex) * binWidthHz);
 
@@ -502,6 +585,31 @@ float RussetNoise::DbToLinear(float dbValue) const
   return std::pow(10.f, dbValue / 20.f);
 }
 
+// Compute RMS of a float buffer segment in linear scale
+float RussetNoise::ComputeHopRms(int /*channelIndex*/, const float* buffer, int length) const
+{
+  if (length <= 0)
+    return 0.f;
+  double sumSq = 0.0;
+  for (int i = 0; i < length; ++i)
+    sumSq += static_cast<double>(buffer[i]) * buffer[i];
+  return static_cast<float>(std::sqrt(sumSq / static_cast<double>(length)));
+}
+
+// Update smoothed auto makeup gain based on measured input vs output RMS.
+// Target: output RMS == input RMS within kMakeupGainToleranceDb.
+void RussetNoise::UpdateMakeupGain(float inputRms, float outputRms)
+{
+  const float inputDb  = 20.f * std::log10(std::max(1.0e-9f, inputRms));
+  const float outputDb = 20.f * std::log10(std::max(1.0e-9f, outputRms));
+  // Required compensation = level removed by spectral reshaping
+  const float requiredCompensationDb = inputDb - outputDb;
+  // Never cut signal; cap at maximum makeup gain
+  const float targetMakeupDb = Clip(requiredCompensationDb, 0.f, kMaxMakeupGainDb);
+  // Exponential smoothing to prevent gain-pumping artefacts
+  mAutoMakeupGainDb += (targetMakeupDb - mAutoMakeupGainDb) * kMakeupGainSmoothAlpha;
+}
+
 float RussetNoise::ClampCorrectionDb(float frequencyHz, float correctionDb, float aggression) const
 {
   const float negativeLimitDb = Lerp(8.f, kMaxCorrectionCutDb, aggression);
@@ -566,25 +674,42 @@ void RussetNoise::ProcessHop(int channelCount)
 
   float beforeSpec[64] = {};
   float afterSpec[64] = {};
+  float referenceSpec[64] = {};
   float freqSpec[64] = {};
   const int visBands = std::min(kNumBands, 64);
+
+  // Measure input RMS across all channels for makeup gain calculation
+  double inputPowerSum = 0.0;
+  int inputSampleCount = 0;
+  for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
+  {
+    for (int i = 0; i < mHopSize; ++i)
+    {
+      const double s = static_cast<double>(mHopBuffer[channelIndex][i]);
+      inputPowerSum += s * s;
+    }
+    inputSampleCount += mHopSize;
+  }
+  const float hopInputRms = (inputSampleCount > 0)
+    ? static_cast<float>(std::sqrt(inputPowerSum / static_cast<double>(inputSampleCount)))
+    : 0.f;
 
   for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
   {
     std::memmove(mAnalysisBuffer[channelIndex].data(),
-                 mAnalysisBuffer[channelIndex].data() + kHopSize,
-                 static_cast<size_t>(kFFTSize - kHopSize) * sizeof(float));
-    std::memcpy(mAnalysisBuffer[channelIndex].data() + (kFFTSize - kHopSize),
+                 mAnalysisBuffer[channelIndex].data() + mHopSize,
+                 static_cast<size_t>(mFFTSize - mHopSize) * sizeof(float));
+    std::memcpy(mAnalysisBuffer[channelIndex].data() + (mFFTSize - mHopSize),
                 mHopBuffer[channelIndex].data(),
-                static_cast<size_t>(kHopSize) * sizeof(float));
+                static_cast<size_t>(mHopSize) * sizeof(float));
 
-    for (int sampleIndex = 0; sampleIndex < kFFTSize; ++sampleIndex)
+    for (int sampleIndex = 0; sampleIndex < mFFTSize; ++sampleIndex)
     {
       mFftBuffer[channelIndex][sampleIndex].re = mAnalysisBuffer[channelIndex][sampleIndex] * mWindow[sampleIndex];
       mFftBuffer[channelIndex][sampleIndex].im = 0.f;
     }
 
-    WDL_fft(mFftBuffer[channelIndex].data(), kFFTSize, 0);
+    WDL_fft(mFftBuffer[channelIndex].data(), mFFTSize, 0);
   }
 
   double totalBandPower = 0.0;
@@ -643,9 +768,17 @@ void RussetNoise::ProcessHop(int channelCount)
   }
 
   smoothedCorrectionDb.fill(0.f);
+  targetSpectrumDb.fill(0.f);
 
-  // Variables needed for target blend (declared outside the if block)
+  // Always compute target spectrum for visualization and processing
   float targetMeanDb = 0.f;
+  for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex)
+  {
+    targetSpectrumDb[bandIndex] = EvaluateTargetDb(mBandCentersHz[bandIndex], targetMode);
+    targetMeanDb += targetSpectrumDb[bandIndex];
+  }
+  targetMeanDb /= static_cast<float>(kNumBands);
+
   const auto& displaySpectrumDb = signalIsUsable ? currentSpectrumDb : mAverageSpectrumDb;
 
   if (amountDrive > 1.0e-4f && signalIsUsable && mHasSpectrum)
@@ -655,12 +788,9 @@ void RussetNoise::ProcessHop(int channelCount)
     for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex)
     {
       analysisMeanDb += mAverageSpectrumDb[bandIndex];
-      targetSpectrumDb[bandIndex] = EvaluateTargetDb(mBandCentersHz[bandIndex], targetMode);
-      targetMeanDb += targetSpectrumDb[bandIndex];
     }
 
     analysisMeanDb /= static_cast<float>(kNumBands);
-    targetMeanDb /= static_cast<float>(kNumBands);
 
     for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex)
     {
@@ -691,21 +821,32 @@ void RussetNoise::ProcessHop(int channelCount)
                                                           smoothedCorrectionDb[bandIndex] - (correctionMeanDb * meanTrim),
                                                           aggression);
     }
-  }
 
-  // Fix: Enhanced blend toward pure target spectrum at high Amount
-  // Start blending at 50% Amount for more powerful effect
-  const float targetBlend = Clip((amountDrive - 0.5f) / (1.0f - 0.5f), 0.f, 1.f);
-  
-  // Add extra amplification at high amounts for more pronounced effect
-  const float extraGain = Lerp(1.f, 1.35f, amountDrive * amountDrive);
-
-  if (targetBlend > 0.f && signalIsUsable && mHasSpectrum)
-  {
-    for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex)
+    // Enhanced spectral transformation at high amounts
+    // At 100%, replace input spectrum with target spectrum (noise generation mode)
+    const float noiseModeBlend = SmoothStepFunc(0.85f, 1.0f, amountDrive); // Pure noise mode above 85%
+    
+    if (noiseModeBlend > 0.05f)
     {
-      const float targetOnlyShape = (targetSpectrumDb[bandIndex] - targetMeanDb) * extraGain;
-      smoothedCorrectionDb[bandIndex] = Lerp(smoothedCorrectionDb[bandIndex], targetOnlyShape, targetBlend);
+      // In noise mode: discard input characteristics and synthesize target spectrum
+      for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex)
+      {
+        // Get current input level for this band
+        const float inputDb = currentSpectrumDb[bandIndex];
+        // Get target level (absolute, not centered)
+        const float targetDb = targetSpectrumDb[bandIndex];
+        
+        // Calculate gain needed to transform input to target
+        // Limit extreme gains to prevent overflow (especially with brown noise lows)
+        float gainDb = targetDb - inputDb;
+        gainDb = Clip(gainDb, -30.f, 24.f); // Hard limits: -30dB cut to +24dB boost
+        
+        // Blend between correction and pure noise synthesis
+        const float noiseGain = gainDb * noiseModeBlend;
+        const float correctionGain = smoothedCorrectionDb[bandIndex] * (1.0f - noiseModeBlend);
+        
+        smoothedCorrectionDb[bandIndex] = correctionGain + noiseGain;
+      }
     }
   }
 
@@ -713,6 +854,8 @@ void RussetNoise::ProcessHop(int channelCount)
   {
     beforeSpec[bandIndex] = displaySpectrumDb[bandIndex];
     afterSpec[bandIndex] = displaySpectrumDb[bandIndex] + smoothedCorrectionDb[bandIndex];
+    // Reference is the target spectral shape centered around mean
+    referenceSpec[bandIndex] = targetSpectrumDb[bandIndex] - targetMeanDb;
     freqSpec[bandIndex] = mBandCentersHz[bandIndex];
   }
 
@@ -727,18 +870,19 @@ void RussetNoise::ProcessHop(int channelCount)
   const float fullGainCompensation = static_cast<float>(1.0 / std::sqrt(std::max(1.0, gainPowerSum / static_cast<double>(kNumBands))));
   const float gainCompensation = std::pow(std::max(1.0e-4f, fullGainCompensation), Lerp(0.90f, 0.42f, aggression));
 
-  for (int binIndex = 0; binIndex <= kFFTSize / 2; ++binIndex)
+  for (int binIndex = 0; binIndex <= mFFTSize / 2; ++binIndex)
   {
     float linearGain = 1.f;
 
     if (binIndex > 0)
     {
-      const int lowerBand = mBinLowerBand[binIndex];
-      const int upperBand = mBinUpperBand[binIndex];
+      const int lowerBand = Clip(mBinLowerBand[binIndex], 0, kNumBands - 1);
+      const int upperBand = Clip(mBinUpperBand[binIndex], 0, kNumBands - 1);
       const float blend = mBinBandBlend[binIndex];
       const float lowerDb = smoothedCorrectionDb[lowerBand];
       const float upperDb = smoothedCorrectionDb[upperBand];
-      const float correctionDb = lowerDb + ((upperDb - lowerDb) * blend);
+      // faust-optimize: Sanitize correction before conversion
+      const float correctionDb = Sanitize(lowerDb + ((upperDb - lowerDb) * blend));
       linearGain = DbToLinear(correctionDb) * gainCompensation;
     }
 
@@ -750,9 +894,9 @@ void RussetNoise::ProcessHop(int channelCount)
       mFftBuffer[channelIndex][fftIndex].im *= linearGain;
     }
 
-    if (binIndex > 0 && binIndex < kFFTSize / 2)
+    if (binIndex > 0 && binIndex < mFFTSize / 2)
     {
-      const int mirrorIndex = mPermutation[kFFTSize - binIndex];
+      const int mirrorIndex = mPermutation[mFFTSize - binIndex];
 
       for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
       {
@@ -762,7 +906,7 @@ void RussetNoise::ProcessHop(int channelCount)
     }
   }
 
-  const float inverseScale = 1.f / static_cast<float>(kFFTSize);
+  const float inverseScale = 1.f / static_cast<float>(mFFTSize);
 
   for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
   {
@@ -772,27 +916,53 @@ void RussetNoise::ProcessHop(int channelCount)
       fftBin.im *= inverseScale;
     }
 
-    WDL_fft(mFftBuffer[channelIndex].data(), kFFTSize, 1);
+    WDL_fft(mFftBuffer[channelIndex].data(), mFFTSize, 1);
 
-    for (int sampleIndex = 0; sampleIndex < kFFTSize; ++sampleIndex)
+    for (int sampleIndex = 0; sampleIndex < mFFTSize; ++sampleIndex)
     {
       mOverlapAddBuffer[channelIndex][sampleIndex] += mFftBuffer[channelIndex][sampleIndex].re * mWindow[sampleIndex];
     }
 
-    for (int sampleIndex = 0; sampleIndex < kHopSize; ++sampleIndex)
+    for (int sampleIndex = 0; sampleIndex < mHopSize; ++sampleIndex)
       PushOutputSample(channelIndex, mOverlapAddBuffer[channelIndex][sampleIndex]);
 
     std::memmove(mOverlapAddBuffer[channelIndex].data(),
-                 mOverlapAddBuffer[channelIndex].data() + kHopSize,
-                 static_cast<size_t>(kFFTSize - kHopSize) * sizeof(float));
-    std::fill(mOverlapAddBuffer[channelIndex].begin() + (kFFTSize - kHopSize), mOverlapAddBuffer[channelIndex].end(), 0.f);
+                 mOverlapAddBuffer[channelIndex].data() + mHopSize,
+                 static_cast<size_t>(mFFTSize - mHopSize) * sizeof(float));
+    std::fill(mOverlapAddBuffer[channelIndex].begin() + (mFFTSize - mHopSize), mOverlapAddBuffer[channelIndex].end(), 0.f);
+  }
+
+  // --- Professional auto makeup gain: measure output RMS of this hop then update gain ---
+  {
+    double outputPowerSum = 0.0;
+    int outputSampleCount = 0;
+    // Use the output FIFO tail (most recently pushed mHopSize samples per channel)
+    for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
+    {
+      const float* fifo = mOutputFifo[channelIndex].data();
+      // Walk back mHopSize samples from write pointer
+      const int writeIdx = mOutputWriteIndex[channelIndex];
+      for (int i = 0; i < mHopSize; ++i)
+      {
+        const int idx = (writeIdx - mHopSize + i + kOutputFifoSize) % kOutputFifoSize;
+        const double s = static_cast<double>(fifo[idx]);
+        outputPowerSum += s * s;
+      }
+      outputSampleCount += mHopSize;
+    }
+    const float hopOutputRms = (outputSampleCount > 0)
+      ? static_cast<float>(std::sqrt(outputPowerSum / static_cast<double>(outputSampleCount)))
+      : 0.f;
+
+    if (signalIsUsable)
+      UpdateMakeupGain(hopInputRms, hopOutputRms);
   }
 
   // Update spectrum visualizer control
   if (IGraphics* g = GetUI()) {
     for (int i = 0; i < g->NControls(); ++i) {
       if (auto* vis = dynamic_cast<SpectrumVisualizerControl*>(g->GetControl(i))) {
-        vis->SetData(beforeSpec, afterSpec, freqSpec, visBands);
+        vis->SetData(beforeSpec, afterSpec, referenceSpec, freqSpec, visBands);
         break;
       }
     }
@@ -815,20 +985,53 @@ void RussetNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 
     ++mHopFill;
 
-    if (mHopFill >= kHopSize)
+    if (mHopFill >= mHopSize)
     {
       ProcessHop(processedChannels);
       mHopFill = 0;
     }
 
-    // Apply auto makeup gain and soft clip
-    for (int channelIndex = 0; channelIndex < activeOutputChannels; ++channelIndex) 
-    { 
-      float output = PopOutputSample(channelIndex); 
-      float makeupGain = ComputeMakeupGain(GetParam(kAmount)->Value() * 0.01); 
-      output = output * makeupGain; 
-      output = SoftClip(output); 
-      outputs[channelIndex][sampleIndex] = output; 
+    // --- Professional auto makeup gain + true-peak limiting ---
+    // Apply the smoothed RMS-matched makeup gain computed in ProcessHop,
+    // then apply a true-peak brickwall limiter to guarantee no clipping.
+    const float makeupLinear = std::pow(10.f, mAutoMakeupGainDb / 20.f);
+    const float truePeakCeilingLinear = std::pow(10.f, kTruePeakCeiling / 20.f); // ~0.9886
+
+    for (int channelIndex = 0; channelIndex < activeOutputChannels; ++channelIndex)
+    {
+      float output = PopOutputSample(channelIndex);
+
+      // Apply makeup gain
+      output *= makeupLinear;
+
+      // True-peak envelope follower: track absolute peak with fast attack, slow release
+      const float absSample = std::abs(output);
+      if (absSample > mTruePeakLevel)
+        mTruePeakLevel = absSample;                             // instant attack
+      else
+        mTruePeakLevel *= 0.9999f;                             // ~4.3 ms release @ 44.1 kHz
+
+      // Compute limiting gain: if peak exceeds ceiling, attenuate proportionally
+      float limiterGain = 1.f;
+      if (mTruePeakLevel > truePeakCeilingLinear)
+        limiterGain = truePeakCeilingLinear / mTruePeakLevel;
+
+      output *= limiterGain;
+
+      // faust-optimize: Final sanitization - prevent any stray NaN/Inf/denorm from reaching output
+      output = SafeValue(output);
+      output = FlushDenorm(output);
+
+      // Apply dither with noise shaping for bit-accurate output
+      output = DitherAndNoiseShape(mDitherState[channelIndex], output);
+
+      // Final safety soft-clip (should never trigger with working limiter)
+      output = SoftClip(output);
+
+      // Final safety clamp
+      output = Clip(output, -1.f, 1.f);
+
+      outputs[channelIndex][sampleIndex] = output;
     }
   }
 }

@@ -20,18 +20,15 @@ Build/
 *.bin
 
 # -------------------------------------------
-# IDE & Project Files
+# IDE & Project Files (keep local configs)
 # -------------------------------------------
-*.dsp
 *.dsw
 *.sln
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user
 *.suo
-*.user
-*.useross
-*.userprefs
+*.userosscache
 *.sln.docstates
 *.ncb
 *.opensdf
@@ -45,14 +42,6 @@ Build/
 *~
 CMakeLists.txt.user
 
-# Visual Studio
-.vs/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-.vscode/
-
 # JetBrains
 .idea/
 *.iml
@@ -63,42 +52,19 @@ CMakeLists.txt.user
 .settings/
 
 # -------------------------------------------
-# iPlug2 Framework (local copies, typically submodules)
+# iPlug2 & VST3 SDK (submodules - keep local copies)
 # -------------------------------------------
 iPlug2/
-*/iPlug2/
-*/iPlug2/WDL/
-*/iPlug2/**
-
-# -------------------------------------------
-# VST3 SDK (typically a submodule)
-# -------------------------------------------
 vst3sdk/
-*/vst3sdk/
-*/vst3sdk/**
 
 # -------------------------------------------
-# Backup Files
+# Backup & Temporary Files
 # -------------------------------------------
 backups/
 backup/
 *.bak
 *.tmp
 *.temp
-*~
-
-# -------------------------------------------
-# Audio & Resource Files (optional - uncomment if needed)
-# -------------------------------------------
-# *.wav
-# *.aiff
-# *.mp3
-# *.ogg
-# *.flac
-# *.nam
-
-# Resource files that might be generated
-*.rc
 
 # -------------------------------------------
 # OS-Specific Files
@@ -107,21 +73,8 @@ backup/
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
-
-# Linux
-*~
-
-# Windows
-Thumbs.db
-Thumbs.db:encryptable
-ehthumbs.db
-ehthumbs_vista.xml
 *.stackdump
-[Dd]esktop.ini
 *.lnk
-
-# macOS
-.DS_Store
 .AppleDouble
 .LSOverride
 Icon
@@ -136,10 +89,8 @@ logs/
 *.crash
 
 # -------------------------------------------
-# Temporary & Cache Files
+# Compiler Cache Files
 # -------------------------------------------
-.cache/
-*.cache
 *.pch
 *.ilk
 *.exp
@@ -149,11 +100,10 @@ logs/
 *.iobj
 
 # -------------------------------------------
-# Deprecated/Old Project Files
+# Old Project Files
 # -------------------------------------------
 OLD/
 old/
-OLD/
 References/
 references/
 
@@ -167,17 +117,12 @@ External/
 vendor/
 
 # -------------------------------------------
-# Development Tools
+# Python Virtual Environments
 # -------------------------------------------
-.faust/
-faust-compiler/
-skills/
-.agents/
-.claude/
-.kilocode/
 .venv/
 venv/
 __pycache__/
 *.pyc
 *.pyo
 .env
+
