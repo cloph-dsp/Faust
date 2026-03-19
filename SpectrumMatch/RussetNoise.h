@@ -34,6 +34,8 @@ enum EFFTSizeSelector
   kFFTSize1024,
   kFFTSize2048,
   kFFTSize4096,
+  kFFTSize8192,
+  kFFTSize16384,
   kNumFFTSizes
 };
 
@@ -53,11 +55,11 @@ public:
 
 private:
 #if IPLUG_DSP
-  // Maximum FFT size (4096) - we allocate for max but use selected size at runtime
-  static constexpr int kMaxFFTSize = 4096;
+  // Maximum FFT size (16384) - we allocate for max but use selected size at runtime
+  static constexpr int kMaxFFTSize = 16384;
   static constexpr int kMaxHopSize = kMaxFFTSize / 2;
   static constexpr int kMaxChannels = 2;
-  static constexpr int kNumBands = 48;
+  static constexpr int kNumBands = 64;  // Increased bands for higher resolution
   static constexpr int kOutputFifoSize = kMaxFFTSize * 2;
 
   // Current runtime FFT size

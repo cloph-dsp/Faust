@@ -1,0 +1,12 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build VST3 plugin",
+			"type": "shell",
+			"command": "build_vst3.ps1",
+			"isBackground": false,
+			"group": "build"
+		}
+	]
+}

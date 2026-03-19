@@ -1,0 +1,134 @@
+{
+  "program_name": "MNSpectralBlurring",
+  "language_id": "x86:LE:64:default",
+  "targets": [
+    {
+      "label": "main_kernel",
+      "requested_offset": "0x3766",
+      "matched_address": "00003766",
+      "function_name": "FUN_00003766",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__main_kernel__0x3766.c"
+    },
+    {
+      "label": "variance_dispatch",
+      "requested_offset": "0x4080",
+      "matched_address": "00004080",
+      "function_name": "FUN_00003766",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__variance_dispatch__0x4080.c"
+    },
+    {
+      "label": "variance_case_0",
+      "requested_offset": "0x4090",
+      "matched_address": "00004090",
+      "function_name": "FUN_00003766",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__variance_case_0__0x4090.c"
+    },
+    {
+      "label": "variance_case_1",
+      "requested_offset": "0x4218",
+      "matched_address": "00004218",
+      "function_name": "FUN_00003766",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__variance_case_1__0x4218.c"
+    },
+    {
+      "label": "variance_case_2",
+      "requested_offset": "0x4238",
+      "matched_address": "00004238",
+      "function_name": "FUN_00003766",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__variance_case_2__0x4238.c"
+    },
+    {
+      "label": "variance_case_3",
+      "requested_offset": "0x427e",
+      "matched_address": "0000427e",
+      "function_name": "FUN_00003766",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__variance_case_3__0x427e.c"
+    },
+    {
+      "label": "variance_case_4",
+      "requested_offset": "0x42b8",
+      "matched_address": "000042b8",
+      "function_name": "FUN_00003766",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__variance_case_4__0x42b8.c"
+    },
+    {
+      "label": "hot_wrapper",
+      "requested_offset": "0x45ca",
+      "matched_address": "000045ca",
+      "function_name": "FUN_000045ca",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__hot_wrapper__0x45ca.c"
+    },
+    {
+      "label": "helper_called_from_wrapper",
+      "requested_offset": "0xa0ae",
+      "matched_address": "0000a0ae",
+      "function_name": "FUN_0000a0ae",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__helper_called_from_wrapper__0xa0ae.c"
+    },
+    {
+      "label": "helper_get_sample_rate",
+      "requested_offset": "0xcbce",
+      "matched_address": "0000cbce",
+      "function_name": "FUN_0000cbce",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__helper_get_sample_rate__0xcbce.c"
+    },
+    {
+      "label": "helper_init_fft_support",
+      "requested_offset": "0xd2a7",
+      "matched_address": "0000d2a7",
+      "function_name": "FUN_0000d2a7",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__helper_init_fft_support__0xd2a7.c"
+    },
+    {
+      "label": "helper_window_setup",
+      "requested_offset": "0xd30a",
+      "matched_address": "0000d30a",
+      "function_name": "FUN_0000d30a",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__helper_window_setup__0xd30a.c"
+    },
+    {
+      "label": "helper_hop_insert",
+      "requested_offset": "0xd3a7",
+      "matched_address": "0000d3a7",
+      "function_name": "FUN_0000d3a7",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__helper_hop_insert__0xd3a7.c"
+    },
+    {
+      "label": "helper_pre_fft_window",
+      "requested_offset": "0xd433",
+      "matched_address": "0000d433",
+      "function_name": "FUN_0000d433",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__helper_pre_fft_window__0xd433.c"
+    },
+    {
+      "label": "helper_overlap_add",
+      "requested_offset": "0xde6f",
+      "matched_address": "0000de6f",
+      "function_name": "FUN_0000de6f",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__helper_overlap_add__0xde6f.c"
+    },
+    {
+      "label": "helper_phase_rotate",
+      "requested_offset": "0xdf77",
+      "matched_address": "0000df77",
+      "function_name": "FUN_0000df77",
+      "status": "decompiled",
+      "output_file": "D:\\Github\\VST3 Developments\\BLUR\\ReverseEngineering\\Ghidra\\exports\\MNSpectralBlurring__x86_LE_64_default__helper_phase_rotate__0xdf77.c"
+    }
+  ]
+}

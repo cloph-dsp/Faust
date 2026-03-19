@@ -1,0 +1,4 @@
+project/
+logs/
+tools/jdk-*/
+tools/*.zip

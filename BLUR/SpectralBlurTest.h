@@ -12,15 +12,15 @@ using namespace iplug;
 using namespace iplug::igraphics;
 
 enum EParams {
-  kParamMix = 0,
-  kParamSmearTime,
-  kParamTone,
-  kParamMotion,
-  kParamTransientPreserve,
-  kParamOutput,
-  kParamQuality,
-  kParamBandFocus,
-  kParamStereoWidth,
+  kParamBlurAmount = 0,
+  kParamVarianceType,
+  kParamBlurVariance,
+  kParamLFORate,
+  kParamLoBinCutoff,
+  kParamHiBinCutoff,
+  kParamRandomizePhases,
+  kParamFFTSize,
+  kParamOutputGain,
   kNumParams
 };
 

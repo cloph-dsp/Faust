@@ -59,6 +59,11 @@ float Clamp01(float value) {
   return std::max(0.f, std::min(1.f, value));
 }
 
+template <typename T>
+T ClampValue(T value, T minValue, T maxValue) {
+  return std::max(minValue, std::min(maxValue, value));
+}
+
 float Lerp(float a, float b, float t) {
   return a + (b - a) * t;
 }
@@ -1287,7 +1292,7 @@ public:
       g.FillRoundRect(WithAlpha(kShellDeep, 30), panel.GetTranslated(0.f, 2.f), 9.f);
       FillClassicPanel(g, panel, BlendColor(kShellFace, kFieldFace, 0.17f), true, 1.f);
       g.DrawRoundRect(WithAlpha(kShellLight, 72), panel.GetPadded(-2.f), 8.f, nullptr, 0.9f);
-      const float dividerX = panel.L + std::clamp(panel.W() * 0.26f, 56.f, 74.f);
+      const float dividerX = panel.L + ClampValue(panel.W() * 0.26f, 56.f, 74.f);
       g.DrawLine(WithAlpha(kShellDark, 112), dividerX, panel.T + 24.f, dividerX, panel.B - 8.f, nullptr, 1.f);
       g.DrawLine(WithAlpha(kShellLight, 88), dividerX + 1.f, panel.T + 24.f, dividerX + 1.f, panel.B - 8.f, nullptr, 1.f);
       DrawUtilityText(g, 11.5f, kShellText, EAlign::Near, EVAlign::Middle, "TEMPO",
@@ -1971,7 +1976,7 @@ Freeze95::Freeze95(const InstanceInfo& info)
 
 #if IPLUG_EDITOR
   mMakeGraphicsFunc = [&]() {
-    auto* graphics = MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
+    auto* graphics = MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_HEIGHT));
     return graphics;
   };
 
@@ -1991,16 +1996,16 @@ void Freeze95::LayoutUI(IGraphics* g) {
   // (4K display comfort), snapping the entire vector scene.
   g->SetScaleConstraints(0.5f, 2.0f);
 
-  const float outerMargin = std::round(std::clamp(w * 0.0315f, 18.f, 30.f));
-  const float controlGap = std::round(std::clamp(outerMargin * 0.75f, 12.f, 22.f));
-  const float brandPlateTop = std::round(std::clamp(h * 0.165f, 34.f, 56.f));
-  const float brandPlateHeight = std::round(std::clamp(h * 0.122f, 26.f, 40.f));
-  const float majorTop = std::round(std::clamp(h * 0.322f, 76.f, 104.f));
-  const float majorBottom = std::round(std::clamp(h * 0.929f, majorTop + 140.f, h - 16.f));
+  const float outerMargin = std::round(ClampValue(w * 0.0315f, 18.f, 30.f));
+  const float controlGap = std::round(ClampValue(outerMargin * 0.75f, 12.f, 22.f));
+  const float brandPlateTop = std::round(ClampValue(h * 0.165f, 34.f, 56.f));
+  const float brandPlateHeight = std::round(ClampValue(h * 0.122f, 26.f, 40.f));
+  const float majorTop = std::round(ClampValue(h * 0.322f, 76.f, 104.f));
+  const float majorBottom = std::round(ClampValue(h * 0.929f, majorTop + 140.f, h - 16.f));
   const float majorHeight = std::max(140.f, majorBottom - majorTop);
-  float knobWidth = std::round(std::clamp(w * 0.212f, 142.f, 178.f));
-  float powerWidth = std::round(std::clamp(w * 0.164f, 112.f, 136.f));
-  const float logoPlateWidth = std::round(std::clamp(knobWidth * 1.07f, 156.f, 188.f));
+  float knobWidth = std::round(ClampValue(w * 0.212f, 142.f, 178.f));
+  float powerWidth = std::round(ClampValue(w * 0.164f, 112.f, 136.f));
+  const float logoPlateWidth = std::round(ClampValue(knobWidth * 1.07f, 156.f, 188.f));
   const float badgePlateWidth = logoPlateWidth;
   const float bpmPanelTop = majorTop + std::round(majorHeight * 0.21f);
   const float bpmPanelBottom = majorBottom - std::round(majorHeight * 0.24f);
@@ -2192,7 +2197,7 @@ void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
   }
 
   const bool syncToHost = GetParam(kParamSync)->Value() > 0.5;
-  const bool transportRunning = GetTransportIsRunning();
+  const bool transportRunning = mTimeInfo.mTransportIsRunning;
   const bool shouldGateForPause = syncToHost && !GetRenderingOffline();
   const bool transportJustStopped = shouldGateForPause
     && mHasTransportState

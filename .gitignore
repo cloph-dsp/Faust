@@ -105,7 +105,7 @@ logs/
 OLD/
 old/
 References/
-references/
+#references/
 
 # -------------------------------------------
 # Third-Party Libraries (if not using submodules)
@@ -115,6 +115,7 @@ External/
 3rdparty/
 3rd_party/
 vendor/
+.agents/
 
 # -------------------------------------------
 # Python Virtual Environments
@@ -126,3 +127,28 @@ __pycache__/
 *.pyo
 .env
 
+.agents/skills/adapt/SKILL.md
+.agents/skills/animate/SKILL.md
+.agents/skills/audit/SKILL.md
+.agents/skills/bolder/SKILL.md
+.agents/skills/clarify/SKILL.md
+.agents/skills/colorize/SKILL.md
+.agents/skills/critique/SKILL.md
+.agents/skills/delight/SKILL.md
+.agents/skills/distill/SKILL.md
+.agents/skills/extract/SKILL.md
+.agents/skills/frontend-design/SKILL.md
+.agents/skills/frontend-design/reference/color-and-contrast.md
+.agents/skills/frontend-design/reference/interaction-design.md
+.agents/skills/frontend-design/reference/motion-design.md
+.agents/skills/frontend-design/reference/responsive-design.md
+.agents/skills/frontend-design/reference/spatial-design.md
+.agents/skills/frontend-design/reference/typography.md
+.agents/skills/frontend-design/reference/ux-writing.md
+.agents/skills/harden/SKILL.md
+.agents/skills/normalize/SKILL.md
+.agents/skills/onboard/SKILL.md
+.agents/skills/optimize/SKILL.md
+.agents/skills/polish/SKILL.md
+.agents/skills/quieter/SKILL.md
+.agents/skills/teach-impeccable/SKILL.md

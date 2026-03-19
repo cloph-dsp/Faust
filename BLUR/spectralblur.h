@@ -1,28 +1,29 @@
 #pragma once
 
 #include <complex>
-#include <cstdint>
 #include <random>
 #include <vector>
 
 namespace spectralblur {
 
-enum class QualityMode : int {
-    Eco = 0,
-    Normal = 1,
-    High = 2,
+enum class VarianceType : int {
+    None = 0,
+    Random = 1,
+    LFO = 2,
+    LinkAmplitude = 3,
+    LinkInvertedAmplitude = 4,
 };
 
 struct Parameters {
-    float mixPercent = 50.0f;
-    float smearTimePercent = 55.0f;
-    float tonePercent = 0.0f;
-    float motionPercent = 30.0f;
-    float transientPreservePercent = 50.0f;
+    float blurAmountPercent = 50.0f;
+    int varianceType = static_cast<int>(VarianceType::None);
+    float blurVariancePercent = 0.5f;
+    float lfoRateHz = 1.0f;
+    float loBinCutoffPercent = 0.0f;
+    float hiBinCutoffPercent = 100.0f;
+    bool randomizePhases = true;
+    int fftSizeIndex = 2;
     float outputGainDb = 0.0f;
-    int qualityMode = static_cast<int>(QualityMode::Normal);
-    float bandFocusPercent = 0.0f;
-    float stereoWidthPercent = 100.0f;
 };
 
 class Processor {
@@ -42,13 +43,12 @@ public:
 
 private:
     struct SmoothedRuntime {
-        float mix = 0.5f;
-        float smear = 0.55f;
-        float tone = 0.0f;
-        float motion = 0.3f;
-        float transientPreserve = 0.5f;
-        float bandFocus = 0.0f;
-        float stereoWidth = 1.0f;
+        float blurAmountPercent = 50.0f;
+        float blurVariancePercent = 0.5f;
+        float lfoRateHz = 1.0f;
+        float loBinCutoffPercent = 0.0f;
+        float hiBinCutoffPercent = 100.0f;
+        float randomizePhaseBlend = 1.0f;
         float gainLinear = 1.0f;
     };
 
@@ -59,15 +59,12 @@ private:
         std::vector<float> overlapAddBuffer;
         int overlapAddReadIndex = 0;
 
-        std::vector<float> dryDelayBuffer;
-        int dryDelayIndex = 0;
-
         std::vector<std::complex<float>> fftBuffer;
         std::vector<float> prevAnalysisPhase;
-        std::vector<float> synthPhase;
         std::vector<float> smoothedMagnitude;
         std::vector<float> smoothedPhaseAdvance;
-        std::vector<float> phaseJitter;
+        std::vector<float> synthPhase;
+        std::vector<float> phaseRotationAngles;
 
         std::minstd_rand randomGenerator{0x12345u};
         bool hasAnalysisHistory = false;
@@ -76,25 +73,27 @@ private:
     void rebuildBuffers(int numChannels);
     void resetSmoothers();
     void updateSmoothedRuntime();
+    void updateTargetFromParameters();
     void analyseFrame(
         ChannelState& state,
         int loBin,
         int hiBin,
         float magnitudeAlpha,
         float phaseAlpha,
-        float phaseJitterAmount,
-        float tone);
-    float computeFrameEnvelope();
-    float computeBlurDepth(float frameEnvelope, float smear, float motion, float transientPreserve);
+        float phaseRandomizeMix);
+    float computeFramePeakAmplitude();
+    float computeEffectiveBlur(float framePeakAmplitude);
+    void rotatePhaseTable(ChannelState& state, int loBin, int hiBin);
     void pushInputSample(ChannelState& state, float sample);
     float pullWetSample(ChannelState& state);
-    float delayDrySample(ChannelState& state, float sample);
 
     static void fft(std::vector<std::complex<float>>& values, bool inverse);
     static float wrapPhase(float radians);
     static float clamp(float x, float lo, float hi);
+    static float blurShape(float normalizedBlur);
+    static float dbToLinear(float db);
     static float sanitizeSample(float x);
-    static int qualityToFftSize(int qualityMode);
+    static int fftSizeFromIndex(int fftSizeIndex);
 
     Parameters parameters_;
     SmoothedRuntime smoothed_;
@@ -109,14 +108,14 @@ private:
     int hopSize_ = 512;
 
     std::vector<float> analysisWindow_;
-    float outputScale_ = 1.0f;
+    std::vector<float> synthesisWindow_;
     std::vector<ChannelState> states_;
 
     int totalSamplesSeen_ = 0;
     int samplesSinceLastFrame_ = 0;
-    float lfoPhase_ = 0.0f;
-    float randomModValue_ = 0.5f;
-    float envelopeFollower_ = 0.0f;
+    float globalLfoPhase_ = 0.0f;
+    float randomBlurValue_ = 0.5f;
+    float amplitudeFollower_ = 0.0f;
     std::minstd_rand modulationRandom_{0x4d595df4u};
 };
 

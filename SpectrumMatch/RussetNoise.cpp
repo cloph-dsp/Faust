@@ -290,7 +290,7 @@ float InterpolateLogTable(float frequencyHz,
   GetParam(kAmount)->InitPercentage("Amount", 100.0);
   GetParam(kTarget)->InitEnum("Target", kTargetRusset, {"White", "Pink", "Russet", "Brown", "Equal-loudness"});
   GetParam(kSmoothing)->InitDouble("Smoothing", 0.55, 0.0, 1.0, 0.001);
-  GetParam(kFFTSize)->InitEnum("FFT Size", kFFTSize2048, {"256", "512", "1024", "2048", "4096"});
+  GetParam(kFFTSize)->InitEnum("FFT Size", kFFTSize2048, {"256", "512", "1024", "2048", "4096", "8192", "16384"});
 
 #if IPLUG_DSP
   // Initialize vector buffers with maximum size
@@ -387,7 +387,7 @@ void RussetNoise::OnReset()
   
   // Get FFT size from parameter
   const int fftSizeSelector = static_cast<int>(GetParam(kFFTSize)->Value());
-  static constexpr int kFFTSizes[kNumFFTSizes] = {256, 512, 1024, 2048, 4096};
+  static constexpr int kFFTSizes[kNumFFTSizes] = {256, 512, 1024, 2048, 4096, 8192, 16384};
   mFFTSize = kFFTSizes[fftSizeSelector];
   mHopSize = mFFTSize / 2;
 
@@ -1021,9 +1021,6 @@ void RussetNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       // faust-optimize: Final sanitization - prevent any stray NaN/Inf/denorm from reaching output
       output = SafeValue(output);
       output = FlushDenorm(output);
-
-      // Apply dither with noise shaping for bit-accurate output
-      output = DitherAndNoiseShape(mDitherState[channelIndex], output);
 
       // Final safety soft-clip (should never trigger with working limiter)
       output = SoftClip(output);

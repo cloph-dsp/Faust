@@ -7,7 +7,7 @@
 
 namespace {
 
-constexpr int kDefaultQualityIndex = 1;
+constexpr int kDefaultFftSizeIndex = 2;
 
 IVStyle MakeTestStyle()
 {
@@ -20,17 +20,15 @@ IVStyle MakeTestStyle()
 
 SpectralBlurTest::SpectralBlurTest(const InstanceInfo& info)
   : Plugin(info, MakeConfig(kNumParams, kNumPresets)) {
-  GetParam(kParamMix)->InitDouble("Mix", 50.0, 0.0, 100.0, 0.1, "%");
-  GetParam(kParamSmearTime)->InitDouble("Smear Time", 55.0, 0.0, 100.0, 0.1, "%");
-  GetParam(kParamTone)->InitDouble("Tone", 0.0, -100.0, 100.0, 0.1, "%");
-  GetParam(kParamMotion)->InitDouble("Motion", 30.0, 0.0, 100.0, 0.1, "%");
-  GetParam(kParamTransientPreserve)->InitDouble("Transient Preserve", 50.0, 0.0, 100.0, 0.1, "%");
-  GetParam(kParamOutput)->InitDouble("Output", 0.0, -24.0, 24.0, 0.1, "dB");
-  GetParam(kParamQuality)->InitEnum(
-    "Quality", kDefaultQualityIndex, 3, "", IParam::kFlagsNone, "",
-    "Eco", "Normal", "High");
-  GetParam(kParamBandFocus)->InitDouble("Band Focus", 0.0, 0.0, 100.0, 0.1, "%");
-  GetParam(kParamStereoWidth)->InitDouble("Stereo Width", 100.0, 0.0, 200.0, 0.1, "%");
+  GetParam(kParamBlurAmount)->InitDouble("Blur amount", 50.0, 0.0, 100.0, 0.1, "%");
+  GetParam(kParamVarianceType)->InitEnum("Variance type", 0, {"None", "Random", "LFO", "Link amplitude", "Link inverted amp"});
+  GetParam(kParamBlurVariance)->InitDouble("Blur variance", 0.5, 0.0, 100.0, 0.1, "%");
+  GetParam(kParamLFORate)->InitDouble("LFO rate", 1.0, 0.0, 50.0, 0.01, "Hz");
+  GetParam(kParamLoBinCutoff)->InitDouble("Lo bin cutoff", 0.0, 0.0, 100.0, 0.1, "%");
+  GetParam(kParamHiBinCutoff)->InitDouble("Hi bin cutoff", 100.0, 0.0, 100.0, 0.1, "%");
+  GetParam(kParamRandomizePhases)->InitBool("Randomize phases", true, "", IParam::kFlagsNone, "", "Off", "On");
+  GetParam(kParamFFTSize)->InitEnum("FFT Size", kDefaultFftSizeIndex, {"512", "1024", "2048", "4096", "8192", "16384", "32768", "65536"});
+  GetParam(kParamOutputGain)->InitDouble("Gain", 0.0, -40.0, 40.0, 0.1, "dB");
 
   SyncParamsToProcessor();
 
@@ -74,22 +72,26 @@ void SpectralBlurTest::LayoutUI(IGraphics* pGraphics)
 
   pGraphics->AttachControl(new ITextControl(
     subtitleArea,
-    "Modernized control model: musical macros on top, technical controls folded in",
+    "Recovered AU control surface, modernized spectral voicing under the hood",
     IText(14.f, COLOR_BLACK, "Roboto-Regular", EAlign::Center, EVAlign::Middle)));
 
-  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(0, 3, 3).GetPadded(-8.f), kParamMix, "", style, true));
-  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(1, 3, 3).GetPadded(-8.f), kParamSmearTime, "", style, true));
-  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(2, 3, 3).GetPadded(-8.f), kParamTone, "", style, true));
-  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(3, 3, 3).GetPadded(-8.f), kParamMotion, "", style, true));
-  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(4, 3, 3).GetPadded(-8.f), kParamTransientPreserve, "", style, true));
-  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(5, 3, 3).GetPadded(-8.f), kParamOutput, "", style, true));
+  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(0, 3, 3).GetPadded(-8.f), kParamBlurAmount, "", style, true));
 
-  auto* quality = new IVKnobControl(controlsArea.GetGridCell(6, 3, 3).GetPadded(-8.f), kParamQuality, "", style, true);
-  quality->DisablePrompt(false);
-  pGraphics->AttachControl(quality);
+  auto* varianceType = new IVKnobControl(controlsArea.GetGridCell(1, 3, 3).GetPadded(-8.f), kParamVarianceType, "", style, true);
+  varianceType->DisablePrompt(false);
+  pGraphics->AttachControl(varianceType);
 
-  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(7, 3, 3).GetPadded(-8.f), kParamBandFocus, "", style, true));
-  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(8, 3, 3).GetPadded(-8.f), kParamStereoWidth, "", style, true));
+  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(2, 3, 3).GetPadded(-8.f), kParamBlurVariance, "", style, true));
+  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(3, 3, 3).GetPadded(-8.f), kParamLFORate, "", style, true));
+  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(4, 3, 3).GetPadded(-8.f), kParamLoBinCutoff, "", style, true));
+  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(5, 3, 3).GetPadded(-8.f), kParamHiBinCutoff, "", style, true));
+  pGraphics->AttachControl(new IVToggleControl(controlsArea.GetGridCell(6, 3, 3).GetPadded(-8.f), kParamRandomizePhases, "", style, "Off", "On"));
+
+  auto* fftSize = new IVKnobControl(controlsArea.GetGridCell(7, 3, 3).GetPadded(-8.f), kParamFFTSize, "", style, true);
+  fftSize->DisablePrompt(false);
+  pGraphics->AttachControl(fftSize);
+
+  pGraphics->AttachControl(new IVKnobControl(controlsArea.GetGridCell(8, 3, 3).GetPadded(-8.f), kParamOutputGain, "", style, true));
 }
 #endif
 
@@ -162,14 +164,14 @@ void SpectralBlurTest::ProcessBlock(sample** inputs, sample** outputs, int nFram
 void SpectralBlurTest::SyncParamsToProcessor()
 {
   spectralblur::Parameters parameters;
-  parameters.mixPercent = static_cast<float>(GetParam(kParamMix)->Value());
-  parameters.smearTimePercent = static_cast<float>(GetParam(kParamSmearTime)->Value());
-  parameters.tonePercent = static_cast<float>(GetParam(kParamTone)->Value());
-  parameters.motionPercent = static_cast<float>(GetParam(kParamMotion)->Value());
-  parameters.transientPreservePercent = static_cast<float>(GetParam(kParamTransientPreserve)->Value());
-  parameters.outputGainDb = static_cast<float>(GetParam(kParamOutput)->Value());
-  parameters.qualityMode = GetParam(kParamQuality)->Int();
-  parameters.bandFocusPercent = static_cast<float>(GetParam(kParamBandFocus)->Value());
-  parameters.stereoWidthPercent = static_cast<float>(GetParam(kParamStereoWidth)->Value());
+  parameters.blurAmountPercent = static_cast<float>(GetParam(kParamBlurAmount)->Value());
+  parameters.varianceType = GetParam(kParamVarianceType)->Int();
+  parameters.blurVariancePercent = static_cast<float>(GetParam(kParamBlurVariance)->Value());
+  parameters.lfoRateHz = static_cast<float>(GetParam(kParamLFORate)->Value());
+  parameters.loBinCutoffPercent = static_cast<float>(GetParam(kParamLoBinCutoff)->Value());
+  parameters.hiBinCutoffPercent = static_cast<float>(GetParam(kParamHiBinCutoff)->Value());
+  parameters.randomizePhases = GetParam(kParamRandomizePhases)->Bool();
+  parameters.fftSizeIndex = GetParam(kParamFFTSize)->Int();
+  parameters.outputGainDb = static_cast<float>(GetParam(kParamOutputGain)->Value());
   mProcessor.setParameters(parameters);
 }
