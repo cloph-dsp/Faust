@@ -15,18 +15,35 @@ enum EParams {
   kParamBlurAmount = 0,
   kParamVarianceType,
   kParamBlurVariance,
-  kParamLFORate,
   kParamLoBinCutoff,
   kParamHiBinCutoff,
   kParamRandomizePhases,
   kParamFFTSize,
   kParamOutputGain,
+  kParamBypass,
   kNumParams
 };
 
-class SpectralBlurTest final : public Plugin {
+enum EControlTags {
+  kCtrlTagVarianceType = 0,
+  kCtrlTagHoldKnob,
+  kCtrlTagPhaseScatter,
+  kCtrlTagTitle,
+  kCtrlTagGainSlider,
+  kCtrlTagBlurKnob,
+  kCtrlTagLoKnob,
+  kCtrlTagHiKnob,
+  kCtrlTagBypass,
+  kCtrlTagModeHint,
+  kCtrlTagBandLabel,
+  kCtrlTagLogo,
+  kCtrlTagSeparator,
+  kCtrlTagHeaderPanel
+};
+
+class SpectralBlur final : public Plugin {
 public:
-  explicit SpectralBlurTest(const InstanceInfo& info);
+  explicit SpectralBlur(const InstanceInfo& info);
 
   void OnParamChange(int paramIdx) override;
   void OnReset() override;
@@ -35,6 +52,8 @@ public:
 private:
 #if IPLUG_EDITOR
   void LayoutUI(IGraphics* pGraphics);
+  void OnParentWindowResize(int width, int height) override;
+  void ConstrainEditorSize(int& w, int& h) const override;
 #endif
 
   void SyncParamsToProcessor();

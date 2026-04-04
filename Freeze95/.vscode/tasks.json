@@ -1,0 +1,25 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build Freeze95.vst3 (Release)",
+			"type": "shell",
+			"command": "msbuild Freeze95.vst3 /p:Configuration=Release",
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build Freeze95.vst3 (Debug)",
+			"type": "shell",
+			"command": "msbuild Freeze95.vst3 /p:Configuration=Debug",
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		}
+	]
+}

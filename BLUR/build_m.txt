@@ -1,0 +1,36 @@
+MSBuild version 17.14.40+3e7442088 for .NET Framework
+
+C:\Program Files\Microsoft Visual Studio\2022\BuildTools\MSBuild\Microsoft\VC\v170\Microsoft.CppBuild.targets(538,5): warning MSB8028: The intermediate directory (D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\build-win\vst3\x64\Release\int\) contains files shared from another project (IPlugEffect-vst3.vcxproj).  This can lead to incorrect clean and rebuild behavior. [D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\projects\IPlugEffect-vst3.vcxproj]
+  SpectralBlurTest.cpp
+  spectralblur.cpp
+     Criando biblioteca D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\build-win\vst3\x64\Release\int\SpectralProtocol.lib e objeto D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\build-win\vst3\x64\Release\int\SpectralProtocol.exp
+  Gerando c├│digo
+  570 of 7670 functions ( 7.4%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    31 functions had inline decision re-evaluated but remain unchanged
+  Finalizada a gera├º├úo de c├│digo
+  IPlugEffect-vst3.vcxproj -> D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\build-win\vst3\x64\Release\SpectralProtocol.vst3
+  POSTBUILD SCRIPT VARIABLES -----------------------------------------------------
+  FORMAT ".vst3" 
+  NAME "SpectralProtocol" 
+  PLATFORM "x64" 
+  COPY_VST2 "1" 
+  BUILT_BINARY "D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\build-win\vst3\x64\Release\SpectralProtocol.vst3" 
+  VST2_32_PATH "C:\Program Files (x86)\VstPlugins" 
+  VST2_64_PATH "C:\Program Files\VstPlugins"  
+  VST3_32_PATH "C:\Program Files (x86)\Common Files\VST3" 
+  VST3_64_PATH "C:\Program Files\Common Files\VST3" 
+  BUILD_DIR "D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\build-win"
+  VST_ICON "D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\projects\..\..\..\Dependencies\IPlug\VST3_SDK\doc\artwork\VST_Logo_Steinberg.ico" 
+  AAX_ICON "D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\projects\..\..\..\Dependencies\IPlug\AAX_SDK\Utilities\PlugIn.ico" 
+  CREATE_BUNDLE_SCRIPT "D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\projects\..\..\..\Scripts\create_bundle.bat"
+  END POSTBUILD SCRIPT VARIABLES -----------------------------------------------------
+  copying 64bit binary to VST3 BUNDLE ...
+  Create AAX/VST3 Package Directories
+  Set Folder Icon
+          1 file(s) copied.
+  copying VST3 bundle to 64bit VST3 Plugins folder ...
+  Create AAX/VST3 Package Directories
+  Set Folder Icon
+  D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\build-win\SpectralProtocol.vst3\Contents\x86_64-win\SpectralProtocol.vst3
+  1 File(s) copied

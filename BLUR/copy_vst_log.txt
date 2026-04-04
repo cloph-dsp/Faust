@@ -1,0 +1,2 @@
+﻿
+COPIED_USER:C:\Users\Razer\VSTPlugins\SpectralProtocol.vst3

@@ -68,6 +68,10 @@ float Lerp(float a, float b, float t) {
   return a + (b - a) * t;
 }
 
+float Snap4(float value) {
+  return 4.f * std::round(value / 4.f);
+}
+
 float EaseSmooth(float t) {
   t = Clamp01(t);
   return t * t * (3.f - 2.f * t);
@@ -1753,13 +1757,10 @@ public:
   }
 
   void OnResize() override {
-    const IRECT buttonArea(mRECT.L + 2.f, mRECT.T + 4.f, mRECT.R - 2.f, mRECT.B - 4.f);
-    const float size = std::min(buttonArea.W(), buttonArea.H());
-    mButtonBounds = buttonArea.GetCentredInside(size, size);
-
-    const float titleBottom = std::max(mRECT.T + 15.f, mButtonBounds.T - 5.f);
-    mTitleBounds = IRECT(mRECT.L + 8.f, mRECT.T + 2.f, mRECT.R - 8.f, titleBottom);
-
+    // Button uses the full bounds for alignment with other controls
+    mButtonBounds = mRECT;
+    // Hide the title by default - button only shows icon
+    mTitleBounds = IRECT(0, 0, 0, 0);
     SetTargetRECT(mButtonBounds.GetPadded(6.f));
   }
 
@@ -1996,34 +1997,51 @@ void Freeze95::LayoutUI(IGraphics* g) {
   // (4K display comfort), snapping the entire vector scene.
   g->SetScaleConstraints(0.5f, 2.0f);
 
-  const float outerMargin = std::round(ClampValue(w * 0.0315f, 18.f, 30.f));
-  const float controlGap = std::round(ClampValue(outerMargin * 0.75f, 12.f, 22.f));
-  const float brandPlateTop = std::round(ClampValue(h * 0.165f, 34.f, 56.f));
-  const float brandPlateHeight = std::round(ClampValue(h * 0.122f, 26.f, 40.f));
-  const float majorTop = std::round(ClampValue(h * 0.322f, 76.f, 104.f));
-  const float majorBottom = std::round(ClampValue(h * 0.929f, majorTop + 140.f, h - 16.f));
-  const float majorHeight = std::max(140.f, majorBottom - majorTop);
-  float knobWidth = std::round(ClampValue(w * 0.212f, 142.f, 178.f));
-  float powerWidth = std::round(ClampValue(w * 0.164f, 112.f, 136.f));
-  const float logoPlateWidth = std::round(ClampValue(knobWidth * 1.07f, 156.f, 188.f));
-  const float badgePlateWidth = logoPlateWidth;
-  const float bpmPanelTop = majorTop + std::round(majorHeight * 0.21f);
-  const float bpmPanelBottom = majorBottom - std::round(majorHeight * 0.24f);
-  const float toggleSize = std::max(kMinTouchTargetSize + 6.f,
-                                    std::round((bpmPanelBottom - bpmPanelTop) * 0.52f));
+  const float outerMargin = Snap4(ClampValue(w * 0.029f, 20.f, 32.f));
+  const float spaceTight = Snap4(ClampValue(w * 0.016f, 12.f, 20.f));
+  const float spaceSection = Snap4(ClampValue(w * 0.031f, 24.f, 36.f));
+  const float spaceIsolation = Snap4(ClampValue(w * 0.041f, 28.f, 44.f));
+
+  const float brandPlateTop = Snap4(ClampValue(h * 0.089f, 24.f, 40.f));
+  const float brandPlateHeight = Snap4(ClampValue(h * 0.101f, 28.f, 40.f));
+  const float badgePlateTop = brandPlateTop + Snap4(ClampValue(brandPlateHeight * 0.28f, 8.f, 12.f));
+  const float badgePlateHeight = Snap4(std::max(24.f, brandPlateHeight - 4.f));
+
+  const float headerGap = Snap4(ClampValue(h * 0.071f, 16.f, 28.f));
+  const float majorTop = brandPlateTop + brandPlateHeight + headerGap;
+  const float lowerMargin = Snap4(ClampValue(h * 0.071f, 20.f, 28.f));
+  const float majorBottom = h - lowerMargin;
+  const float majorHeight = std::max(152.f, majorBottom - majorTop);
+
+  float chaosWidth = Snap4(ClampValue(w * 0.219f, 152.f, 188.f));
+  float loFiWidth = Snap4(ClampValue(w * 0.196f, 144.f, 176.f));
+  float powerWidth = Snap4(ClampValue(w * 0.146f, 112.f, 132.f));
+
+  const float logoPlateWidth = Snap4(ClampValue(chaosWidth * 1.04f, 168.f, 208.f));
+  const float badgePlateWidth = Snap4(ClampValue(loFiWidth * 0.90f, 136.f, 168.f));
+
+  const float bpmPanelTop = majorTop + Snap4(ClampValue(majorHeight * 0.23f, 24.f, 40.f));
+  const float bpmPanelBottom = majorBottom - Snap4(ClampValue(majorHeight * 0.20f, 20.f, 36.f));
+  const float toggleSize = Snap4(std::max(kMinTouchTargetSize + 8.f,
+                                          ClampValue((bpmPanelBottom - bpmPanelTop) * 0.60f, 56.f, 76.f)));
   const float toggleFieldGap = 12.f;
 
-  float bpmGroupWidth = w - outerMargin * 2.f - knobWidth * 2.f - powerWidth - controlGap * 3.f;
-  if (bpmGroupWidth < 188.f) {
-    const float shortfall = 188.f - bpmGroupWidth;
-    const float knobSlack = std::max(0.f, knobWidth - 138.f);
+  float bpmGroupWidth = w - outerMargin * 2.f - chaosWidth - loFiWidth - powerWidth
+                        - spaceTight - spaceSection - spaceIsolation;
+  if (bpmGroupWidth < 216.f) {
+    const float shortfall = 216.f - bpmGroupWidth;
+    const float chaosSlack = std::max(0.f, chaosWidth - 148.f);
+    const float loFiSlack = std::max(0.f, loFiWidth - 140.f);
     const float powerSlack = std::max(0.f, powerWidth - 108.f);
-    const float knobReduce = std::min(shortfall * 0.62f, knobSlack);
-    knobWidth -= knobReduce;
-    powerWidth -= std::min(shortfall - knobReduce, powerSlack);
-    bpmGroupWidth = w - outerMargin * 2.f - knobWidth * 2.f - powerWidth - controlGap * 3.f;
+    const float chaosReduce = std::min(shortfall * 0.45f, chaosSlack);
+    chaosWidth -= chaosReduce;
+    const float loFiReduce = std::min(shortfall * 0.35f, loFiSlack);
+    loFiWidth -= loFiReduce;
+    powerWidth -= std::min(shortfall - chaosReduce - loFiReduce, powerSlack);
+    bpmGroupWidth = w - outerMargin * 2.f - chaosWidth - loFiWidth - powerWidth
+            - spaceTight - spaceSection - spaceIsolation;
   }
-  bpmGroupWidth = std::max(176.f, bpmGroupWidth);
+  bpmGroupWidth = std::max(208.f, bpmGroupWidth);
 
   if (g->NControls()) {
     return;
@@ -2060,8 +2078,8 @@ void Freeze95::LayoutUI(IGraphics* g) {
 
   const IRECT logoPlateBounds(outerMargin, brandPlateTop,
                               outerMargin + logoPlateWidth, brandPlateTop + brandPlateHeight);
-  const IRECT badgePlateBounds(w - outerMargin - badgePlateWidth, brandPlateTop,
-                               w - outerMargin, brandPlateTop + brandPlateHeight);
+  const IRECT badgePlateBounds(w - outerMargin - badgePlateWidth, badgePlateTop,
+                               w - outerMargin, badgePlateTop + badgePlateHeight);
   g->AttachControl(new MonitorLogoPlateControl(
     logoPlateBounds,
     brandLogoFace,
@@ -2069,20 +2087,31 @@ void Freeze95::LayoutUI(IGraphics* g) {
     brandLogoShadow));
   g->AttachControl(new MonitorBadgePlateControl(badgePlateBounds, "Freeze95"));
 
-  const IRECT chaosBounds(outerMargin, majorTop, outerMargin + knobWidth, majorBottom);
-  const IRECT loFiBounds(chaosBounds.R + controlGap, majorTop,
-                         chaosBounds.R + controlGap + knobWidth, majorBottom);
-  const float bpmGroupLeft = loFiBounds.R + controlGap;
+  const float macroTopInset = Snap4(ClampValue(majorHeight * 0.03f, 4.f, 12.f));
+  const float macroBottomInset = Snap4(ClampValue(majorHeight * 0.04f, 6.f, 16.f));
+  const float loFiTopOffset = Snap4(ClampValue(majorHeight * 0.045f, 8.f, 16.f));
+
+  const IRECT chaosBounds(outerMargin,
+                          majorTop + macroTopInset,
+                          outerMargin + chaosWidth,
+                          majorBottom - macroBottomInset);
+  const IRECT loFiBounds(chaosBounds.R + spaceTight,
+                         majorTop + macroTopInset + loFiTopOffset,
+                         chaosBounds.R + spaceTight + loFiWidth,
+                         majorBottom - macroBottomInset - Snap4(4.f));
+  const float bpmGroupLeft = loFiBounds.R + spaceSection;
   const float syncTop = bpmPanelTop + (bpmPanelBottom - bpmPanelTop - toggleSize) * 0.5f;
   const IRECT syncBounds(bpmGroupLeft, syncTop, bpmGroupLeft + toggleSize, syncTop + toggleSize);
   const float bpmPanelLeft = syncBounds.R + toggleFieldGap;
   const IRECT bpmBounds(bpmPanelLeft, bpmPanelTop, bpmGroupLeft + bpmGroupWidth, bpmPanelBottom);
-  const IRECT powerBounds(w - outerMargin - powerWidth, majorTop,
-                          w - outerMargin, majorBottom);
-  const IRECT transportPanelBounds(syncBounds.L - 10.f,
-                                   bpmPanelTop - 8.f,
-                                   bpmBounds.R + 8.f,
-                                   bpmPanelBottom + 8.f);
+  const float powerTop = majorTop + macroTopInset;
+  const float powerBottom = majorBottom - macroBottomInset;
+  const IRECT powerBounds(w - outerMargin - powerWidth, powerTop,
+                          w - outerMargin, powerBottom);
+  const IRECT transportPanelBounds(syncBounds.L - Snap4(10.f),
+                                   bpmPanelTop - Snap4(12.f),
+                                   bpmBounds.R + Snap4(12.f),
+                                   bpmPanelBottom + Snap4(12.f));
 
   g->AttachControl(new TransportGroupPanelControl(
     transportPanelBounds,
@@ -2106,7 +2135,7 @@ void Freeze95::LayoutUI(IGraphics* g) {
 
   g->AttachControl(new MonitorPowerButtonControl(
     powerBounds,
-    kParamPower, "POWER"));
+    kParamPower, ""));
 
   // Bypass wash — covers the full panel so power-off reads like the monitor went dark
   const IRECT bypassCoverBounds(0.f, 0.f, w, h);

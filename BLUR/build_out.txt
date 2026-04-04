@@ -1,0 +1,2 @@
+MSBuild version 17.14.40+3e7442088 for .NET Framework
+C:\Program Files\Microsoft Visual Studio\2022\BuildTools\MSBuild\Microsoft\VC\v170\Microsoft.CppBuild.targets(538,5): warning MSB8028: The intermediate directory (D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\build-win\vst3\x64\Release\int\) contains files shared from another project (IPlugEffect-vst3.vcxproj).  This can lead to incorrect clean and rebuild behavior. [D:\Github\VST3 Developments\BLUR\iPlug2\Examples\IPlugEffect\projects\IPlugEffect-vst3.vcxproj]
