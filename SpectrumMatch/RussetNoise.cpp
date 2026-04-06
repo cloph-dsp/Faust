@@ -105,6 +105,26 @@ float ComputeBandFocus(float frequencyHz, float aggression)
   return 1.f + (0.30f * aggression * Clip(octaveDistance / 3.5f, 0.f, 1.f));
 }
 
+// Presence shelf: Gaussian-shaped boost/cut around 10kHz
+float ComputePresenceShelf(float frequencyHz, float character)
+{
+  if (std::abs(character) < 0.01f)
+    return 0.f;
+
+  constexpr float kPresenceCenterHz = 10000.f;
+  constexpr float kPresenceWidthOctaves = 1.5f;
+  
+  const float centerLog = std::log(kPresenceCenterHz);
+  const float widthLog = kPresenceWidthOctaves * 0.693147f; // ln(2)
+  const float freqLog = std::log(std::max(frequencyHz, 20.f));
+
+  const float dist = (freqLog - centerLog) / widthLog;
+  const float envelope = std::exp(-dist * dist * 2.f);
+
+  constexpr float maxBoostDb = 6.f;
+  return character * maxBoostDb * envelope;
+}
+
 constexpr std::array<float, 31> kEqualLoudnessFrequenciesHz = {
   20.f, 25.f, 31.5f, 40.f, 50.f, 63.f, 80.f, 100.f, 125.f, 160.f,
   200.f, 250.f, 315.f, 400.f, 500.f, 630.f, 800.f, 1000.f, 1250.f, 1600.f,
@@ -176,78 +196,127 @@ public:
     mBands = bands;
     SetDirty();
   }
+  void OnMouseWheel(float x, float y, const IMouseMod& mod, float d) override {
+    float zoom = d * 3.f;
+    mMinDb -= zoom;
+    mMaxDb += zoom;
+    mMinDb = std::max(mMinDb, -100.f);
+    mMaxDb = std::min(mMaxDb, 40.f);
+    SetDirty();
+  }
+  void OnMouseDown(float x, float y, const IMouseMod& mod) override {
+    mDragging = true;
+    mDragStartY = y;
+    mDragStartMinDb = mMinDb;
+    mDragStartMaxDb = mMaxDb;
+    SetDirty();
+  }
+  void OnMouseDrag(float x, float y, float dX, float dY, const IMouseMod& mod) override {
+    if (mDragging) {
+      float range = mDragStartMaxDb - mDragStartMinDb;
+      float deltaDb = (dY / mRECT.H()) * range;
+      mMinDb = mDragStartMinDb + deltaDb;
+      mMaxDb = mDragStartMaxDb + deltaDb;
+      mMinDb = std::max(mMinDb, -100.f);
+      mMaxDb = std::min(mMaxDb, 40.f);
+      SetDirty();
+    }
+  }
+  void OnMouseUp(float x, float y, const IMouseMod& mod) override {
+    mDragging = false;
+  }
   void Draw(IGraphics& g) override {
-    const IRECT r = mRECT.GetPadded(-4.f);
+    const IRECT r = mRECT.GetPadded(-6.f);
     const float w = r.W();
     const float h = r.H();
-    const float minDb = -72.f;
-    const float maxDb = 12.f;
+    const float minDb = mMinDb;
+    const float maxDb = mMaxDb;
 
-    g.FillRoundRect(IColor(255, 21, 24, 30), r, 8.f, &mBlend);
-    g.DrawRoundRect(IColor(255, 68, 74, 82), r, 8.f, &mBlend, 1.2f);
+    // Clean dark background
+    g.FillRoundRect(IColor(255, 18, 22, 32), r, 6.f, &mBlend);
+    g.DrawRoundRect(IColor(255, 80, 80, 90), r, 6.f, &mBlend, 1.0f);
 
     if (mBands < 2)
     {
-      g.DrawText(IText(14.f, IColor(255, 156, 161, 169), nullptr, EAlign::Center, EVAlign::Middle),
-                 "Waiting for signalâ€¦",
+      g.DrawText(IText(14.f, IColor(255, 140, 145, 150), nullptr, EAlign::Center, EVAlign::Middle),
+                 "No signal",
                  r,
                  &mBlend);
       return;
     }
 
-    // Draw grid
-    for (int db = -60; db <= 12; db += 12) {
+    // Draw axes
+    g.DrawLine(IColor(255, 120, 120, 120), r.L, r.T, r.L, r.B, &mBlend, 1.5f);
+    g.DrawLine(IColor(255, 120, 120, 120), r.L, r.B, r.R, r.B, &mBlend, 1.5f);
+
+    // Dynamic dB scale based on current view
+    float dbStep = 12.f;
+    if (maxDb - minDb > 60.f) dbStep = 24.f;
+    if (maxDb - minDb < 30.f) dbStep = 6.f;
+    char dbStr[8];
+    for (float db = std::floor(minDb / dbStep) * dbStep; db <= maxDb; db += dbStep) {
+      if (db < minDb || db > maxDb) continue;
       const float y = r.B - ((db - minDb) / (maxDb - minDb)) * h;
-      g.DrawLine(IColor(255, 60, 60, 60), r.L, y, r.R, y, &mBlend, 1.0f);
-      IRECT labelRect = r.GetFromLeft(48.f);
-      labelRect.T = y - 8.f;
-      labelRect.B = y + 8.f;
-      const std::string dbLabel = std::to_string(db) + " dB";
-      g.DrawText(IText(12.f, IColor(255, 120, 120, 120), nullptr, EAlign::Near, EVAlign::Middle), dbLabel.c_str(), labelRect, &mBlend);
+      if (y < r.T || y > r.B) continue;
+      g.DrawLine(IColor(255, 60, 65, 70), r.L, y, r.R, y, &mBlend, 1.0f);
+      // Tick mark on axis - draw inside the rect
+      g.DrawLine(IColor(255, 150, 150, 150), r.L, y, r.L + 4.f, y, &mBlend, 1.5f);
+      // Label inside the plot area
+      IRECT labelRect(r.L + 6.f, y - 8.f, r.L + 38.f, y + 8.f);
+      std::snprintf(dbStr, sizeof(dbStr), "%.0f", db);
+      g.DrawText(IText(9.f, IColor(255, 150, 155, 160), nullptr, EAlign::Near, EVAlign::Middle), 
+                  dbStr, labelRect, &mBlend);
     }
 
-    constexpr std::array<float, 4> kLabelFreqs = {20.f, 100.f, 1000.f, 10000.f};
-    constexpr std::array<const char*, 4> kLabelTexts = {"20", "100", "1k", "10k"};
-
-    for (size_t labelIndex = 0; labelIndex < kLabelFreqs.size(); ++labelIndex)
-    {
-      const float x = r.L + (w * std::log10(kLabelFreqs[labelIndex] / 20.f) / std::log10(20000.f / 20.f));
-      g.DrawLine(IColor(255, 52, 56, 62), x, r.T, x, r.B, &mBlend, 1.0f);
-
-      IRECT labelRect(x - 18.f, r.B - 20.f, x + 18.f, r.B - 4.f);
-      g.DrawText(IText(12.f, IColor(255, 120, 120, 120), nullptr, EAlign::Center, EVAlign::Middle), kLabelTexts[labelIndex], labelRect, &mBlend);
+    // Frequency scale on X axis
+    constexpr std::array<float, 6> kLabelFreqs = {20.f, 50.f, 100.f, 500.f, 1000.f, 10000.f};
+    constexpr std::array<const char*, 6> kLabelTexts = {"20", "50", "100", "500", "1k", "10k"};
+    for (size_t i = 0; i < kLabelFreqs.size(); ++i) {
+      const float x = r.L + (w * std::log10(kLabelFreqs[i] / 20.f) / std::log10(20000.f / 20.f));
+      if (x < r.L || x > r.R) continue;
+      g.DrawLine(IColor(255, 60, 65, 70), x, r.T, x, r.B, &mBlend, 1.0f);
+      // Tick mark on axis - draw inside
+      g.DrawLine(IColor(255, 150, 150, 150), x, r.B - 4.f, x, r.B, &mBlend, 1.5f);
+      // Label below axis, inside
+      IRECT labelRect(x - 18.f, r.B - 22.f, x + 18.f, r.B - 6.f);
+      g.DrawText(IText(9.f, IColor(255, 150, 155, 160), nullptr, EAlign::Center, EVAlign::Middle), 
+                  kLabelTexts[i], labelRect, &mBlend);
     }
 
-    // Draw reference/target spectrum (yellow line - what we're targeting)
+    // Target curve (gold)
     for (int i = 1; i < mBands; ++i) {
       const float x0 = r.L + (w * std::log10(std::max(20.f, mFreqs[i - 1]) / 20.f) / std::log10(20000.f / 20.f));
       const float x1 = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
       const float y0 = r.B - ((mReference[i - 1] - minDb) / (maxDb - minDb)) * h;
       const float y1 = r.B - ((mReference[i] - minDb) / (maxDb - minDb)) * h;
-      g.DrawLine(IColor(255, 255, 220, 80), x0, y0, x1, y1, &mBlend, 2.0f);
+      g.DrawLine(IColor(255, 255, 200, 80), x0, y0, x1, y1, &mBlend, 2.0f);
     }
-    
-    // Draw before spectrum (grey line - input)
+
+    // Input curve (magenta)
     for (int i = 1; i < mBands; ++i) {
       const float x0 = r.L + (w * std::log10(std::max(20.f, mFreqs[i - 1]) / 20.f) / std::log10(20000.f / 20.f));
       const float x1 = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
       const float y0 = r.B - ((mBefore[i - 1] - minDb) / (maxDb - minDb)) * h;
       const float y1 = r.B - ((mBefore[i] - minDb) / (maxDb - minDb)) * h;
-      g.DrawLine(IColor(255, 140, 140, 140), x0, y0, x1, y1, &mBlend, 2.5f);
+      g.DrawLine(IColor(255, 220, 80, 200), x0, y0, x1, y1, &mBlend, 1.5f);
     }
-    // Draw after spectrum (cyan line - output)
+
+    // Output curve (cyan)
     for (int i = 1; i < mBands; ++i) {
       const float x0 = r.L + (w * std::log10(std::max(20.f, mFreqs[i - 1]) / 20.f) / std::log10(20000.f / 20.f));
       const float x1 = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
       const float y0 = r.B - ((mAfter[i - 1] - minDb) / (maxDb - minDb)) * h;
       const float y1 = r.B - ((mAfter[i] - minDb) / (maxDb - minDb)) * h;
-      g.DrawLine(IColor(255, 80, 220, 255), x0, y0, x1, y1, &mBlend, 3.0f);
+      g.DrawLine(IColor(255, 80, 220, 255), x0, y0, x1, y1, &mBlend, 2.5f);
     }
 
-    g.DrawText(IText(14.f, IColor(255, 239, 234, 226), nullptr, EAlign::Near, EVAlign::Middle),
-               "Spectrum: Input (grey) | Target (yellow) | Output (cyan)",
-               r.GetFromTop(20.f).GetPadded(-8.f),
-               &mBlend);
+    // Legend
+    g.DrawText(IText(10.f, IColor(255, 200, 200, 200), nullptr, EAlign::Near, EVAlign::Middle),
+               "In", IRECT(r.L + 4.f, r.T + 4.f, r.L + 24.f, r.T + 16.f), &mBlend);
+    g.DrawText(IText(10.f, IColor(255, 255, 200, 80), nullptr, EAlign::Near, EVAlign::Middle),
+               "Tgt", IRECT(r.L + 28.f, r.T + 4.f, r.L + 56.f, r.T + 16.f), &mBlend);
+    g.DrawText(IText(10.f, IColor(255, 80, 220, 255), nullptr, EAlign::Near, EVAlign::Middle),
+               "Out", IRECT(r.L + 62.f, r.T + 4.f, r.L + 90.f, r.T + 16.f), &mBlend);
   }
 private:
   std::array<float, 64> mBefore;
@@ -255,6 +324,12 @@ private:
   std::array<float, 64> mReference;
   std::array<float, 64> mFreqs;
   int mBands = 0;
+  float mMinDb = -80.f;
+  float mMaxDb = 20.f;
+  bool mDragging = false;
+  float mDragStartY = 0.f;
+  float mDragStartMinDb = 0.f;
+  float mDragStartMaxDb = 0.f;
 };
 
 float InterpolateLogTable(float frequencyHz,
@@ -291,6 +366,8 @@ float InterpolateLogTable(float frequencyHz,
   GetParam(kTarget)->InitEnum("Target", kTargetRusset, {"White", "Pink", "Russet", "Brown", "Equal-loudness"});
   GetParam(kSmoothing)->InitDouble("Smoothing", 0.55, 0.0, 1.0, 0.001);
   GetParam(kFFTSize)->InitEnum("FFT Size", kFFTSize2048, {"256", "512", "1024", "2048", "4096", "8192", "16384"});
+  GetParam(kCharacter)->InitDouble("Character", 0.0, -1.0, 1.0, 0.01);
+  GetParam(kTransient)->InitDouble("Transient", 0.5, 0.0, 1.0, 0.01);
 
 #if IPLUG_DSP
   // Initialize vector buffers with maximum size
@@ -353,29 +430,35 @@ float InterpolateLogTable(float frequencyHz,
       "RUSSET NOISE",
       IText(34.f, accentColor, uiFont, EAlign::Near, EVAlign::Middle)));
     graphics->AttachControl(new ITextControl(subtitleRect,
-      "Adaptive spectral targeting with simplified test UI.",
+      "Adaptive spectral targeting.",
       IText(14.f, secondaryTextColor, uiFont, EAlign::Near, EVAlign::Middle)));
     const float controlTop = subtitleRect.B + 18.f;
-    const float controlHeight = 128.f;
-    const float controlGap = 24.f;
-    const float knobWidth = 200.f;
-    const float selectorWidth = bounds.W() - (2.f * knobWidth) - (2.f * controlGap);
-    const IRECT amountRect(bounds.L, controlTop, bounds.L + knobWidth, controlTop + controlHeight);
-    const IRECT selectorRect(amountRect.R + controlGap, controlTop + 18.f, amountRect.R + controlGap + selectorWidth, controlTop + 84.f);
-    const IRECT smoothingRect(bounds.R - knobWidth, controlTop, bounds.R, controlTop + controlHeight);
-    graphics->AttachControl(new IVKnobControl(amountRect, kAmount, "Amount", controlStyle));
-    graphics->AttachControl(new TargetSelectorControl(selectorRect, kTarget, "Target Curve", selectorStyle));
-    graphics->AttachControl(new IVKnobControl(smoothingRect, kSmoothing, "Smoothing", controlStyle));
-    // FFT Size selector
-    const IRECT fftRect(selectorRect.L, selectorRect.B + 8.f, selectorRect.R, selectorRect.B + 48.f);
-    graphics->AttachControl(new TargetSelectorControl(fftRect, kFFTSize, "FFT Size", selectorStyle));
-    // Spectrum visualizer - increased size to fill more screen space
-    const IRECT visRect(bounds.L + 4.f, fftRect.B + 10.f, bounds.R - 4.f, bounds.B - 24.f);
+    // Spectrum visualizer on TOP - takes most of the canvas
+    const float visTop = controlTop;
+    const float visBottom = bounds.B - 90.f;
+    const IRECT visRect(bounds.L + 8.f, visTop, bounds.R - 8.f, visBottom);
     graphics->AttachControl(new SpectrumVisualizerControl(visRect));
-    const IRECT footerRect(bounds.L, bounds.B - 20.f, bounds.R, bounds.B);
+    // All knobs in ONE row at bottom
+    const float knobY = bounds.B - 70.f;
+    const float knobHeight = 56.f;
+    const float knobWidth = 80.f;
+    const float gap = 12.f;
+    const IRECT amountRect(bounds.L + 4.f, knobY, bounds.L + 4.f + knobWidth, knobY + knobHeight);
+    const IRECT smoothingRect(amountRect.R + gap, knobY, amountRect.R + gap + knobWidth, knobY + knobHeight);
+    const IRECT charRect(smoothingRect.R + gap, knobY, smoothingRect.R + gap + knobWidth, knobY + knobHeight);
+    const IRECT transRect(charRect.R + gap, knobY, charRect.R + gap + knobWidth, knobY + knobHeight);
+    const IRECT selectorRect(transRect.R + gap + 4.f, knobY - 8.f, transRect.R + gap + 130.f, knobY + knobHeight);
+    const IRECT fftRect(selectorRect.R + gap - 4.f, knobY - 8.f, selectorRect.R + gap + 60.f, knobY + knobHeight);
+    graphics->AttachControl(new IVKnobControl(amountRect, kAmount, "Amount", controlStyle));
+    graphics->AttachControl(new IVKnobControl(smoothingRect, kSmoothing, "Smoothing", controlStyle));
+    graphics->AttachControl(new IVKnobControl(charRect, kCharacter, "Character", controlStyle));
+    graphics->AttachControl(new IVKnobControl(transRect, kTransient, "Transient", controlStyle));
+    graphics->AttachControl(new TargetSelectorControl(selectorRect, kTarget, "Target", selectorStyle));
+    graphics->AttachControl(new TargetSelectorControl(fftRect, kFFTSize, "FFT", selectorStyle));
+    const IRECT footerRect(bounds.L, bounds.B - 14.f, bounds.R, bounds.B);
     graphics->AttachControl(new ITextControl(footerRect,
-      "White, Pink, Russet, Brown and perceptual equal-loudness targeting.",
-      IText(13.f, secondaryTextColor, uiFont, EAlign::Far, EVAlign::Middle)));
+      "White, Pink, Red, Orange, Russet, Olive, Brown, Blue, Violet, Equal-loudness",
+      IText(11.f, secondaryTextColor, uiFont, EAlign::Center, EVAlign::Middle)));
   };
 #endif
 }
@@ -663,6 +746,7 @@ void RussetNoise::ProcessHop(int channelCount)
   const float aggression = MapAggression(amount);
   const float smoothing = static_cast<float>(GetParam(kSmoothing)->Value());
   const int targetMode = static_cast<int>(GetParam(kTarget)->Value());
+  const float character = static_cast<float>(GetParam(kCharacter)->Value());
   const float liveSpectrumBlend = Lerp(0.10f, 0.58f, aggression);
   const float temporalAlpha = Clip((0.16f + (0.18f * amountDrive)) - (0.12f * smoothing), 0.05f, 0.34f);
   const int smoothingRadius = static_cast<int>(std::lround(std::pow(smoothing, 0.85f) * 6.f));
@@ -847,6 +931,16 @@ void RussetNoise::ProcessHop(int channelCount)
         
         smoothedCorrectionDb[bandIndex] = correctionGain + noiseGain;
       }
+    }
+  }
+
+  // Apply presence shelf from Character parameter
+  if (std::abs(character) > 0.01f)
+  {
+    for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex)
+    {
+      const float presence = ComputePresenceShelf(mBandCentersHz[bandIndex], character);
+      smoothedCorrectionDb[bandIndex] += presence;
     }
   }
 

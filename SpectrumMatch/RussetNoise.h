@@ -14,6 +14,8 @@ enum EParams
   kTarget,
   kSmoothing,
   kFFTSize,
+  kCharacter,
+  kTransient,
   kNumParams
 };
 
