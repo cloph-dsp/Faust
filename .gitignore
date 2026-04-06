@@ -126,3 +126,6 @@ __pycache__/
 *.pyc
 *.pyo
 .env
+
+# Ignore reserved device filename on Windows that can break git
+nul

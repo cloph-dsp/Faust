@@ -1,0 +1,27 @@
+Total paths: 1749
+SVG dimensions: 3424 x 1248
+Rendered at: 840 x 306 (scale = 0.2453 x = 0.2452 y)
+
+Paths starting in Y<200 SVG coords (49px rendered): 115
+Y distribution:
+  SVG Y    0-  20 (rendered 0-5px): 37 paths
+  SVG Y   20-  40 (rendered 5-10px): 6 paths
+  SVG Y   40-  60 (rendered 10-15px): 5 paths
+  SVG Y   60-  80 (rendered 15-20px): 24 paths
+  SVG Y   80- 100 (rendered 20-25px): 17 paths
+  SVG Y  100- 120 (rendered 25-29px): 6 paths
+  SVG Y  120- 140 (rendered 29-34px): 6 paths
+  SVG Y  140- 160 (rendered 34-39px): 4 paths
+  SVG Y  160- 180 (rendered 39-44px): 8 paths
+  SVG Y  180- 200 (rendered 44-49px): 2 paths
+
+X distribution of top paths (to find left vs right plate):
+  Left zone (X<1000): 51 paths, Y range 0.0 - 185.6
+  Right zone (X>2400): 44 paths, Y range 0.0 - 184.2
+
+First 5 paths:
+  fill=#CCBE97 start=(0,0) rendered=(0.0,0.0)
+  fill=#A0906F start=(111.216,0) rendered=(27.3,0.0)
+  fill=#4B685F start=(282.324,0) rendered=(69.3,0.0)
+  fill=#1F180F start=(3134.02,0) rendered=(768.9,0.0)
+  fill=#1C1A12 start=(322.195,41.204) rendered=(79.0,10.1)

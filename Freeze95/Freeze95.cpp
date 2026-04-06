@@ -1064,6 +1064,7 @@ public:
     : IKnobControlBase(bounds, paramIdx)
     , mLabel((label && label[0]) ? label : "CTRL") {
     mDblAsSingleClick = true;
+    mDirtSeed = static_cast<unsigned int>((paramIdx + 1) * 1664525u + 1013904223u);
   }
 
   void SetValueFromDelegate(double value, int valIdx = 0) override {
@@ -1149,6 +1150,56 @@ public:
       g.FillCircle(WithAlpha(kCoolGlow, static_cast<int>(70.f * glowAmt)), cx, knobCy, outerR + 2.8f);
     }
 
+    // Apply "dirty old hardware" weathering to the socket area — rotating & varied per-knob
+    const float cosD = std::cos(rotationRad);
+    const float sinD = std::sin(rotationRad);
+    auto dirtRand = [&](unsigned int n)->float {
+      unsigned int s = mDirtSeed + n * 1664525u + 1013904223u;
+      s = 1664525u * s + 1013904223u;
+      return (s & 0x00FFFFFFu) / 16777216.0f;
+    };
+    // large faint dust/grime smudges (positions rotate with knob)
+    {
+      float dx = -outerR * 0.4f + (dirtRand(1) - 0.5f) * outerR * 0.12f;
+      float dy = outerR * 0.5f + (dirtRand(2) - 0.5f) * outerR * 0.12f;
+      const float x = cx + (dx * cosD - dy * sinD);
+      const float y = cy + (dx * sinD + dy * cosD);
+      const float r = outerR * (0.45f * (0.85f + 0.3f * dirtRand(3)));
+      const int a = static_cast<int>(9 * (0.7f + 0.6f * dirtRand(4)));
+      g.FillCircle(WithAlpha(kShellDeep, a), x, y, r);
+    }
+    {
+      float dx = outerR * 0.6f + (dirtRand(5) - 0.5f) * outerR * 0.12f;
+      float dy = outerR * 0.6f + (dirtRand(6) - 0.5f) * outerR * 0.12f;
+      const float x = cx + (dx * cosD - dy * sinD);
+      const float y = cy + (dx * sinD + dy * cosD);
+      const float r = outerR * (0.35f * (0.85f + 0.3f * dirtRand(7)));
+      const int a = static_cast<int>(7 * (0.7f + 0.6f * dirtRand(8)));
+      g.FillCircle(WithAlpha(kShellDeep, a), x, y, r);
+    }
+    // speckled oxidation/pitting near the socket
+    {
+      float dx = -outerR * 0.7f + (dirtRand(9)-0.5f) * outerR * 0.15f;
+      float dy = -outerR * 0.3f + (dirtRand(10)-0.5f) * outerR * 0.15f;
+      const float x = cx + (dx * cosD - dy * sinD);
+      const float y = cy + (dx * sinD + dy * cosD);
+      g.FillCircle(WithAlpha(kShellDeep, static_cast<int>(16 * (0.6f + 0.8f*dirtRand(11)))), x, y, 1.6f + 1.6f * dirtRand(12));
+    }
+    {
+      float dx = outerR * 0.8f + (dirtRand(13)-0.5f) * outerR * 0.15f;
+      float dy = outerR * 0.15f + (dirtRand(14)-0.5f) * outerR * 0.15f;
+      const float x = cx + (dx * cosD - dy * sinD);
+      const float y = cy + (dx * sinD + dy * cosD);
+      g.FillCircle(WithAlpha(kShellDeep, static_cast<int>(12 * (0.6f + 0.8f*dirtRand(15)))), x, y, 1.4f + 1.6f * dirtRand(16));
+    }
+    {
+      float dx = -outerR * 0.85f + (dirtRand(17)-0.5f) * outerR * 0.15f;
+      float dy = outerR * 0.4f + (dirtRand(18)-0.5f) * outerR * 0.15f;
+      const float x = cx + (dx * cosD - dy * sinD);
+      const float y = cy + (dx * sinD + dy * cosD);
+      g.FillCircle(WithAlpha(kShellDeep, static_cast<int>(14 * (0.6f + 0.8f*dirtRand(19)))), x, y, 0.9f + 1.2f * dirtRand(20));
+    }
+
     // Travel arc — shows consumed range at a glance without decoding numbers
     if (value > 0.002f) {
       const float arcEnd = Lerp(135.f, 405.f, value);
@@ -1198,6 +1249,56 @@ public:
 
     g.FillCircle(BlendColor(knobFill, kShellLight, active ? 0.12f : 0.06f), cx, knobCy, bodyR);
 
+    // [P2] Delight: Subtile anisotropic "spun metal" highlight
+    // Adds complexity to match the high-end power button
+    {
+      const float hlA = 0.44f;
+      IPattern hl = IPattern::CreateSweepGradient(cx, knobCy, {
+        {WithAlpha(kShellLight, 0), 0.0f},
+        {WithAlpha(kShellLight, static_cast<int>(35 * hlA)), 0.12f},
+        {WithAlpha(kShellLight, 0), 0.25f},
+        {WithAlpha(kShellLight, static_cast<int>(45 * hlA)), 0.5f},
+        {WithAlpha(kShellLight, 0), 0.75f},
+        {WithAlpha(kShellLight, static_cast<int>(35 * hlA)), 0.88f},
+        {WithAlpha(kShellLight, 0), 1.0f}
+      }, (rotationRad - kPi * 0.25f) * (180.f / kPi));
+      g.PathCircle(cx, knobCy, bodyR);
+      g.PathFill(hl);
+    }
+
+    // Apply "dirty old hardware" weathering to the knob cap itself — rotate with knob and vary per instance
+    {
+      float dx = bodyR * 0.2f + (dirtRand(21)-0.5f) * bodyR * 0.22f;
+      float dy = bodyR * 0.4f + (dirtRand(22)-0.5f) * bodyR * 0.22f;
+      const float gx = cx + (dx * cosD - dy * sinD);
+      const float gy = knobCy + (dx * sinD + dy * cosD);
+      const float gr = bodyR * (0.35f * (0.75f + 0.5f * dirtRand(23)));
+      const int ga = static_cast<int>(8 * (0.8f + 0.5f * dirtRand(24)));
+      g.FillCircle(WithAlpha(kShellDeep, ga), gx, gy, gr);
+    }
+    // Scratches — rotated with knob
+    {
+      float sx0 = -bodyR * 0.35f + (dirtRand(25)-0.5f) * bodyR * 0.2f;
+      float sy0 = -bodyR * 0.25f + (dirtRand(26)-0.5f) * bodyR * 0.2f;
+      float sx1 = bodyR * 0.25f + (dirtRand(27)-0.5f) * bodyR * 0.2f;
+      float sy1 = bodyR * 0.45f + (dirtRand(28)-0.5f) * bodyR * 0.2f;
+      const float sxs = cx + (sx0 * cosD - sy0 * sinD);
+      const float sys = knobCy + (sx0 * sinD + sy0 * cosD);
+      const float exs = cx + (sx1 * cosD - sy1 * sinD);
+      const float eys = knobCy + (sx1 * sinD + sy1 * cosD);
+      g.DrawLine(WithAlpha(IColor{32, 72, 68, 60}, static_cast<int>(16 * (0.7f + 0.6f * dirtRand(29)))), sxs, sys, exs, eys, nullptr, 1.2f);
+      // second small scratch
+      float s2x0 = bodyR * 0.1f + (dirtRand(30)-0.5f) * bodyR * 0.12f;
+      float s2y0 = -bodyR * 0.4f + (dirtRand(31)-0.5f) * bodyR * 0.12f;
+      float s2x1 = bodyR * 0.35f + (dirtRand(32)-0.5f) * bodyR * 0.12f;
+      float s2y1 = -bodyR * 0.1f + (dirtRand(33)-0.5f) * bodyR * 0.12f;
+      const float s2xs = cx + (s2x0 * cosD - s2y0 * sinD);
+      const float s2ys = knobCy + (s2x0 * sinD + s2y0 * cosD);
+      const float s2ex = cx + (s2x1 * cosD - s2y1 * sinD);
+      const float s2ey = knobCy + (s2x1 * sinD + s2y1 * cosD);
+      g.DrawLine(WithAlpha(IColor{24, 60, 56, 48}, static_cast<int>(14 * (0.7f + 0.6f * dirtRand(34)))), s2xs, s2ys, s2ex, s2ey, nullptr, 0.9f);
+    }
+
     if (mHoverAmt > 0.01f || active) {
       const int rimAlpha = static_cast<int>(146.f * (mMouseDown ? 1.f : mHoverAmt));
       g.DrawCircle(WithAlpha(kShellLight, rimAlpha), cx - 0.2f, knobCy - 0.2f, outerR + 0.9f, nullptr, 1.0f);
@@ -1222,7 +1323,7 @@ public:
 
     WDL_String valueTextStr;
     FormatKnobReadout(GetParamIdx(), value, valueTextStr);
-        const float readoutSize = 15.5f + mReadoutPulse * 0.9f;
+        const float readoutSize = 18.5f + mReadoutPulse * 0.9f;
         const IColor readoutBase = active ? kFieldText : BlendColor(kShellText, kFieldText, 0.28f);
         const IColor readoutColor = BlendColor(readoutBase, kCoolOn, 0.24f * Clamp01(mReadoutPulse));
     DrawUtilityText(g,
@@ -1270,6 +1371,7 @@ private:
   }
 
   WDL_String mLabel;
+  unsigned int mDirtSeed = 0;
   IRECT mSocketBounds;
   IRECT mLabelBounds;
   IRECT mValueBounds;
@@ -1296,10 +1398,33 @@ public:
       g.FillRoundRect(WithAlpha(kShellDeep, 30), panel.GetTranslated(0.f, 2.f), 9.f);
       FillClassicPanel(g, panel, BlendColor(kShellFace, kFieldFace, 0.17f), true, 1.f);
       g.DrawRoundRect(WithAlpha(kShellLight, 72), panel.GetPadded(-2.f), 8.f, nullptr, 0.9f);
-      const float dividerX = panel.L + ClampValue(panel.W() * 0.26f, 56.f, 74.f);
+      
+      // Hardware weathering on the transport panel (dirty hardware look)
+      const float w = panel.W();
+      const float h = panel.H();
+      
+      // Large dust/grime smudges
+      g.FillCircle(WithAlpha(kShellDeep, 7), panel.L + w * 0.15f, panel.T + h * 0.8f, h * 0.4f);
+      g.FillCircle(WithAlpha(IColor{15, 60, 56, 50}, 5), panel.R - w * 0.1f, panel.B - h * 0.3f, h * 0.5f);
+      g.FillCircle(WithAlpha(IColor{20, 85, 78, 70}, 8), panel.MW(), panel.MH() - h * 0.2f, h * 0.6f);
+      
+      // Speckled oxidation
+      g.FillCircle(WithAlpha(IColor{28, 80, 76, 68}, 14), panel.L + 12.f, panel.B - 8.f, 1.2f);
+      g.FillCircle(WithAlpha(IColor{22, 92, 86, 79}, 11), panel.R - 18.f, panel.T + 12.f, 0.8f);
+      g.FillCircle(WithAlpha(IColor{18, 70, 64, 58}, 16), panel.MW() + 24.f, panel.B - 6.f, 1.5f);
+      g.FillCircle(WithAlpha(IColor{12, 50, 46, 40}, 10), panel.MW() - 32.f, panel.T + 8.f, 0.7f);
+      g.FillCircle(WithAlpha(IColor{24, 88, 82, 75}, 12), panel.L + 28.f, panel.B - 14.f, 1.1f);
+      
+      // Surface scratches and wear marks
+      g.DrawLine(WithAlpha(IColor{32, 72, 68, 60}, 16), panel.L + 8.f, panel.MH() + 4.f, panel.L + 22.f, panel.MH() - 2.f, nullptr, 0.7f);
+      g.DrawLine(WithAlpha(IColor{28, 65, 60, 54}, 18), panel.R - 15.f, panel.B - 12.f, panel.R - 5.f, panel.B - 4.f, nullptr, 0.9f);
+      g.DrawLine(WithAlpha(kShellDeep, 20), panel.MW() - 10.f, panel.T + 6.f, panel.MW() + 15.f, panel.T + 12.f, nullptr, 0.6f);
+      g.DrawLine(WithAlpha(IColor{20, 55, 50, 45}, 14), panel.MW() + 40.f, panel.B - 18.f, panel.MW() + 52.f, panel.B - 8.f, nullptr, 0.8f);
+
+      const float dividerX = panel.L + ClampValue(w * 0.26f, 56.f, 74.f);
       g.DrawLine(WithAlpha(kShellDark, 112), dividerX, panel.T + 24.f, dividerX, panel.B - 8.f, nullptr, 1.f);
       g.DrawLine(WithAlpha(kShellLight, 88), dividerX + 1.f, panel.T + 24.f, dividerX + 1.f, panel.B - 8.f, nullptr, 1.f);
-      DrawUtilityText(g, 11.5f, kShellText, EAlign::Near, EVAlign::Middle, "TEMPO",
+      DrawUtilityText(g, 16.5f, kShellText, EAlign::Near, EVAlign::Middle, "TEMPO",
                       IRECT(panel.L + 8.f, panel.T + 2.f, dividerX - 8.f, panel.T + 20.f));
       mLayer = g.EndLayer();
     }
@@ -1384,8 +1509,12 @@ public:
   }
 
   void Draw(IGraphics& g) override {
-    const float cx = mButtonBounds.MW();
-    const float cy = mButtonBounds.MH() + (mMouseDown ? 0.8f : 0.f) + mPulse * 0.35f;
+    const float shiftAngle = (mVisualManual >= 0.5f) ? 4.5f : -4.5f;
+    const float shiftX = std::cos(DegToRad(shiftAngle)) * (mMouseDown ? 0.3f : 0.f);
+    const float shiftY = std::sin(DegToRad(shiftAngle)) * (mMouseDown ? 0.3f : 0.f);
+
+    const float cx = mButtonBounds.MW() + shiftX;
+    const float cy = mButtonBounds.MH() + (mMouseDown ? 1.8f : 0.f) + mPulse * 0.35f + shiftY;
     const float ringR = mButtonBounds.W() * 0.52f;
     const float glow = Clamp01(mVisualManual * 0.92f + mPulse * 0.42f);
 
@@ -1393,18 +1522,26 @@ public:
       g.FillCircle(WithAlpha(kCoolGlow, static_cast<int>(118.f * glow)), cx, cy, ringR + 2.f);
     }
 
-    g.FillCircle(WithAlpha(kShellDeep, 56), cx, cy + 1.8f, ringR + 2.2f);
+    // [P1] Delight: Shadow shift for "tilting" mechanical feel
+    const float shadowOffX = mMouseDown ? -0.8f : 0.f;
+    const float shadowOffY = mMouseDown ? 0.9f : 1.8f;
+    g.FillCircle(WithAlpha(kShellDeep, 56), cx + shadowOffX, cy + shadowOffY, ringR + 2.2f);
     g.FillCircle(BlendColor(kShellDark, kKnobRim, 0.28f), cx, cy + 0.8f, ringR + 1.8f);
     g.FillCircle(BlendColor(kFieldInset, kCoolOn, 0.20f + 0.55f * mVisualManual), cx - 0.6f, cy - 0.7f, ringR - 1.2f);
     g.FillCircle(WithAlpha(kShellLight, 28), cx - 1.2f, cy - 1.4f, ringR * 0.62f);
     g.DrawCircle(WithAlpha(kShellLight, 140), cx - 0.3f, cy - 0.3f, ringR + 0.8f, nullptr, 1.0f);
     g.DrawCircle(WithAlpha(kShellDeep, 140), cx, cy, ringR + 1.4f, nullptr, 1.0f);
 
+    // Ring outline when manual mode is active (visual emphasis)
+    if (mVisualManual >= 0.5f) {
+      g.DrawCircle(WithAlpha(kCoolOn, static_cast<int>(100.f * mVisualManual)), cx, cy, ringR + 2.8f, nullptr, 1.2f);
+    }
+
     const char* modeGlyph = (mVisualManual >= 0.5f) ? "M" : "H";
     const IColor modeColor = (mVisualManual >= 0.5f)
-      ? BlendColor(kFieldText, kCoolOn, 0.24f)
+      ? BlendColor(kFieldText, kCoolOn, 0.45f)
       : BlendColor(kFieldText, kShellMid, 0.45f);
-    DrawUtilityText(g, 10.5f, modeColor, EAlign::Center, EVAlign::Middle,
+    DrawUtilityText(g, 16.5f, modeColor, EAlign::Center, EVAlign::Middle,
                     modeGlyph, mButtonBounds.GetPadded(-2.f));
   }
 
@@ -1506,6 +1643,20 @@ public:
                      manual ? kFieldFace : BlendColor(kShellFace, kFieldFace, 0.30f),
                      true,
                      1.f);
+
+    // [P3] Discoverability: LCD-style recessed frame when in Manual mode
+    if (manual) {
+      const IRECT lcdFrame = mFieldBounds.GetPadded(0.5f);
+      // Dark inner-top shadow for recess depth
+      g.DrawLine(WithAlpha(kShellDeep, 180), lcdFrame.L, lcdFrame.T, lcdFrame.R, lcdFrame.T, nullptr, 1.2f);
+      g.DrawLine(WithAlpha(kShellDeep, 140), lcdFrame.L, lcdFrame.T, lcdFrame.L, lcdFrame.B, nullptr, 1.2f);
+      // Light outer-bottom rim for bezel highlight
+      g.DrawLine(WithAlpha(kShellLight, 110), lcdFrame.L, lcdFrame.B, lcdFrame.R, lcdFrame.B, nullptr, 1.0f);
+      g.DrawLine(WithAlpha(kShellLight, 80), lcdFrame.R, lcdFrame.T, lcdFrame.R, lcdFrame.B, nullptr, 1.0f);
+      
+      // Subtle "backlight" glow for the LCD field
+      g.FillRect(WithAlpha(kCoolOn, 12), mFieldBounds.GetPadded(-1.f));
+    }
 
     if (hover) {
       g.DrawRoundRect(WithAlpha(kShellLight, 160), mFieldBounds.GetPadded(-1.f), 6.f, nullptr, 1.0f);
@@ -2002,12 +2153,12 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const float spaceSection = Snap4(ClampValue(w * 0.031f, 24.f, 36.f));
   const float spaceIsolation = Snap4(ClampValue(w * 0.041f, 28.f, 44.f));
 
-  const float brandPlateTop = Snap4(ClampValue(h * 0.089f, 24.f, 40.f));
+  const float brandPlateTop = Snap4(ClampValue(h * 0.170f, 44.f, 60.f));
   const float brandPlateHeight = Snap4(ClampValue(h * 0.101f, 28.f, 40.f));
-  const float badgePlateTop = brandPlateTop + Snap4(ClampValue(brandPlateHeight * 0.28f, 8.f, 12.f));
+  const float badgePlateTop = brandPlateTop;
   const float badgePlateHeight = Snap4(std::max(24.f, brandPlateHeight - 4.f));
 
-  const float headerGap = Snap4(ClampValue(h * 0.071f, 16.f, 28.f));
+  const float headerGap = Snap4(ClampValue(h * 0.039f, 8.f, 20.f));
   const float majorTop = brandPlateTop + brandPlateHeight + headerGap;
   const float lowerMargin = Snap4(ClampValue(h * 0.071f, 20.f, 28.f));
   const float majorBottom = h - lowerMargin;
@@ -2062,11 +2213,25 @@ void Freeze95::LayoutUI(IGraphics* g) {
   SetUsePixelTextFallback(usePixelTextFallback);
   SetUseUtilityFont(utilityFontLoaded);
 
-  const ISVG monitorBackgroundOn = g->LoadSVG(MONITOR_BG_ON_FN);
-  const ISVG monitorBackgroundOff = g->LoadSVG(MONITOR_BG_OFF_FN);
-  const ISVG brandLogoFace = g->LoadSVG(BRAND_LOGO_FACE_FN);
-  const ISVG brandLogoHighlight = g->LoadSVG(BRAND_LOGO_HIGHLIGHT_FN);
-  const ISVG brandLogoShadow = g->LoadSVG(BRAND_LOGO_SHADOW_FN);
+  // Load monitor background SVGs with multiple fallback paths
+  // First try: direct filename (bundle resource)
+  // Second try: resources subdirectory
+  // Third try: relative to working directory
+  auto LoadSVGWithFallback = [g](const char* fileName, const char* subPath) -> ISVG {
+    ISVG result = g->LoadSVG(fileName);
+    if (!result.IsValid() && subPath) {
+      WDL_String fallbackPath;
+      fallbackPath.SetFormatted(256, "%s/%s", subPath, fileName);
+      result = g->LoadSVG(fallbackPath.Get());
+    }
+    return result;
+  };
+
+  ISVG monitorBackgroundOn = LoadSVGWithFallback(MONITOR_BG_ON_FN, SHARED_RESOURCES_SUBPATH);
+  ISVG monitorBackgroundOff = LoadSVGWithFallback(MONITOR_BG_OFF_FN, SHARED_RESOURCES_SUBPATH);
+  ISVG brandLogoFace = LoadSVGWithFallback(BRAND_LOGO_FACE_FN, SHARED_RESOURCES_SUBPATH);
+  ISVG brandLogoHighlight = LoadSVGWithFallback(BRAND_LOGO_HIGHLIGHT_FN, SHARED_RESOURCES_SUBPATH);
+  ISVG brandLogoShadow = LoadSVGWithFallback(BRAND_LOGO_SHADOW_FN, SHARED_RESOURCES_SUBPATH);
 
   g->AttachPanelBackground(kShellBg);
   g->AttachTextEntryControl();
@@ -2273,6 +2438,7 @@ void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
   mOutPtrs[0] = mOutL.data();
   mOutPtrs[1] = mOutR.data();
 
+  mDSP->control();
   mDSP->compute(nFrames, mInPtrs, mOutPtrs);
 
   if (nOut >= 2) {

@@ -1,0 +1,25 @@
+// Resource file for Freeze95 VST3
+// Embeds SVG backgrounds and fonts directly into the DLL so no
+// external Contents/Resources files are required at runtime.
+//
+#include "winres.h"
+
+#ifndef APSTUDIO_INVOKED
+
+#include "..\config.h"
+
+// ── SVG backgrounds / logos ────────────────────────────────────────────────
+MONITOR_BG_ON_FN         SVG   MONITOR_BG_ON_FN
+MONITOR_BG_OFF_FN        SVG   MONITOR_BG_OFF_FN
+BRAND_LOGO_FACE_FN       SVG   BRAND_LOGO_FACE_FN
+BRAND_LOGO_HIGHLIGHT_FN  SVG   BRAND_LOGO_HIGHLIGHT_FN
+BRAND_LOGO_SHADOW_FN     SVG   BRAND_LOGO_SHADOW_FN
+
+// ── Fonts ──────────────────────────────────────────────────────────────────
+// Utility / label font (in resources/)
+UTILITY_UI_FN  TTF  UTILITY_UI_FN
+
+// DOS / pixel font — sits one level up from resources/
+GOOD_OLD_DOS_RES  TTF  "..\Freeze95DOS.ttf"
+
+#endif    // not APSTUDIO_INVOKED

@@ -1,0 +1,1 @@
+import("stdfaust.lib"); process = _ : fi.crossover3LR4(200, 2000) : _,_,_ :> _ ;

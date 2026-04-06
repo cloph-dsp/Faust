@@ -169,6 +169,8 @@ void AttachKnobWithText(igraphics::IGraphics& g,
   using namespace igraphics;
 
   auto* pKnob = new ISVGKnobControl(knobRect, knobSVG, paramIdx);
+  pKnob->SetStartAngle(-135.f);
+  pKnob->SetEndAngle(135.f);
   pKnob->SetTooltip(label);
   g.AttachControl(pKnob, knobTag);
 

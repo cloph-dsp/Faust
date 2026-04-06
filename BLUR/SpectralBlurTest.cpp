@@ -589,7 +589,11 @@ public:
   void OnMouseDown(float x, float y, const IMouseMod& mod) override
   {
     static const char* kDesc[] = { "Hold locked", "Hold tracks input", "Hold drifts" };
-    // Cycle using local state instead of reading param (which may be stale)
+    // Sync with current param value first to avoid race with delegate callbacks
+    // This ensures we always cycle from the actual current state, not stale local state
+    if (GetParam()) {
+      mLocalState = static_cast<int>(std::round(GetParam()->GetNormalized() * 2.0));
+    }
     mLocalState = (mLocalState + 1) % 3;
     SetValue(mLocalState / 2.0);  // Direct normalized: 0→0.0, 1→0.5, 2→1.0
     SetTooltip(kDesc[mLocalState]);

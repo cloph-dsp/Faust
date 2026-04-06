@@ -412,12 +412,40 @@ with {
 	limited = x_look * gain;
 };
 
+// Intelligent Auto-Makeup Gain for multi-band/lo-fi systems
+// Uses RMS-based difference tracking with weighting to handle high-frequency "fizz"
+intelligent_makeup(ref_l, ref_r, proc_l, proc_r) = (out_l, out_r)
+with {
+	// Window size: musical balance (~350ms)
+	window_ms = 350.0;
+	tau = window_ms / 1000.0 / 6.28;
+	pole = ba.tau2pole(tau);
+	
+	// A-weighting approximation to ignore sub-bass/ultra-high bias in lo-fi modes
+	weighting(x) = x : fi.highpass(1, 45.0) : fi.lowshelf(1, -4.5, 4200.0);
+
+	rms_ref = ((ref_l + ref_r) * 0.5 : weighting) <: _,_ : * : si.smooth(pole) : sqrt : max(ma.EPSILON);
+	rms_proc = ((proc_l + proc_r) * 0.5 : weighting) <: _,_ : * : si.smooth(pole) : sqrt : max(ma.EPSILON);
+
+	// Gain delta calculation limited to +14dB / -14dB to prevent noise floor pump
+	gain_raw = rms_ref / rms_proc;
+	gain_db = ba.linear2db(gain_raw) : min(14.0) : max(-14.0);
+	
+	// Slew-rate limiter for the gain coefficient to prevent "pumping"
+	auto_gain = gain_db : ba.db2linear : si.smooth(ba.tau2pole(0.08)); 
+
+	// Final makeup scaling specifically tuned for Freeze95 output characteristics
+	makeup_scale = auto_gain * (0.92 + 0.08 * fidelity);
+	out_l = proc_l * makeup_scale;
+	out_r = proc_r * makeup_scale;
+};
+
 stereo_cross_probability = 0.05;
 stereo_decision = ba.sAndH(trig, rnd1);
 will_cross_blend = stereo_decision < stereo_cross_probability;
 stereo_blend_amt = 0.02 + chaos * 0.06;
 
-process(left_in, right_in) = (out_l, out_r)
+process(left_in, right_in) = intelligent_makeup(left_in, right_in, enabled_l, enabled_r) : (limiter : soft_sat : fi.dcblocker, limiter : soft_sat : fi.dcblocker)
 with {
 	xover_lo = 220.0;
 	xover_hi = 2200.0;
@@ -428,13 +456,20 @@ with {
 	// Phase-coherent Linkwitz-Riley 4th-order (LR4) 3-band split
 	// This ensures perfectly flat magnitude summation and in-phase bands
 	// replaces the older overlapping Butterworth filters
-	(low_l, mid_l, high_l) = left_in : fi.crossover3LR4(xover_lo, xover_hi);
-	(low_r, mid_r, high_r) = right_in : fi.crossover3LR4(xover_lo, xover_hi);
-
 	// Normalization trims to compensate for band-pass energy (LR4 cutoffs are -6dB)
 	band_trim_low = 0.98;
 	band_trim_mid = 1.02;
 	band_trim_high = 0.95;
+
+	crossover_l = left_in : (_ <: _,_,_);
+	low_l = crossover_l : _,!,!;
+	mid_l = crossover_l : !,_,!;
+	high_l = crossover_l : !,!,_;
+
+	crossover_r = right_in : (_ <: _,_,_);
+	low_r = crossover_r : _,!,!;
+	mid_r = crossover_r : !,_,!;
+	high_r = crossover_r : !,!,_;
 
 	low_stutter_l = stutter_processor(low_l, r1_low, r2_low, r3_low, r4_low, r5_low, walk_repeat_low, walk_capture_low, repeat_rate_low, capture_scale_low) * band_trim_low;
 	mid_stutter_l = stutter_processor(mid_l, r1_mid, r2_mid, r3_mid, r4_mid, r5_mid, walk_repeat_mid, walk_capture_mid, repeat_rate_mid, capture_scale_mid) * band_trim_mid;
@@ -489,10 +524,7 @@ with {
 	guard_l = mid_pan + side_pan * side_shaper;
 	guard_r = mid_pan - side_pan * side_shaper;
 
-	enabled_l = in_l + bypass_env * (guard_l - in_l);
-	enabled_r = in_r + bypass_env * (guard_r - in_r);
-
-	out_l = enabled_l * output_gain : limiter : soft_sat : fi.dcblocker;
-	out_r = enabled_r * output_gain : limiter : soft_sat : fi.dcblocker;
+	enabled_l = left_in + bypass_env * (guard_l - left_in);
+	enabled_r = right_in + bypass_env * (guard_r - right_in);
 };
  

@@ -6,7 +6,6 @@ declare version "1.1";
 declare description "Band-split quantum stutter/freeze with host sync, layered special modes, and the newer lo-fi control behavior.";
 
 fast_glide_ms = 8.0;
-slow_glide_ms = 35.0;  // For parameters that need smoother movement for high-quality automation
 smooth_ms(ms) = si.smooth(exp(-1.0 / max(1.0, ma.SR * ms / 1000.0)));
 clamp01(x) = min(1.0, max(0.0, x));
 
@@ -18,8 +17,8 @@ sync_on = checkbox("Sync BPM[tooltip: Quantize stutter to host BPM]");
 
 stutter_on = 1.0 - bypass_raw;
 bypass_env = stutter_on : smooth_ms(fast_glide_ms);
-chaos = chaos_raw : smooth_ms(slow_glide_ms);
-lofi_knob = lofi_raw : smooth_ms(slow_glide_ms);
+chaos = chaos_raw : smooth_ms(fast_glide_ms);
+lofi_knob = lofi_raw : smooth_ms(fast_glide_ms);
 
 chaos_focus = pow(chaos, 1.1);
 chaos_texture = pow(clamp01((chaos - 0.18) / 0.62), 1.35);
@@ -270,15 +269,10 @@ with {
 
 	reverse_threshold = normal_prob + reverse_prob;
 	slowmo_threshold = reverse_threshold + slow_prob;
-	
-	// Use slightly wider hysteresis-like guard for automation
-	effect_mode_raw = ba.if(calm_force > 0.05, 0,
+	effect_mode = ba.if(calm_force > 0.05, 0,
 								ba.if(effect_selector < normal_prob - 0.01, 0,
 								ba.if(effect_selector < reverse_threshold - 0.01, 1,
 								ba.if(effect_selector < slowmo_threshold - 0.01, 2, 3))));
-	
-	// Smooth transition between effect modes to prevent "zipper" artifacts during rapid chaos automation
-	effect_mode = (effect_mode_raw : si.smooth(0.999)) : int; 
 
 	burst_trim_db = -0.5 - chaos_sharp * 2.5;
 	burst_trim = ba.db2linear(burst_trim_db);
@@ -424,17 +418,22 @@ with {
 	capture_scale_low = 1.12;
 	capture_scale_mid = 1.00;
 	capture_scale_high = 0.86;
-	
-	// Phase-coherent Linkwitz-Riley 4th-order (LR4) 3-band split
-	// This ensures perfectly flat magnitude summation and in-phase bands
-	// replaces the older overlapping Butterworth filters
-	(low_l, mid_l, high_l) = left_in : fi.crossover3LR4(xover_lo, xover_hi);
-	(low_r, mid_r, high_r) = right_in : fi.crossover3LR4(xover_lo, xover_hi);
-
-	// Normalization trims to compensate for band-pass energy (LR4 cutoffs are -6dB)
 	band_trim_low = 0.98;
-	band_trim_mid = 1.02;
+	band_trim_mid = 1.00;
 	band_trim_high = 0.95;
+
+	in_l = left_in;
+	in_r = right_in;
+
+	low_l = in_l : fi.lowpass(2, xover_lo);
+	high1_l = in_l : fi.highpass(2, xover_lo);
+	mid_l = high1_l : fi.lowpass(2, xover_hi);
+	high_l = high1_l : fi.highpass(2, xover_hi);
+
+	low_r = in_r : fi.lowpass(2, xover_lo);
+	high1_r = in_r : fi.highpass(2, xover_lo);
+	mid_r = high1_r : fi.lowpass(2, xover_hi);
+	high_r = high1_r : fi.highpass(2, xover_hi);
 
 	low_stutter_l = stutter_processor(low_l, r1_low, r2_low, r3_low, r4_low, r5_low, walk_repeat_low, walk_capture_low, repeat_rate_low, capture_scale_low) * band_trim_low;
 	mid_stutter_l = stutter_processor(mid_l, r1_mid, r2_mid, r3_mid, r4_mid, r5_mid, walk_repeat_mid, walk_capture_mid, repeat_rate_mid, capture_scale_mid) * band_trim_mid;
