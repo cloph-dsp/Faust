@@ -13,6 +13,7 @@ enum EParams
   kAmount = 0,
   kTarget,
   kSmoothing,
+  kQ,
   kFFTSize,
   kCharacter,
   kTransient,
@@ -23,8 +24,13 @@ enum ETargetCurve
 {
   kTargetWhite = 0,
   kTargetPink,
+  kTargetRed,
+  kTargetOrange,
   kTargetRusset,
+  kTargetOlive,
   kTargetBrown,
+  kTargetBlue,
+  kTargetViolet,
   kTargetEqualLoudness,
   kNumTargetCurves
 };
@@ -64,9 +70,9 @@ private:
   static constexpr int kNumBands = 64;  // Increased bands for higher resolution
   static constexpr int kOutputFifoSize = kMaxFFTSize * 2;
 
-  // Current runtime FFT size
-  int mFFTSize = 2048;
-  int mHopSize = 1024;
+  // Current runtime FFT size - 4096 for better HF resolution (~10.8 Hz/bin vs ~21.5 Hz/bin at 2048)
+  int mFFTSize = 4096;
+  int mHopSize = 2048;
 
   void ResetDspState();
   void UpdateBandLayout(double sampleRate);
@@ -110,6 +116,7 @@ private:
   std::array<int, kMaxChannels> mOutputCount {};
 
   int mHopFill = 0;
+  int mVisUpdateCounter = 0;
   double mSampleRate = 44100.0;
   bool mHasSpectrum = false;
 

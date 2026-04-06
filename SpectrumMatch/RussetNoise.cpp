@@ -179,12 +179,15 @@ public:
 // Spectrum visualizer control for before/after/reference
 class SpectrumVisualizerControl : public IControl {
 public:
-  SpectrumVisualizerControl(const IRECT& bounds)
-    : IControl(bounds) {
+  SpectrumVisualizerControl(const IRECT& bounds, const char* fontID = nullptr)
+    : IControl(bounds, -1), mFontID(fontID) {  // -1 means not linked to parameter, but still receives mouse events
     mBefore.fill(0.f);
     mAfter.fill(0.f);
     mReference.fill(0.f);
     mFreqs.fill(0.f);
+  }
+  void OnInit() override {
+    // Enable mouse interaction for this control
   }
   void SetData(const float* before, const float* after, const float* reference, const float* freqs, int bands) {
     for (int i = 0; i < bands && i < 64; ++i) {
@@ -238,7 +241,7 @@ public:
 
     if (mBands < 2)
     {
-      g.DrawText(IText(14.f, IColor(255, 140, 145, 150), nullptr, EAlign::Center, EVAlign::Middle),
+      g.DrawText(IText(14.f, IColor(255, 140, 145, 150), mFontID, EAlign::Center, EVAlign::Middle),
                  "No signal",
                  r,
                  &mBlend);
@@ -253,33 +256,33 @@ public:
     float dbStep = 12.f;
     if (maxDb - minDb > 60.f) dbStep = 24.f;
     if (maxDb - minDb < 30.f) dbStep = 6.f;
-    char dbStr[8];
+    char dbStr[16];
     for (float db = std::floor(minDb / dbStep) * dbStep; db <= maxDb; db += dbStep) {
       if (db < minDb || db > maxDb) continue;
       const float y = r.B - ((db - minDb) / (maxDb - minDb)) * h;
-      if (y < r.T || y > r.B) continue;
+      if (y < r.T + 10.f || y > r.B - 10.f) continue;
       g.DrawLine(IColor(255, 60, 65, 70), r.L, y, r.R, y, &mBlend, 1.0f);
-      // Tick mark on axis - draw inside the rect
-      g.DrawLine(IColor(255, 150, 150, 150), r.L, y, r.L + 4.f, y, &mBlend, 1.5f);
-      // Label inside the plot area
-      IRECT labelRect(r.L + 6.f, y - 8.f, r.L + 38.f, y + 8.f);
-      std::snprintf(dbStr, sizeof(dbStr), "%.0f", db);
-      g.DrawText(IText(9.f, IColor(255, 150, 155, 160), nullptr, EAlign::Near, EVAlign::Middle), 
+      // Tick mark on Y axis
+      g.DrawLine(IColor(255, 200, 200, 200), r.L, y, r.L + 6.f, y, &mBlend, 2.0f);
+      // Label with brighter color and larger font
+      IRECT labelRect(r.L + 8.f, y - 10.f, r.L + 50.f, y + 10.f);
+      std::snprintf(dbStr, sizeof(dbStr), "%.0f dB", db);
+      g.DrawText(IText(11.f, IColor(255, 220, 220, 220), mFontID, EAlign::Near, EVAlign::Middle),
                   dbStr, labelRect, &mBlend);
     }
 
     // Frequency scale on X axis
     constexpr std::array<float, 6> kLabelFreqs = {20.f, 50.f, 100.f, 500.f, 1000.f, 10000.f};
-    constexpr std::array<const char*, 6> kLabelTexts = {"20", "50", "100", "500", "1k", "10k"};
+    constexpr std::array<const char*, 6> kLabelTexts = {"20 Hz", "50 Hz", "100 Hz", "500 Hz", "1 kHz", "10 kHz"};
     for (size_t i = 0; i < kLabelFreqs.size(); ++i) {
       const float x = r.L + (w * std::log10(kLabelFreqs[i] / 20.f) / std::log10(20000.f / 20.f));
-      if (x < r.L || x > r.R) continue;
+      if (x < r.L + 20.f || x > r.R - 20.f) continue;
       g.DrawLine(IColor(255, 60, 65, 70), x, r.T, x, r.B, &mBlend, 1.0f);
-      // Tick mark on axis - draw inside
-      g.DrawLine(IColor(255, 150, 150, 150), x, r.B - 4.f, x, r.B, &mBlend, 1.5f);
-      // Label below axis, inside
-      IRECT labelRect(x - 18.f, r.B - 22.f, x + 18.f, r.B - 6.f);
-      g.DrawText(IText(9.f, IColor(255, 150, 155, 160), nullptr, EAlign::Center, EVAlign::Middle), 
+      // Tick mark on X axis
+      g.DrawLine(IColor(255, 200, 200, 200), x, r.B - 6.f, x, r.B, &mBlend, 2.0f);
+      // Label below axis with brighter color
+      IRECT labelRect(x - 30.f, r.B - 28.f, x + 30.f, r.B - 4.f);
+      g.DrawText(IText(11.f, IColor(255, 220, 220, 220), mFontID, EAlign::Center, EVAlign::Middle),
                   kLabelTexts[i], labelRect, &mBlend);
     }
 
@@ -311,11 +314,11 @@ public:
     }
 
     // Legend
-    g.DrawText(IText(10.f, IColor(255, 200, 200, 200), nullptr, EAlign::Near, EVAlign::Middle),
+    g.DrawText(IText(10.f, IColor(255, 200, 200, 200), mFontID, EAlign::Near, EVAlign::Middle),
                "In", IRECT(r.L + 4.f, r.T + 4.f, r.L + 24.f, r.T + 16.f), &mBlend);
-    g.DrawText(IText(10.f, IColor(255, 255, 200, 80), nullptr, EAlign::Near, EVAlign::Middle),
+    g.DrawText(IText(10.f, IColor(255, 255, 200, 80), mFontID, EAlign::Near, EVAlign::Middle),
                "Tgt", IRECT(r.L + 28.f, r.T + 4.f, r.L + 56.f, r.T + 16.f), &mBlend);
-    g.DrawText(IText(10.f, IColor(255, 80, 220, 255), nullptr, EAlign::Near, EVAlign::Middle),
+    g.DrawText(IText(10.f, IColor(255, 80, 220, 255), mFontID, EAlign::Near, EVAlign::Middle),
                "Out", IRECT(r.L + 62.f, r.T + 4.f, r.L + 90.f, r.T + 16.f), &mBlend);
   }
 private:
@@ -330,6 +333,7 @@ private:
   float mDragStartY = 0.f;
   float mDragStartMinDb = 0.f;
   float mDragStartMaxDb = 0.f;
+  const char* mFontID = nullptr;
 };
 
 float InterpolateLogTable(float frequencyHz,
@@ -363,9 +367,10 @@ float InterpolateLogTable(float frequencyHz,
  : Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
   GetParam(kAmount)->InitPercentage("Amount", 100.0);
-  GetParam(kTarget)->InitEnum("Target", kTargetRusset, {"White", "Pink", "Russet", "Brown", "Equal-loudness"});
+  GetParam(kTarget)->InitEnum("Target", kTargetRusset, {"White", "Pink", "Red", "Orange", "Russet", "Olive", "Brown", "Blue", "Violet", "Equal-loudness"});
   GetParam(kSmoothing)->InitDouble("Smoothing", 0.55, 0.0, 1.0, 0.001);
-  GetParam(kFFTSize)->InitEnum("FFT Size", kFFTSize2048, {"256", "512", "1024", "2048", "4096", "8192", "16384"});
+  GetParam(kQ)->InitDouble("Bandwidth", 0.5, 0.01, 4.0, 0.01);
+  GetParam(kFFTSize)->InitEnum("FFT Size", kFFTSize4096, {"256", "512", "1024", "2048", "4096", "8192", "16384"});
   GetParam(kCharacter)->InitDouble("Character", 0.0, -1.0, 1.0, 0.01);
   GetParam(kTransient)->InitDouble("Transient", 0.5, 0.0, 1.0, 0.01);
 
@@ -437,7 +442,7 @@ float InterpolateLogTable(float frequencyHz,
     const float visTop = controlTop;
     const float visBottom = bounds.B - 90.f;
     const IRECT visRect(bounds.L + 8.f, visTop, bounds.R - 8.f, visBottom);
-    graphics->AttachControl(new SpectrumVisualizerControl(visRect));
+    graphics->AttachControl(new SpectrumVisualizerControl(visRect, uiFont));
     // All knobs in ONE row at bottom
     const float knobY = bounds.B - 70.f;
     const float knobHeight = 56.f;
@@ -445,12 +450,14 @@ float InterpolateLogTable(float frequencyHz,
     const float gap = 12.f;
     const IRECT amountRect(bounds.L + 4.f, knobY, bounds.L + 4.f + knobWidth, knobY + knobHeight);
     const IRECT smoothingRect(amountRect.R + gap, knobY, amountRect.R + gap + knobWidth, knobY + knobHeight);
-    const IRECT charRect(smoothingRect.R + gap, knobY, smoothingRect.R + gap + knobWidth, knobY + knobHeight);
+    const IRECT qRect(smoothingRect.R + gap, knobY, smoothingRect.R + gap + knobWidth, knobY + knobHeight);
+    const IRECT charRect(qRect.R + gap, knobY, qRect.R + gap + knobWidth, knobY + knobHeight);
     const IRECT transRect(charRect.R + gap, knobY, charRect.R + gap + knobWidth, knobY + knobHeight);
     const IRECT selectorRect(transRect.R + gap + 4.f, knobY - 8.f, transRect.R + gap + 130.f, knobY + knobHeight);
     const IRECT fftRect(selectorRect.R + gap - 4.f, knobY - 8.f, selectorRect.R + gap + 60.f, knobY + knobHeight);
     graphics->AttachControl(new IVKnobControl(amountRect, kAmount, "Amount", controlStyle));
     graphics->AttachControl(new IVKnobControl(smoothingRect, kSmoothing, "Smoothing", controlStyle));
+    graphics->AttachControl(new IVKnobControl(qRect, kQ, "Bandwidth", controlStyle));
     graphics->AttachControl(new IVKnobControl(charRect, kCharacter, "Character", controlStyle));
     graphics->AttachControl(new IVKnobControl(transRect, kTransient, "Transient", controlStyle));
     graphics->AttachControl(new TargetSelectorControl(selectorRect, kTarget, "Target", selectorStyle));
@@ -644,10 +651,16 @@ float RussetNoise::EvaluateTargetDb(float frequencyHz, int targetMode) const
 
   switch (targetMode)
   {
-    case kTargetPink: slopeDbPerOctave = -3.f; break;
+    case kTargetWhite:   slopeDbPerOctave = 0.f;   break;
+    case kTargetPink:   slopeDbPerOctave = -3.f;  break;
+    case kTargetRed:    slopeDbPerOctave = -1.5f; break;
+    case kTargetOrange: slopeDbPerOctave = -2.f;  break;
     case kTargetRusset: slopeDbPerOctave = -4.5f; break;
-    case kTargetBrown: slopeDbPerOctave = -6.f; break;
-    default: slopeDbPerOctave = 0.f; break;
+    case kTargetOlive:  slopeDbPerOctave = -7.5f; break;
+    case kTargetBrown:  slopeDbPerOctave = -6.f;  break;
+    case kTargetBlue:   slopeDbPerOctave = -9.f;  break;
+    case kTargetViolet: slopeDbPerOctave = +3.f;  break;
+    default:            slopeDbPerOctave = 0.f;   break;
   }
 
   return slopeDbPerOctave * std::log2(clippedFrequencyHz / 1000.f);
@@ -745,11 +758,13 @@ void RussetNoise::ProcessHop(int channelCount)
   const float amountDrive = MapAmountDrive(amount);
   const float aggression = MapAggression(amount);
   const float smoothing = static_cast<float>(GetParam(kSmoothing)->Value());
+  const float qValue = static_cast<float>(GetParam(kQ)->Value());
   const int targetMode = static_cast<int>(GetParam(kTarget)->Value());
   const float character = static_cast<float>(GetParam(kCharacter)->Value());
   const float liveSpectrumBlend = Lerp(0.10f, 0.58f, aggression);
   const float temporalAlpha = Clip((0.16f + (0.18f * amountDrive)) - (0.12f * smoothing), 0.05f, 0.34f);
-  const int smoothingRadius = static_cast<int>(std::lround(std::pow(smoothing, 0.85f) * 6.f));
+  // Bandwidth affects how many neighboring bands are averaged together
+  const int smoothingRadius = static_cast<int>(std::lround(std::pow(smoothing, 0.85f) * 6.f + qValue * 4.f));
 
   std::array<float, kNumBands> currentSpectrumDb {};
   std::array<float, kNumBands> targetSpectrumDb {};
@@ -944,10 +959,14 @@ void RussetNoise::ProcessHop(int channelCount)
     }
   }
 
+  // Include makeup gain in visualizer output (global gain applied to all bands)
+  const float makeupGainDb = mAutoMakeupGainDb;
+
   for (int bandIndex = 0; bandIndex < visBands; ++bandIndex)
   {
     beforeSpec[bandIndex] = displaySpectrumDb[bandIndex];
-    afterSpec[bandIndex] = displaySpectrumDb[bandIndex] + smoothedCorrectionDb[bandIndex];
+    // Output = input + correction + makeup gain (makeup is applied in ProcessBlock)
+    afterSpec[bandIndex] = displaySpectrumDb[bandIndex] + smoothedCorrectionDb[bandIndex] + makeupGainDb;
     // Reference is the target spectral shape centered around mean
     referenceSpec[bandIndex] = targetSpectrumDb[bandIndex] - targetMeanDb;
     freqSpec[bandIndex] = mBandCentersHz[bandIndex];
@@ -1052,12 +1071,21 @@ void RussetNoise::ProcessHop(int channelCount)
       UpdateMakeupGain(hopInputRms, hopOutputRms);
   }
 
-  // Update spectrum visualizer control
-  if (IGraphics* g = GetUI()) {
-    for (int i = 0; i < g->NControls(); ++i) {
-      if (auto* vis = dynamic_cast<SpectrumVisualizerControl*>(g->GetControl(i))) {
-        vis->SetData(beforeSpec, afterSpec, referenceSpec, freqSpec, visBands);
-        break;
+  // Update spectrum visualizer at fixed ~30 FPS to keep GUI responsive and smooth
+  const int hopsPerSecond = static_cast<int>(GetSampleRate() / mHopSize);
+  const int targetFps = 30;
+  const int skipCount = std::max(1, hopsPerSecond / targetFps);
+  mVisUpdateCounter++;
+
+  if (mVisUpdateCounter >= skipCount) {
+    mVisUpdateCounter = 0;
+
+    if (IGraphics* g = GetUI()) {
+      for (int i = 0; i < g->NControls(); ++i) {
+        if (auto* vis = dynamic_cast<SpectrumVisualizerControl*>(g->GetControl(i))) {
+          vis->SetData(beforeSpec, afterSpec, referenceSpec, freqSpec, visBands);
+          break;
+        }
       }
     }
   }
