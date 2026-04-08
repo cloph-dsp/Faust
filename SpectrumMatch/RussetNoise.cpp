@@ -416,6 +416,10 @@ float InterpolateLogTable(float frequencyHz,
 
     graphics->AttachPanelBackground(backgroundColor);
     graphics->AttachPopupMenuControl(DEFAULT_TEXT.WithFont(uiFont).WithFGColor(primaryTextColor));
+    graphics->EnableMouseOver(true);
+    graphics->EnableTooltips(true);
+    graphics->AttachBubbleControl();
+    graphics->AssignParamNameToolTips();
     const IVStyle controlStyle = DEFAULT_STYLE
       .WithColor(kBG, panelColor)
       .WithColor(kFG, IColor(255, 88, 94, 104))
@@ -455,13 +459,34 @@ float InterpolateLogTable(float frequencyHz,
     const IRECT transRect(charRect.R + gap, knobY, charRect.R + gap + knobWidth, knobY + knobHeight);
     const IRECT selectorRect(transRect.R + gap + 4.f, knobY - 8.f, transRect.R + gap + 130.f, knobY + knobHeight);
     const IRECT fftRect(selectorRect.R + gap - 4.f, knobY - 8.f, selectorRect.R + gap + 60.f, knobY + knobHeight);
-    graphics->AttachControl(new IVKnobControl(amountRect, kAmount, "Amount", controlStyle));
-    graphics->AttachControl(new IVKnobControl(smoothingRect, kSmoothing, "Smoothing", controlStyle));
-    graphics->AttachControl(new IVKnobControl(qRect, kQ, "Bandwidth", controlStyle));
-    graphics->AttachControl(new IVKnobControl(charRect, kCharacter, "Character", controlStyle));
-    graphics->AttachControl(new IVKnobControl(transRect, kTransient, "Transient", controlStyle));
-    graphics->AttachControl(new TargetSelectorControl(selectorRect, kTarget, "Target", selectorStyle));
-    graphics->AttachControl(new TargetSelectorControl(fftRect, kFFTSize, "FFT", selectorStyle));
+    
+    auto* amountKnob = new IVKnobControl(amountRect, kAmount, "Amount", controlStyle);
+    amountKnob->SetTooltip("Mix level of target noise spectrum (0-100%)");
+    graphics->AttachControl(amountKnob);
+    
+    auto* smoothingKnob = new IVKnobControl(smoothingRect, kSmoothing, "Smoothing", controlStyle);
+    smoothingKnob->SetTooltip("Spectrum smoothing time constant - higher = smoother but slower response");
+    graphics->AttachControl(smoothingKnob);
+    
+    auto* bandwidthKnob = new IVKnobControl(qRect, kQ, "Bandwidth", controlStyle);
+    bandwidthKnob->SetTooltip("EQ band bandwidth - lower = narrower bands, higher = wider bands");
+    graphics->AttachControl(bandwidthKnob);
+    
+    auto* characterKnob = new IVKnobControl(charRect, kCharacter, "Character", controlStyle);
+    characterKnob->SetTooltip("Shifts spectral emphasis: negative = bassier, positive = brighter");
+    graphics->AttachControl(characterKnob);
+    
+    auto* transientKnob = new IVKnobControl(transRect, kTransient, "Transient", controlStyle);
+    transientKnob->SetTooltip("Transient/sustained balance - lower preserves transients, higher boosts body");
+    graphics->AttachControl(transientKnob);
+    
+    auto* targetControl = new TargetSelectorControl(selectorRect, kTarget, "Target", selectorStyle);
+    targetControl->SetTooltip("Target noise spectrum curve (White, Pink, Red, Brown, etc.)");
+    graphics->AttachControl(targetControl);
+    
+    auto* fftControl = new TargetSelectorControl(fftRect, kFFTSize, "FFT", selectorStyle);
+    fftControl->SetTooltip("FFT analysis size - larger = higher freq resolution but more latency");
+    graphics->AttachControl(fftControl);
     const IRECT footerRect(bounds.L, bounds.B - 14.f, bounds.R, bounds.B);
     graphics->AttachControl(new ITextControl(footerRect,
       "White, Pink, Red, Orange, Russet, Olive, Brown, Blue, Violet, Equal-loudness",

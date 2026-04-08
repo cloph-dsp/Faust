@@ -1,0 +1,87 @@
+<svg width="160" height="160" viewBox="-80 -80 160 160" xmlns="http://www.w3.org/2000/svg">
+<defs>
+
+  <radialGradient id="shadow" cx="54%" cy="60%" r="52%">
+    <stop offset="0%" stop-color="#000" stop-opacity="0"/>
+    <stop offset="100%" stop-color="#000" stop-opacity="0.65"/>
+  </radialGradient>
+
+  <radialGradient id="faceGrad" cx="36%" cy="30%" r="70%">
+    <stop offset="0%"   stop-color="#4a4a4a"/>
+    <stop offset="25%"  stop-color="#2a2a2a"/>
+    <stop offset="55%"  stop-color="#161616"/>
+    <stop offset="100%" stop-color="#090909"/>
+  </radialGradient>
+
+  <radialGradient id="specular" cx="34%" cy="28%" r="36%">
+    <stop offset="0%"   stop-color="#fff" stop-opacity="0.15"/>
+    <stop offset="45%"  stop-color="#fff" stop-opacity="0.04"/>
+    <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+  </radialGradient>
+
+  <radialGradient id="rimLight" cx="70%" cy="72%" r="44%">
+    <stop offset="0%"   stop-color="#555" stop-opacity="0.22"/>
+    <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+  </radialGradient>
+
+  <!-- Side bevel: gives the head a domed/thick feel -->
+  <linearGradient id="bevelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%"   stop-color="#4a4a4a"/>
+    <stop offset="30%"  stop-color="#222"/>
+    <stop offset="60%"  stop-color="#3a3a3a"/>
+    <stop offset="100%" stop-color="#111"/>
+  </linearGradient>
+
+  <linearGradient id="slotGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%"   stop-color="#040404"/>
+    <stop offset="50%"  stop-color="#181818"/>
+    <stop offset="100%" stop-color="#040404"/>
+  </linearGradient>
+
+  <clipPath id="faceClip"><circle r="66"/></clipPath>
+
+</defs>
+
+<!-- Ground shadow -->
+<ellipse cx="5" cy="5" rx="72" ry="72" fill="url(#shadow)" opacity="0.7"/>
+
+<!-- Outer bevel ring — gives dome/thickness -->
+<circle r="72" fill="url(#bevelGrad)"/>
+<circle r="70" fill="url(#bevelGrad)" stroke="#111" stroke-width="0.5"/>
+
+<!-- Face -->
+<circle r="66" fill="url(#faceGrad)"/>
+
+<!-- Brushed grain -->
+<g clip-path="url(#faceClip)" opacity="0.055">
+  <line x1="-66" y1="-55" x2="66" y2="-55" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-66" y1="-44" x2="66" y2="-44" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-66" y1="-33" x2="66" y2="-33" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-66" y1="-22" x2="66" y2="-22" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-66" y1="-11" x2="66" y2="-11" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-66" y1="0"   x2="66" y2="0"   stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-66" y1="11"  x2="66" y2="11"  stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-66" y1="22"  x2="66" y2="22"  stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-66" y1="33"  x2="66" y2="33"  stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-66" y1="44"  x2="66" y2="44"  stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-66" y1="55"  x2="66" y2="55"  stroke="#ccc" stroke-width="0.5"/>
+</g>
+
+<!-- Specular -->
+<circle r="66" fill="url(#specular)"/>
+
+<!-- Rim light -->
+<circle r="66" fill="url(#rimLight)"/>
+
+<!-- Edge bevel lines -->
+<circle r="66" fill="none" stroke="#555" stroke-width="0.8" opacity="0.55"/>
+<circle r="65" fill="none" stroke="#111" stroke-width="0.5"/>
+<circle r="70" fill="none" stroke="#555" stroke-width="0.6" opacity="0.3"/>
+
+<!-- Phillips slot -->
+<rect x="-24" y="-4.5" width="48" height="9"   rx="2" fill="url(#slotGrad)"/>
+<rect x="-4.5" y="-24" width="9"  height="48"  rx="2" fill="url(#slotGrad)"/>
+<rect x="-23" y="-3.5" width="46" height="7"   rx="1.5" fill="#060606" opacity="0.75"/>
+<rect x="-3.5" y="-23" width="7"  height="46"  rx="1.5" fill="#060606" opacity="0.75"/>
+
+</svg>

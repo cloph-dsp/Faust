@@ -1,0 +1,190 @@
+<svg width="300" height="300" viewBox="-150 -150 300 300" xmlns="http://www.w3.org/2000/svg">
+<defs>
+
+  <radialGradient id="shadow" cx="54%" cy="60%" r="52%">
+    <stop offset="0%" stop-color="#000" stop-opacity="0"/>
+    <stop offset="100%" stop-color="#000" stop-opacity="0.7"/>
+  </radialGradient>
+
+  <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%"   stop-color="#4a4a4a"/>
+    <stop offset="18%"  stop-color="#1e1e1e"/>
+    <stop offset="35%"  stop-color="#3a3a3a"/>
+    <stop offset="50%"  stop-color="#111"/>
+    <stop offset="65%"  stop-color="#2e2e2e"/>
+    <stop offset="82%"  stop-color="#0e0e0e"/>
+    <stop offset="100%" stop-color="#3c3c3c"/>
+  </linearGradient>
+
+  <radialGradient id="faceGrad" cx="38%" cy="32%" r="70%">
+    <stop offset="0%"   stop-color="#4a4a4a"/>
+    <stop offset="25%"  stop-color="#2a2a2a"/>
+    <stop offset="55%"  stop-color="#161616"/>
+    <stop offset="100%" stop-color="#0a0a0a"/>
+  </radialGradient>
+
+  <radialGradient id="specular" cx="34%" cy="28%" r="38%">
+    <stop offset="0%"   stop-color="#fff" stop-opacity="0.13"/>
+    <stop offset="40%"  stop-color="#fff" stop-opacity="0.04"/>
+    <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+  </radialGradient>
+
+  <radialGradient id="rimLight" cx="72%" cy="74%" r="45%">
+    <stop offset="0%"   stop-color="#666" stop-opacity="0.25"/>
+    <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+  </radialGradient>
+
+  <!-- Handle: vertical gradient for a rounded rod feel -->
+  <linearGradient id="handleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%"   stop-color="#1a1a1a"/>
+    <stop offset="25%"  stop-color="#777"/>
+    <stop offset="50%"  stop-color="#e8e8e8"/>
+    <stop offset="72%"  stop-color="#888"/>
+    <stop offset="100%" stop-color="#1e1e1e"/>
+  </linearGradient>
+
+  <!-- Handle tip -->
+  <radialGradient id="tipGrad" cx="40%" cy="35%" r="60%">
+    <stop offset="0%"   stop-color="#ccc"/>
+    <stop offset="100%" stop-color="#333"/>
+  </radialGradient>
+
+  <!-- Handle base notch -->
+  <linearGradient id="notchGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%"   stop-color="#111"/>
+    <stop offset="40%"  stop-color="#444"/>
+    <stop offset="100%" stop-color="#111"/>
+  </linearGradient>
+
+  <clipPath id="ringClip"><circle r="138"/></clipPath>
+  <clipPath id="faceClip"><circle r="104"/></clipPath>
+
+</defs>
+
+<!-- Ground shadow -->
+<ellipse cx="6" cy="8" rx="136" ry="136" fill="url(#shadow)" opacity="0.8"/>
+
+<!-- Outer knurled ring -->
+<circle r="136" fill="url(#ringGrad)"/>
+
+<!-- Knurling: concentric bands -->
+<g clip-path="url(#ringClip)" opacity="0.35">
+  <circle r="135" fill="none" stroke="#555" stroke-width="0.4"/>
+  <circle r="133" fill="none" stroke="#111" stroke-width="0.5"/>
+  <circle r="131" fill="none" stroke="#444" stroke-width="0.4"/>
+  <circle r="129" fill="none" stroke="#111" stroke-width="0.5"/>
+  <circle r="127" fill="none" stroke="#3a3a3a" stroke-width="0.4"/>
+  <circle r="125" fill="none" stroke="#111" stroke-width="0.5"/>
+  <circle r="123" fill="none" stroke="#333" stroke-width="0.4"/>
+  <circle r="121" fill="none" stroke="#111" stroke-width="0.5"/>
+  <circle r="119" fill="none" stroke="#2e2e2e" stroke-width="0.4"/>
+  <circle r="117" fill="none" stroke="#111" stroke-width="0.5"/>
+  <circle r="115" fill="none" stroke="#282828" stroke-width="0.4"/>
+  <circle r="113" fill="none" stroke="#111" stroke-width="0.5"/>
+  <circle r="111" fill="none" stroke="#242424" stroke-width="0.4"/>
+</g>
+
+<!-- Knurling: radial hatching -->
+<g clip-path="url(#ringClip)" opacity="0.18">
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(10)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(20)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(30)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(40)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(50)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(60)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(70)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(80)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(90)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(100)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(110)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(120)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(130)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(140)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(150)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(160)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(170)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(180)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(190)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(200)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(210)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(220)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(230)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(240)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(250)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(260)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(270)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(280)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(290)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(300)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(310)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(320)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(330)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(340)"/>
+  <line x1="0" y1="-138" x2="0" y2="-108" stroke="#888" stroke-width="0.6" transform="rotate(350)"/>
+</g>
+
+<!-- Inner bevel ring -->
+<circle r="109" fill="#0d0d0d" stroke="#3a3a3a" stroke-width="1.5"/>
+<circle r="107" fill="#0d0d0d" stroke="#111" stroke-width="1"/>
+
+<!-- Knob face -->
+<circle r="104" fill="url(#faceGrad)"/>
+
+<!-- Brushed metal grain on face -->
+<g clip-path="url(#faceClip)" opacity="0.06">
+  <line x1="-104" y1="-90" x2="104" y2="-90" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="-80" x2="104" y2="-80" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="-70" x2="104" y2="-70" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="-60" x2="104" y2="-60" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="-50" x2="104" y2="-50" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="-40" x2="104" y2="-40" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="-30" x2="104" y2="-30" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="-20" x2="104" y2="-20" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="-10" x2="104" y2="-10" stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="0"   x2="104" y2="0"   stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="10"  x2="104" y2="10"  stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="20"  x2="104" y2="20"  stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="30"  x2="104" y2="30"  stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="40"  x2="104" y2="40"  stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="50"  x2="104" y2="50"  stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="60"  x2="104" y2="60"  stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="70"  x2="104" y2="70"  stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="80"  x2="104" y2="80"  stroke="#ccc" stroke-width="0.5"/>
+  <line x1="-104" y1="90"  x2="104" y2="90"  stroke="#ccc" stroke-width="0.5"/>
+</g>
+
+<!-- Specular highlight -->
+<circle r="104" fill="url(#specular)"/>
+
+<!-- Rim light -->
+<circle r="104" fill="url(#rimLight)"/>
+
+<!-- Face edge bevel -->
+<circle r="104" fill="none" stroke="#555" stroke-width="0.8" opacity="0.6"/>
+<circle r="103" fill="none" stroke="#222" stroke-width="0.5"/>
+
+<!-- Handle: recessed slot shadow -->
+<rect x="-5.5" y="-90" width="11" height="42" rx="3" fill="#080808"/>
+
+<!-- Handle: rounded metal rod with side lighting -->
+<rect x="-4.5" y="-89" width="9" height="40" rx="3" fill="url(#handleGrad)"/>
+
+<!-- Handle: top edge highlight -->
+<rect x="-3" y="-89" width="6" height="2" rx="1" fill="#ddd" opacity="0.5"/>
+
+<!-- Handle: base collar / notch where it meets the face -->
+<rect x="-5.5" y="-52" width="11" height="5" rx="1.5" fill="url(#notchGrad)"/>
+<rect x="-4"   y="-52" width="8"  height="5" rx="1"   fill="#1e1e1e" opacity="0.6"/>
+
+<!-- Handle tip: rounded cap -->
+<ellipse cx="0" cy="-88" rx="4.5" ry="2.5" fill="url(#tipGrad)"/>
+
+<!-- Center screw -->
+<circle r="9"  fill="#111" stroke="#333" stroke-width="0.8"/>
+<circle r="6"  fill="#0e0e0e" stroke="#2a2a2a" stroke-width="0.5"/>
+<circle r="3"  fill="#151515"/>
+<line x1="-2.5" y1="0" x2="2.5" y2="0" stroke="#333" stroke-width="0.8"/>
+<line x1="0" y1="-2.5" x2="0" y2="2.5" stroke="#333" stroke-width="0.8"/>
+
+</svg>
