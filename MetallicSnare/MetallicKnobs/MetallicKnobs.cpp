@@ -9,9 +9,13 @@
 class ClophSVGKnobControl : public IVKnobControl {
 private:
   ISVG mSVG;
+  static ClophSVGKnobControl* sFocused;
 public:
   ClophSVGKnobControl(const IRECT& bounds, int paramIdx, const char* label, const IVStyle& style, const ISVG& svg)
   : IVKnobControl(bounds, paramIdx, label, style), mSVG(svg) { }
+
+  static void SetFocusedControl(ClophSVGKnobControl* c) { sFocused = c; }
+  bool HasKeyboardFocus() const { return sFocused == this; }
 
   void DrawWidget(IGraphics& g) override {
     if (mSVG.IsValid()) {
@@ -22,6 +26,15 @@ public:
       g.DrawRotatedSVG(mSVG, cx, cy, sz, sz, angle);
     } else {
       IVKnobControl::DrawWidget(g); // Fallback to flat vector rendering
+    }
+
+    // Draw keyboard focus ring when focused
+    if (HasKeyboardFocus()) {
+      IColor clrFocus = IColor(255, 120, 200, 255);
+      const float cx = mWidgetBounds.MW();
+      const float cy = mWidgetBounds.MH();
+      const float radius = std::min(mWidgetBounds.W(), mWidgetBounds.H()) * 0.5f + 6.0f;
+      g.DrawCircle(clrFocus.WithOpacity(0.9f), cx, cy, radius, nullptr, 3.0f);
     }
   }
 
@@ -71,7 +84,64 @@ public:
       SetValueToDefault();
     }
   }
+
+  void OnMouseDown(float x, float y, const IMouseMod& mod) override {
+    IVKnobControl::OnMouseDown(x, y, mod);
+    sFocused = this;
+    if (IGEditorDelegate* d = GetDelegate()) {
+      auto* plugin = static_cast<MetallicKnobs*>(d);
+      plugin->SetKeyboardFocusToControl(this);
+    }
+  }
+
+  bool OnKeyDown(float x, float y, const IKeyPress& key) override {
+    // Use names that won't collide with platform VK_ macros
+    const int kVK_LEFT = 0x25;
+    const int kVK_UP = 0x26;
+    const int kVK_RIGHT = 0x27;
+    const int kVK_DOWN = 0x28;
+    const int kVK_PRIOR = 0x21; // PageUp
+    const int kVK_NEXT = 0x22;  // PageDown
+    const int kVK_HOME = 0x24;
+    const int kVK_END = 0x23;
+    const int kVK_RETURN = 0x0D;
+    const int kVK_SPACE = 0x20;
+    const int kVK_TAB = 0x09;
+
+    if (key.VK == kVK_TAB) {
+      if (IGEditorDelegate* d = GetDelegate()) {
+        auto* plugin = static_cast<MetallicKnobs*>(d);
+        bool forward = !key.S; // Shift+Tab goes backwards
+        plugin->CycleKeyboardFocus(forward);
+        return true;
+      }
+    }
+
+    double baseStep = 0.01;
+    if (key.S) baseStep *= 0.1; else if (key.C) baseStep *= 0.25;
+
+    double v = GetValue();
+    bool handled = true;
+    if (key.VK == kVK_LEFT || key.VK == kVK_DOWN) v -= baseStep;
+    else if (key.VK == kVK_RIGHT || key.VK == kVK_UP) v += baseStep;
+    else if (key.VK == kVK_PRIOR) v += 0.1;
+    else if (key.VK == kVK_NEXT) v -= 0.1;
+    else if (key.VK == kVK_HOME) v = 0.0;
+    else if (key.VK == kVK_END) v = 1.0;
+    else if (key.VK == kVK_RETURN || key.VK == kVK_SPACE) { PromptUserInput(); return true; }
+    else handled = false;
+
+    if (handled) {
+      if (v < 0.0) v = 0.0;
+      if (v > 1.0) v = 1.0;
+      SetValueFromUserInput(v);
+    }
+    return handled;
+  }
 };
+
+// Static focus pointer definition
+ClophSVGKnobControl* ClophSVGKnobControl::sFocused = nullptr;
 
 MetallicKnobs::MetallicKnobs(const InstanceInfo& info)
 : Plugin(info, MakeConfig(kNumParams, 1))
@@ -123,6 +193,10 @@ MetallicKnobs::MetallicKnobs(const InstanceInfo& info)
     const float kMainPadding = 12.0f * uiScale;
     const float kLargeKnobSize = 120.0f * uiScale;
     const float kShatterKnobSize = 180.0f * uiScale;
+
+    // Reset keyboard-focusable control list for this layout
+    mKeyboardOrder.clear();
+    mKeyboardFocusIdx = -1;
 
     // Load screw SVG and generate per-instance random rotation angles
     ISVG screwSvg = pGraphics->LoadSVG(SCREW_SVG_FN);
@@ -260,9 +334,13 @@ MetallicKnobs::MetallicKnobs(const InstanceInfo& info)
       .WithWidgetFrac(1.0f);
 
     const IRECT shatterKnobRect = shatterZone.GetCentredInside(kShatterKnobSize).GetTranslated(0, 10);
-    pGraphics->AttachControl(new ClophSVGKnobControl(shatterKnobRect, kShatter, "", shatterStyle, knobSvg));
+    {
+      auto* pShatterKnob = new ClophSVGKnobControl(shatterKnobRect, kShatter, "", shatterStyle, knobSvg);
+      pGraphics->AttachControl(pShatterKnob);
+      mKeyboardOrder.push_back(pShatterKnob);
+    }
 
-    // SHATTER ARM toggle (safe / armed) – explicit arming for full destructive range
+    // SHATTER ARM toggle (safe / armed) - explicit arming for full destructive range
     const IRECT armRect = IRECT(shatterZone.R - (84.0f * std::min(pGraphics->GetBounds().W() / static_cast<float>(PLUG_WIDTH), pGraphics->GetBounds().H() / static_cast<float>(PLUG_HEIGHT))), shatterZone.T + 12.0f, shatterZone.R - 12.0f, shatterZone.T + 48.0f);
     pGraphics->AttachControl(new IVToggleControl(armRect, kShatterArm, "ARM", DEFAULT_STYLE.WithLabelText(IText(12, clrTextDim, "Arial", EAlign::Center, EVAlign::Middle)).WithShowLabel(true)), kNoParameter, "SHATTER_ARM");
 
@@ -316,11 +394,27 @@ MetallicKnobs::MetallicKnobs(const InstanceInfo& info)
     IRECT rPang = IRECT(mainBoard.L, mainBoard.T + rowH * 2, mainBoard.L + colW, mainBoard.B).GetCentredInside(sz).GetTranslated(0, -20);
     IRECT rGrit = IRECT(mainBoard.L + colW, mainBoard.T + rowH * 2, mainBoard.R, mainBoard.B).GetCentredInside(sz).GetTranslated(0, -20);
 
-    pGraphics->AttachControl(new ClophSVGKnobControl(rTension, kTension, "", dialStyle, knobSvg));
-    pGraphics->AttachControl(new ClophSVGKnobControl(rWeight, kWeight, "", dialStyle, knobSvg));
-    pGraphics->AttachControl(new ClophSVGKnobControl(rPunch, kPunch, "", dialStyle.WithColor(kFG, clrTitaniumLight), knobSvg));
-    pGraphics->AttachControl(new ClophSVGKnobControl(rPang, kPang, "", dialStyle, knobSvg));
-    pGraphics->AttachControl(new ClophSVGKnobControl(rGrit, kGrit, "", dialStyle, knobSvg));
+    {
+      auto* pTension = new ClophSVGKnobControl(rTension, kTension, "", dialStyle, knobSvg);
+      pGraphics->AttachControl(pTension);
+      mKeyboardOrder.push_back(pTension);
+
+      auto* pWeight = new ClophSVGKnobControl(rWeight, kWeight, "", dialStyle, knobSvg);
+      pGraphics->AttachControl(pWeight);
+      mKeyboardOrder.push_back(pWeight);
+
+      auto* pPunch = new ClophSVGKnobControl(rPunch, kPunch, "", dialStyle.WithColor(kFG, clrTitaniumLight), knobSvg);
+      pGraphics->AttachControl(pPunch);
+      mKeyboardOrder.push_back(pPunch);
+
+      auto* pPang = new ClophSVGKnobControl(rPang, kPang, "", dialStyle, knobSvg);
+      pGraphics->AttachControl(pPang);
+      mKeyboardOrder.push_back(pPang);
+
+      auto* pGrit = new ClophSVGKnobControl(rGrit, kGrit, "", dialStyle, knobSvg);
+      pGraphics->AttachControl(pGrit);
+      mKeyboardOrder.push_back(pGrit);
+    }
 
     // Numeric readouts under knobs (improves discoverability & precision)
     auto attachReadout = [&](const IRECT& knobRect, int paramIdx) {
@@ -346,6 +440,41 @@ MetallicKnobs::MetallicKnobs(const InstanceInfo& info)
     attachReadout(rPunch, kPunch);
     attachReadout(rPang, kPang);
     attachReadout(rGrit, kGrit);
+
+    // Global key handler: forward key events to the currently focused control (if any)
+    pGraphics->SetKeyHandlerFunc([this](const IKeyPress& key, bool isUp) -> bool {
+      if (mKeyboardFocusIdx < 0 || mKeyboardFocusIdx >= static_cast<int>(mKeyboardOrder.size())) return false;
+      if (isUp) return false; // only handle key-down events here
+      IControl* c = mKeyboardOrder[mKeyboardFocusIdx];
+      return c->OnKeyDown(0.0f, 0.0f, key);
+    });
+
+    // Keyboard-visible tooltip for focused control (ARIA-like label/value)
+    const IRECT focusTipRect = IRECT(innerBounds.MW() - 140.0f, innerBounds.T + 44.0f, innerBounds.MW() + 140.0f, innerBounds.T + 76.0f);
+    pGraphics->AttachControl(new ILambdaControl(focusTipRect, [this, clrTextMain, clrTextDim](ILambdaControl* pCaller, IGraphics& g, IRECT& r) {
+      if (mKeyboardFocusIdx < 0 || mKeyboardFocusIdx >= static_cast<int>(mKeyboardOrder.size())) return;
+      IControl* c = mKeyboardOrder[mKeyboardFocusIdx];
+      IVKnobControl* knob = static_cast<IVKnobControl*>(c);
+      const int idx = knob->GetParamIdx();
+      const char* name = "";
+      char valBuf[64] = {0};
+      if (idx == kShatter) { name = "SHATTER"; sprintf(valBuf, "%d%%", static_cast<int>(std::round(GetParam(idx)->Value() * 100.0))); }
+      else if (idx == kTension) { name = "TENSION"; sprintf(valBuf, "%.2f", GetParam(idx)->Value()); }
+      else if (idx == kPang) { name = "PANG"; sprintf(valBuf, "%.2f", GetParam(idx)->Value()); }
+      else if (idx == kGrit) { name = "GRIT"; sprintf(valBuf, "%.2f", GetParam(idx)->Value()); }
+      else if (idx == kPunch) { name = "PUNCH"; sprintf(valBuf, "%.2f", GetParam(idx)->Value()); }
+      else if (idx == kWeight) { WDL_String display; GetParam(idx)->GetDisplay(display); sprintf(valBuf, "%s", display.Get()); }
+
+      // Background pill
+      g.PathRoundRect(r.GetPadded(6.0f), 6.0f);
+      g.PathFill(IPattern::CreateLinearGradient(r.L, r.T, r.L, r.B, {{IColor(220,20,20,20), 0.0f}, {IColor(200,30,30,30), 1.0f}}));
+
+      // Draw name + value
+      IRECT nameRect = IRECT(r.L + 8.0f, r.T, r.MW(), r.B);
+      IRECT valRect = IRECT(r.MW(), r.T, r.R - 8.0f, r.B);
+      g.DrawText(IText(14, clrTextDim, "Arial", EAlign::Near, EVAlign::Middle), name, nameRect);
+      g.DrawText(IText(14, clrTextMain, "Courier", EAlign::Far, EVAlign::Middle), valBuf, valRect);
+    }, -1, false));
   };
 #endif
 }
@@ -362,10 +491,39 @@ void MetallicKnobs::OnReset()
     mDiffuser[i].Prepare(mSampleRate, delayTimes[i]);
   }
   mFilter.Prepare(mSampleRate);
+  mRingMod.Prepare(mSampleRate);
+  mComb.Prepare(mSampleRate, 3.7f);
+  mHFShelf.Prepare(mSampleRate);
   for (int i = 0; i < NUM_MODES; i++) {
     mPhases[i] = 0.0;
     mAmplitudes[i] = 0.0;
   }
+}
+
+void MetallicKnobs::CycleKeyboardFocus(bool forward)
+{
+  if (mKeyboardOrder.empty()) return;
+  if (mKeyboardFocusIdx < 0) {
+    mKeyboardFocusIdx = 0;
+  } else {
+    if (forward) mKeyboardFocusIdx = (mKeyboardFocusIdx + 1) % static_cast<int>(mKeyboardOrder.size());
+    else mKeyboardFocusIdx = (mKeyboardFocusIdx - 1 + static_cast<int>(mKeyboardOrder.size())) % static_cast<int>(mKeyboardOrder.size());
+  }
+  IControl* c = mKeyboardOrder[mKeyboardFocusIdx];
+  ClophSVGKnobControl::SetFocusedControl(static_cast<ClophSVGKnobControl*>(c));
+}
+
+void MetallicKnobs::SetKeyboardFocusToControl(IControl* c)
+{
+  for (int i = 0; i < static_cast<int>(mKeyboardOrder.size()); ++i) {
+    if (mKeyboardOrder[i] == c) {
+      mKeyboardFocusIdx = i;
+      ClophSVGKnobControl::SetFocusedControl(static_cast<ClophSVGKnobControl*>(c));
+      return;
+    }
+  }
+  mKeyboardFocusIdx = -1;
+  ClophSVGKnobControl::SetFocusedControl(nullptr);
 }
 
 void MetallicKnobs::ProcessMidiMsg(const IMidiMsg& msg)
@@ -385,6 +543,9 @@ void MetallicKnobs::ProcessMidiMsg(const IMidiMsg& msg)
     mVelocity = (double)msg.Velocity() / 127.0;
     mImpact.Trigger();
     mSnap.Trigger();
+    mRingMod.Trigger();
+    mComb.Reset();
+    mHFShelf.Reset();
     for (int i = 0; i < NUM_MODES; i++) {
       mPhases[i] = 0.0;
       mAmplitudes[i] = 1.0; 
@@ -441,6 +602,14 @@ void MetallicKnobs::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   const float filterRes = 0.5f + pangSq * 2.5f; // More "ring" at max pang
   const float filterDrive = 1.0f + gritSq * 8.0f;
   const float sigmoidDrive = 1.0f + gritSq * 20.0f; // More aggressive saturation curve
+  
+  // Metallic sound parameters
+  const float ringModDepth = pang * pang * 0.6f; // Ring mod for clangorous harmonics
+  const float ringModFreq = 2500.0f + pangSq * 8000.0f; // High freq modulation for metallic edge
+  const float combFeedback = gritSq * 0.7f; // Comb filter resonance
+  const float combDamping = 0.85f - gritSq * 0.3f;
+  const float hfBoost = pangSq * 8.0f; // High freq shelf boost for shimmer
+  
   const float invSampleRate = 1.0f / static_cast<float>(mSampleRate);
   const float velocityF = static_cast<float>(mVelocity);
   const float twoPi = 2.0f * static_cast<float>(M_PI);
@@ -499,10 +668,19 @@ void MetallicKnobs::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     float cutoff = 2000.0f + pEnvSq * 12000.0f;
     float filterOut = mFilter.Process(modalSum, cutoff, filterRes, filterDrive);
     
-    // 5. Brutality Shaper
-    float shaped = AsymmetricSigmoid::Process(filterOut, sigmoidDrive);
+    // 5. Ring Modulation for metallic clangorous harmonics
+    float ringModOut = mRingMod.Process(filterOut, ringModFreq, ringModDepth);
     
-    // 6. Shatter
+    // 6. Comb Filter for metallic resonance/ringing
+    float combOut = mComb.Process(ringModOut, combFeedback, combDamping);
+    
+    // 7. HF Emphasis for shimmer
+    float hfOut = mHFShelf.Process(combOut, hfBoost);
+    
+    // 8. Brutality Shaper
+    float shaped = AsymmetricSigmoid::Process(hfOut, sigmoidDrive);
+    
+    // 9. Shatter
     float shattered = mShatter.Process(shaped, shatter, envBodyF);
     
     float outMix = shattered * velocityF;

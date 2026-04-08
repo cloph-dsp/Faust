@@ -187,6 +187,72 @@ private:
   float s1 = 0, s2 = 0, mFs = 44100.0f;
 };
 
+// Ring Modulator for metallic clangorous harmonics
+class RingModulator {
+public:
+  void Prepare(double sampleRate) { mFs = sampleRate; Reset(); }
+  void Reset() { mCarrier = 0.0; mCarrierPhase = 0.0; }
+  void Trigger() { mCarrierPhase = 0.0; }
+  float Process(float in, float modFreqHz, float depth) {
+    if (depth < 0.001f) return in;
+    mCarrierPhase += modFreqHz / mFs;
+    if (mCarrierPhase >= 1.0) mCarrierPhase -= 1.0;
+    mCarrier = std::sin(mCarrierPhase * 2.0 * M_PI);
+    return in * (1.0f - depth) + (in * mCarrier) * depth;
+  }
+private:
+  double mCarrierPhase = 0.0;
+  double mCarrier = 0.0;
+  double mFs = 44100.0;
+};
+
+// Comb Filter for metallic resonance/ringing
+class MetallicComb {
+public:
+  void Prepare(double sampleRate, float delayMs) {
+    mFs = sampleRate;
+    int delaySamps = static_cast<int>(delayMs * 0.001 * sampleRate);
+    mBuffer.assign(delaySamps, 0.0f);
+    mIdx = 0;
+  }
+  void Reset() { std::fill(mBuffer.begin(), mBuffer.end(), 0.0f); mIdx = 0; }
+  float Process(float in, float feedback, float damping) {
+    if (mBuffer.empty()) return in;
+    float delayed = mBuffer[mIdx];
+    float damped = delayed * damping;
+    float output = in + damped;
+    mBuffer[mIdx] = output * feedback;
+    if (++mIdx >= mBuffer.size()) mIdx = 0;
+    return in + delayed;
+  }
+private:
+  std::vector<float> mBuffer;
+  size_t mIdx = 0;
+  double mFs = 44100.0;
+};
+
+// High-Frequency Shelf for metallic shimmer emphasis
+class HFEmphasis {
+public:
+  void Prepare(double sampleRate) { mFs = sampleRate; Reset(); }
+  void Reset() { mZ1 = mZ2 = 0.0f; }
+  float Process(float in, float boostDb) {
+    if (boostDb < 0.01f) return in;
+    float g = std::tan(static_cast<float>(M_PI) * 8000.0f / static_cast<float>(mFs));
+    float boost = std::pow(10.0f, boostDb / 20.0f);
+    float a1 = 1.0f / (1.0f + g);
+    float a2 = g * a1;
+    float z1 = in;
+    float z2 = mZ1 * a1 - z1 * a2 + mZ2;
+    mZ2 = mZ1 * a2 + z1 * a1;
+    mZ1 = z1;
+    return (z1 - z2) * boost;
+  }
+private:
+  float mZ1 = 0.0f, mZ2 = 0.0f;
+  double mFs = 44100.0;
+};
+
 enum EParams
 {
   kShatter = 0,
@@ -204,6 +270,8 @@ class MetallicKnobs final : public Plugin
 {
 public:
   MetallicKnobs(const InstanceInfo& info);
+  void CycleKeyboardFocus(bool forward = true);
+  void SetKeyboardFocusToControl(IControl* c);
 
   void SetHoverParam(int idx) { mHoverParam.store(idx); }
   int GetHoverParam() const { return mHoverParam.load(); }
@@ -216,6 +284,9 @@ private:
   double mSampleRate = 44100.0;
   std::atomic<float> mPeak{0.0f};
   std::atomic<int> mHoverParam{-1};
+  // Keyboard focus/order for accessibility
+  std::vector<IControl*> mKeyboardOrder;
+  int mKeyboardFocusIdx = -1;
   
   static constexpr int NUM_MODES = 8;
   const double MODE_RATIOS[NUM_MODES] = {1.0, 1.90, 2.75, 4.02, 6.13, 9.02, 12.57, 17.24};
@@ -231,6 +302,9 @@ private:
   ShatterProcessor mShatter;
   MetallicAPF mDiffuser[3];
   NonlinearSVF mFilter;
+  RingModulator mRingMod;
+  MetallicComb mComb;
+  HFEmphasis mHFShelf;
   
   double mEnvBody = 0.0;
   double mPitchEnv = 0.0;
