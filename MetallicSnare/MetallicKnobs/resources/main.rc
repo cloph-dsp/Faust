@@ -117,7 +117,7 @@ END
 
 3 TEXTINCLUDE 
 BEGIN
-    "#include ""..\\config.h""\r\n"
+    "#include ""..\config.h""\r\n"
     "\0"
 END
 
@@ -148,9 +148,9 @@ FILEVERSION 0,0,1,0
 PRODUCTVERSION 0,0,1,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
- FILEFLAGS 0x1L
+  FILEFLAGS 0x1L
 #else
- FILEFLAGS 0x0L
+  FILEFLAGS 0x0L
 #endif
  FILEOS 0x40004L
  FILETYPE 0x1L
@@ -193,4 +193,3 @@ END
 
 KNOB_SVG_FN SVG KNOB_SVG_FN
 SCREW_SVG_FN SVG SCREW_SVG_FN
-

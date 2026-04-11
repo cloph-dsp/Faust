@@ -37,10 +37,32 @@ $installedBundle = Join-Path $env:CommonProgramW6432 "VST3\MetallicKnobs.vst3"
 Write-Host "Local bundle:" $localBundle
 Write-Host "Installed bundle:" $installedBundle
 
+# Copy font files to VST3 bundle Resources folder
+$sourceFonts = @(
+    (Join-Path $PSScriptRoot "..\Resources\Fresco Stamp.ttf"),
+    (Join-Path $PSScriptRoot "..\Resources\Scratched Letters.otf")
+)
+$destResources = Join-Path $localBundle "Contents\Resources"
+
+foreach ($font in $sourceFonts) {
+    if (Test-Path $font) {
+        Copy-Item $font $destResources -Force
+        Write-Host "Copied font: $font -> $destResources"
+    }
+}
+
 if (Test-Path $localBundle) {
   try {
     Copy-Item $localBundle $installedBundle -Recurse -Force -ErrorAction Stop
     Write-Host "Installed bundle:" $installedBundle
+    
+    # Also copy fonts to installed bundle
+    foreach ($font in $sourceFonts) {
+        if (Test-Path $font) {
+            $installedResources = Join-Path $installedBundle "Contents\Resources"
+            Copy-Item $font $installedResources -Force
+        }
+    }
   } catch {
     Write-Host "Warning: could not copy VST3 bundle to system location. It may be in use by a host."
     Write-Host "Local bundle remains at:" $localBundle

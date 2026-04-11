@@ -5,36 +5,54 @@
 #include <array>
 #include <random>
 
-// Custom SVG Knob that retains IVKnobControl's label/value and interaction logic
+// Custom SVG Knob with value arc indicator
 class ClophSVGKnobControl : public IVKnobControl {
 private:
   ISVG mSVG;
   static ClophSVGKnobControl* sFocused;
+  IColor mArcColor;
 public:
-  ClophSVGKnobControl(const IRECT& bounds, int paramIdx, const char* label, const IVStyle& style, const ISVG& svg)
-  : IVKnobControl(bounds, paramIdx, label, style), mSVG(svg) { }
+  ClophSVGKnobControl(const IRECT& bounds, int paramIdx, const char* label, const IVStyle& style, const ISVG& svg, IColor arcColor = IColor(255, 100, 100, 100))
+  : IVKnobControl(bounds, paramIdx, label, style), mSVG(svg), mArcColor(arcColor) { }
+
+  void SetArcColor(IColor color) { mArcColor = color; }
 
   static void SetFocusedControl(ClophSVGKnobControl* c) { sFocused = c; }
   bool HasKeyboardFocus() const { return sFocused == this; }
 
   void DrawWidget(IGraphics& g) override {
+    const float cx = mWidgetBounds.MW();
+    const float cy = mWidgetBounds.MH();
+    const float sz = std::min(mWidgetBounds.W(), mWidgetBounds.H()) * 0.85f;
+    const float angle = mAngle1 + (static_cast<float>(GetValue()) * (mAngle2 - mAngle1));
+    
+    // Draw value arc background
+    const IColor clrArcBg(255, 60, 60, 60);
+    g.DrawArc(clrArcBg, cx, cy, sz * 0.5f + 8.f, mAngle1, mAngle2, nullptr, 4.0f);
+    
+    // Draw value arc fill
+    if (GetValue() > 0.001f) {
+      g.DrawArc(mArcColor, cx, cy, sz * 0.5f + 8.f, mAngle1, angle, nullptr, 4.0f);
+    }
+
+    // Draw SVG knob rotated
     if (mSVG.IsValid()) {
-      const float cx = mWidgetBounds.MW();
-      const float cy = mWidgetBounds.MH();
-      const float angle = mAngle1 + (static_cast<float>(GetValue()) * (mAngle2 - mAngle1));
-      const float sz = std::min(mWidgetBounds.W(), mWidgetBounds.H());
       g.DrawRotatedSVG(mSVG, cx, cy, sz, sz, angle);
     } else {
-      IVKnobControl::DrawWidget(g); // Fallback to flat vector rendering
+      // Fallback: draw simple circle
+      IColor clrKnob(255, 80, 80, 82);
+      g.FillCircle(clrKnob, cx, cy, sz * 0.5f);
+      // Indicator line
+      float indX = cx + std::cos(angle - static_cast<float>(M_PI) * 0.5f) * sz * 0.35f;
+      float indY = cy + std::sin(angle - static_cast<float>(M_PI) * 0.5f) * sz * 0.35f;
+      g.DrawLine(IColor(255, 240, 240, 240), cx, cy, indX, indY, nullptr, 2.0f);
     }
 
     // Draw keyboard focus ring when focused
     if (HasKeyboardFocus()) {
-      IColor clrFocus = IColor(255, 120, 200, 255);
-      const float cx = mWidgetBounds.MW();
-      const float cy = mWidgetBounds.MH();
-      const float radius = std::min(mWidgetBounds.W(), mWidgetBounds.H()) * 0.5f + 6.0f;
-      g.DrawCircle(clrFocus.WithOpacity(0.9f), cx, cy, radius, nullptr, 3.0f);
+      IColor clrFocus = IColor(255, 100, 220, 255);
+      const float radius = sz * 0.5f + 12.0f;
+      g.DrawCircle(clrFocus.WithOpacity(0.9f), cx, cy, radius, nullptr, 2.0f);
     }
   }
 
@@ -171,310 +189,295 @@ MetallicKnobs::MetallicKnobs(const InstanceInfo& info)
 
   mLayoutFunc = [this](IGraphics* pGraphics) {
     pGraphics->AttachCornerResizer(EUIResizerMode::Scale, false);
-    pGraphics->LoadFont("Arial", "Arial", ETextStyle::Normal);
-    pGraphics->LoadFont("Courier", "Courier New", ETextStyle::Normal);
     
-    // Dark Titanium Palette
-    const IColor clrTitaniumBase = IColor(255, 30, 32, 35);
-    const IColor clrTitaniumDark = IColor(255, 18, 19, 21);
-    const IColor clrTitaniumLight = IColor(255, 60, 62, 65);
-    const IColor clrRackEar = IColor(255, 20, 20, 20);
-    const IColor clrShatterRed = IColor(255, 200, 30, 40);
-    const IColor clrVuGreen = IColor(255, 40, 200, 80);
-    const IColor clrTextMain = IColor(255, 220, 220, 220);
-    const IColor clrTextDim = IColor(255, 130, 130, 135);
+    // Load custom fonts with fallbacks
+    bool primaryLoaded = pGraphics->LoadFont("Primary", FONT_PRIMARY_FN);
+    bool secondaryLoaded = pGraphics->LoadFont("Secondary", FONT_SECONDARY_FN);
+    if (!primaryLoaded) {
+      pGraphics->LoadFont("Primary", "Arial", ETextStyle::Bold);
+    }
+    if (!secondaryLoaded) {
+      pGraphics->LoadFont("Secondary", "Consolas", ETextStyle::Normal);
+    }
+    
+    // Neutral Technical Palette
+    const IColor clrBgPrimary(255, 13, 13, 13);
+    const IColor clrBgSecondary(255, 20, 20, 20);
+    const IColor clrBgTertiary(255, 26, 26, 26);
+    const IColor clrBorder(255, 42, 42, 42);
+    const IColor clrBorderBright(255, 61, 61, 61);
+    const IColor clrTextMain(255, 240, 240, 240);
+    const IColor clrTextDim(255, 160, 160, 160);
+    const IColor clrTextMuted(255, 96, 96, 96);
+    const IColor clrAccentRed(255, 217, 48, 48);
+    const IColor clrAccentGreen(255, 48, 217, 96);
+    const IColor clrAccentAmber(255, 217, 160, 48);
+    const IColor clrMetallicDark(255, 42, 42, 44);
+    const IColor clrMetallicMid(255, 74, 74, 78);
 
-    // Responsive spacing tokens (scale to current bounds)
+    // Layout dimensions - 8px grid system
     const IRECT b = pGraphics->GetBounds();
     const float uiScale = std::min(b.W() / static_cast<float>(PLUG_WIDTH), b.H() / static_cast<float>(PLUG_HEIGHT));
-    const float kEarWidth = 24.0f * uiScale;
-    const float kTelemetryWidth = 80.0f * uiScale;
-    const float kShatterWidth = 220.0f * uiScale;
-    const float kMainPadding = 12.0f * uiScale;
-    const float kLargeKnobSize = 120.0f * uiScale;
-    const float kShatterKnobSize = 180.0f * uiScale;
+    
+    // Grid units (8px base)
+    const float u = 8.0f * uiScale;
+    const float kHeaderHeight = 8u * uiScale;      // 64px
+    const float kFooterHeight = 4u * uiScale;      // 32px
+    const float kPanelWidth = 120.0f * uiScale;       // Input/Output panels
+    const float kPadding = 2u * uiScale;         // 16px
+    const float kGap = u;                      // 8px
+    const float kKnobSize = 80.0f * uiScale;    // Main knobs
+    const float kShatterSize = 100.0f * uiScale; // Shatter knob
 
-    // Reset keyboard-focusable control list for this layout
+    // Reset keyboard-focusable control list
     mKeyboardOrder.clear();
     mKeyboardFocusIdx = -1;
 
-    // Load screw SVG and generate per-instance random rotation angles
+    // Load screw SVG (static aligned, not random)
     ISVG screwSvg = pGraphics->LoadSVG(SCREW_SVG_FN);
     if (!screwSvg.IsValid()) {
       WDL_String fallbackPath;
       fallbackPath.SetFormatted(256, "%s/%s", SHARED_RESOURCES_SUBPATH, SCREW_SVG_FN);
       screwSvg = pGraphics->LoadSVG(fallbackPath.Get());
     }
-    std::array<float,4> screwAngles;
-    {
-      std::random_device rd;
-      std::mt19937 rng(rd());
-      std::uniform_real_distribution<float> dist(0.0f, 360.0f);
-      for (int i = 0; i < 4; ++i) screwAngles[i] = dist(rng);
-    }
 
-    // 19-inch Rackmount Background with Linear Gradients
-    pGraphics->AttachControl(new ILambdaControl(pGraphics->GetBounds(), 
-      [clrTitaniumBase, clrTitaniumDark, clrRackEar, kEarWidth, kShatterWidth, screwSvg, screwAngles](ILambdaControl* pCaller, IGraphics& g, IRECT& b) {
+    // BACKGROUND: Deep black with subtle border
+    pGraphics->AttachControl(new ILambdaControl(b, 
+      [clrBgPrimary, clrBgSecondary, clrBorder, clrMetallicDark, kHeaderHeight, kFooterHeight, screwSvg, u](ILambdaControl* pCaller, IGraphics& g, IRECT& r) {
+        // Main background
+        g.FillRect(clrBgPrimary, r);
         
-        // Linear gradient background
-        IPattern pattern = IPattern::CreateLinearGradient(b.L, b.T, b.L, b.B, {
-            {clrTitaniumDark, 0.0f},
-            {clrTitaniumBase, 0.5f},
-            {clrTitaniumDark, 1.0f}
-        });
-        g.PathRect(b);
-        g.PathFill(pattern);
+        // Header background (rackmount style)
+        IRECT headerRect = r.GetFromTop(kHeaderHeight);
+        g.FillRect(clrBgSecondary, headerRect);
         
-        // Rack Ears
-        g.FillRect(clrRackEar, b.GetFromLeft(kEarWidth));
-        g.FillRect(clrRackEar, b.GetFromRight(kEarWidth));
+        // Header bottom border
+        g.DrawLine(clrBorder, headerRect.L, headerRect.B, headerRect.R, headerRect.B, nullptr, 1.f);
         
-        // Screws (SVG heads, rotated randomly per instance)
-        IColor clrScrew = IColor(255, 50, 50, 50);
-        const float screwRadius = 10.0f * (kEarWidth / 24.0f); // scale with ui
-        const float screwSize = screwRadius * 2.0f;
-        const float sx[4] = { b.L + kEarWidth / 2.0f, b.L + kEarWidth / 2.0f, b.R - kEarWidth / 2.0f, b.R - kEarWidth / 2.0f };
-        const float sy[4] = { b.T + 40.0f, b.B - 40.0f, b.T + 40.0f, b.B - 40.0f };
-        for (int i = 0; i < 4; ++i) {
-          if (screwSvg.IsValid()) {
-            g.DrawRotatedSVG(screwSvg, sx[i], sy[i], screwSize, screwSize, screwAngles[i]);
-          } else {
-            g.DrawCircle(clrScrew, sx[i], sy[i], screwRadius, nullptr, 3.0f);
-          }
+        // Footer background
+        IRECT footerRect = r.GetFromBottom(kFooterHeight);
+        g.FillRect(clrBgSecondary, footerRect);
+        
+        // Footer top border
+        g.DrawLine(clrBorder, footerRect.L, footerRect.T, footerRect.R, footerRect.T, nullptr, 1.f);
+        
+        // Header screws (aligned, not random)
+        const float screwSize = 16.0f;
+        if (screwSvg.IsValid()) {
+          g.DrawRotatedSVG(screwSvg, headerRect.L + 20.f, headerRect.MH(), screwSize, screwSize, 45.f);
+          g.DrawRotatedSVG(screwSvg, headerRect.R - 20.f, headerRect.MH(), screwSize, screwSize, 45.f);
+        } else {
+          g.FillCircle(clrMetallicDark, headerRect.L + 20.f, headerRect.MH(), 6.f);
+          g.FillCircle(clrMetallicDark, headerRect.R - 20.f, headerRect.MH(), 6.f);
         }
-
-        // Rack Panel Dividers
-        g.DrawLine(clrTitaniumDark, b.L + kEarWidth + 100.0f, b.T, b.L + kEarWidth + 100.0f, b.B, nullptr, 3.f);
-        g.DrawLine(clrTitaniumDark, b.R - kEarWidth - (kShatterWidth), b.T, b.R - kEarWidth - (kShatterWidth), b.B, nullptr, 3.f);
       }, -1, false));
 
-    const IRECT innerBounds = b.GetReducedFromLeft(kEarWidth).GetReducedFromRight(kEarWidth);
+    // HEADER: MK-01 branding with Scratched Letters font
+    const IRECT headerTextRect = b.GetFromTop(kHeaderHeight);
+    pGraphics->AttachControl(new ITextControl(headerTextRect, "MK-01",
+      IText(static_cast<int>(28 * uiScale), clrTextMain, "Primary", EAlign::Center, EVAlign::Middle)));
 
-    // LEFT: Telemetry/VU Sidebar
-    const IRECT telemetryZone = innerBounds.GetFromLeft(kTelemetryWidth);
-    const IRECT vuMeterRect = telemetryZone.GetCentredInside(24).GetReducedFromTop(60).GetReducedFromBottom(60);
-    pGraphics->AttachControl(new IVMeterControl<1>(vuMeterRect, "",
-      DEFAULT_STYLE.WithColor(kFG, clrVuGreen).WithColor(kBG, clrTitaniumDark).WithDrawFrame(false),
-      EDirection::Vertical, {}, 0.f, 1.f, 0.f), kNoParameter, "VU_METER");
-
-    // BOTTOM/HEADER: Snare Brand
-    pGraphics->AttachControl(new ITextControl(telemetryZone.GetFromTop(70).GetTranslated(0, 20), 
-      "MK-01", IText(28, clrTextDim, "Arial", EAlign::Center, EVAlign::Middle)));
-
-    // Interactive Status Bar (Center-Bottom)
-    const IRECT statusRect = innerBounds.GetFromBottom(30.0f).GetPadded(-10.0f);
-    pGraphics->AttachControl(new ILambdaControl(statusRect, [this, clrTextDim, clrShatterRed](ILambdaControl* pCaller, IGraphics& g, IRECT& r) {
-      if (GetParam(kMidiLearn)->Bool()) {
-         g.DrawText(IText(12, clrShatterRed, "Arial", EAlign::Center, EVAlign::Middle), "WAITING FOR MIDI CC...", r);
-         pCaller->StartAnimation(1000);
-         float alpha = 0.5f + 0.5f * std::sin(pCaller->GetAnimationProgress() * 2.0 * M_PI);
-         g.FillRect(clrShatterRed.WithOpacity(0.1f * alpha), r);
-      } else {
-         g.DrawText(IText(10, clrTextDim, "Arial", EAlign::Near, EVAlign::Middle), "METALLIC SNARE MK-01 // READY", r);
-      }
-    }, -1, false));
-
-    // Hover tooltip: shows param name + value when pointer is over a control
-    const IRECT tipRect = IRECT(innerBounds.MW() - 140.0f, innerBounds.T + 8.0f, innerBounds.MW() + 140.0f, innerBounds.T + 40.0f);
-    pGraphics->AttachControl(new ILambdaControl(tipRect, [this, clrTextMain, clrTextDim](ILambdaControl* pCaller, IGraphics& g, IRECT& r) {
-      const int idx = GetHoverParam();
-      if (idx < 0 || idx >= kNumParams) return;
-      const char* name = "";
-      char valBuf[64] = {0};
-      if (idx == kShatter) {
-        name = "SHATTER"; sprintf(valBuf, "%d%%", static_cast<int>(std::round(GetParam(idx)->Value() * 100.0)));
-      } else if (idx == kTension) { name = "TENSION"; sprintf(valBuf, "%.2f", GetParam(idx)->Value()); }
-      else if (idx == kPang) { name = "PANG"; sprintf(valBuf, "%.2f", GetParam(idx)->Value()); }
-      else if (idx == kGrit) { name = "GRIT"; sprintf(valBuf, "%.2f", GetParam(idx)->Value()); }
-      else if (idx == kPunch) { name = "PUNCH"; sprintf(valBuf, "%.2f", GetParam(idx)->Value()); }
-      else if (idx == kWeight) { 
-        WDL_String display;
-        GetParam(idx)->GetDisplay(display);
-        sprintf(valBuf, "%s", display.Get());
-      }
-
-      // Background pill
-      g.PathRoundRect(r.GetPadded(6.0f), 6.0f);
-      g.PathFill(IPattern::CreateLinearGradient(r.L, r.T, r.L, r.B, {{IColor(220,20,20,20), 0.0f}, {IColor(200,30,30,30), 1.0f}}));
-
-      // Draw name + value
-      IRECT nameRect = IRECT(r.L + 8.0f, r.T, r.MW(), r.B);
-      IRECT valRect = IRECT(r.MW(), r.T, r.R - 8.0f, r.B);
-      g.DrawText(IText(14, clrTextDim, "Arial", EAlign::Near, EVAlign::Middle), name, nameRect);
-      g.DrawText(IText(14, clrTextMain, "Courier", EAlign::Far, EVAlign::Middle), valBuf, valRect);
-    }, -1, false));
-
-    // MIDI learn toggle in telemetry zone
-    const float midiW = 64.0f * uiScale;
-    const float midiH = 26.0f * uiScale;
-    const IRECT midiRect = IRECT(telemetryZone.MW() - midiW * 0.5f, telemetryZone.B - 64.0f * uiScale, telemetryZone.MW() + midiW * 0.5f, telemetryZone.B - 64.0f * uiScale + midiH);
-    pGraphics->AttachControl(new IVToggleControl(midiRect, kMidiLearn, "MIDI", DEFAULT_STYLE.WithLabelText(IText(12, clrTextDim, "Arial", EAlign::Center, EVAlign::Middle)).WithShowLabel(true)), kNoParameter, "MIDI_LEARN_TOGGLE");
-
-    // RIGHT: Massive Shatter Zone
-    const IRECT shatterZone = innerBounds.GetFromRight(kShatterWidth);
+    // Main content area
+    const IRECT content = b.GetReducedFromTop(kHeaderHeight).GetReducedFromBottom(kFooterHeight);
     
-    // Warning background overlay
-    pGraphics->AttachControl(new ILambdaControl(shatterZone, 
-      [clrShatterRed](ILambdaControl* pCaller, IGraphics& g, IRECT& b) {
-        g.DrawLine(clrShatterRed.WithOpacity(0.3f), b.L + 20.0f, b.T + 20.0f, b.L + 20.0f, b.B - 20.0f, nullptr, 6.0f);
-        g.DrawLine(clrShatterRed.WithOpacity(0.3f), b.R - 20.0f, b.T + 20.0f, b.R - 20.0f, b.B - 20.0f, nullptr, 6.0f);
-      }, -1, false));
+    // INPUT PANEL (left) - Tether/Input controls
+    const IRECT inputPanel = content.GetFromLeft(kPanelWidth).GetPadded(kPadding);
+    
+    // VU Meter
+    const IRECT vuRect = inputPanel.GetFromTop(100.0f * uiScale).GetPadded(kGap);
+    pGraphics->AttachControl(new IVMeterControl<1>(vuRect, "",
+      DEFAULT_STYLE.WithColor(kFG, clrAccentGreen).WithColor(kBG, clrBgSecondary).WithDrawFrame(false),
+      EDirection::Vertical, {}, 0.f, 1.f, 0.f), kNoParameter, "VU_METER");
+    
+    // VU Label
+    const IRECT vuLabelRect = IRECT(vuRect.L, vuRect.B + 4.0f * uiScale, vuRect.R, vuRect.B + 16.0f * uiScale);
+    pGraphics->AttachControl(new ITextControl(vuLabelRect, "LEVEL",
+      IText(static_cast<int>(10 * uiScale), clrTextMuted, "Secondary", EAlign::Center, EVAlign::Middle)));
+    
+    // MIDI toggle
+    const float midiW = 56.0f * uiScale;
+    const float midiH = 24.0f * uiScale;
+    const IRECT midiRect = IRECT(inputPanel.MW() - midiW * 0.5f, inputPanel.B - 48.0f * uiScale, inputPanel.MW() + midiW * 0.5f, inputPanel.B - 48.0f * uiScale + midiH);
+    pGraphics->AttachControl(new IVToggleControl(midiRect, kMidiLearn, "MIDI",
+      DEFAULT_STYLE.WithLabelText(IText(static_cast<int>(10 * uiScale), clrTextDim, "Secondary", EAlign::Center, EVAlign::Middle)).WithShowLabel(true)), kNoParameter, "MIDI_LEARN_TOGGLE");
 
+    // OUTPUT PANEL (right) - Shatter/Output controls
+    const IRECT outputPanel = content.GetFromRight(kPanelWidth).GetPadded(kPadding);
+    
+    // Shatter label
+    const IRECT shatterLabelRect = outputPanel.GetFromTop(20.0f * uiScale);
+    pGraphics->AttachControl(new ITextControl(shatterLabelRect, "SHATTER",
+      IText(static_cast<int>(10 * uiScale), clrTextMuted, "Secondary", EAlign::Center, EVAlign::Middle)));
+    
+    // Load knob SVG
     ISVG knobSvg = pGraphics->LoadSVG(KNOB_SVG_FN);
 
-    // Red styled, massive knob for SHATTER
+    // SHATTER knob (main)
     const IVStyle shatterStyle = DEFAULT_STYLE
-      .WithColor(kFG, clrShatterRed)
-      .WithColor(kBG, clrTitaniumDark)
-      .WithLabelText(IText(32, clrShatterRed, "Arial", EAlign::Center, EVAlign::Top))
-      .WithValueText(IText(22, clrTextMain, "Courier", EAlign::Center, EVAlign::Bottom))
+      .WithColor(kFG, clrAccentRed)
+      .WithColor(kBG, clrBgSecondary)
       .WithShowLabel(false)
-      .WithShowValue(false)
-      .WithWidgetFrac(1.0f);
+      .WithShowValue(false);
 
-    const IRECT shatterKnobRect = shatterZone.GetCentredInside(kShatterKnobSize).GetTranslated(0, 10);
-    {
-      auto* pShatterKnob = new ClophSVGKnobControl(shatterKnobRect, kShatter, "", shatterStyle, knobSvg);
-      pGraphics->AttachControl(pShatterKnob);
-      mKeyboardOrder.push_back(pShatterKnob);
-    }
+    const IRECT shatterKnobRect = outputPanel.GetCentredInside(kShatterSize).GetTranslated(0, 24.0f * uiScale);
+    auto* pShatterKnob = new ClophSVGKnobControl(shatterKnobRect, kShatter, "", shatterStyle, knobSvg, clrAccentRed);
+    pGraphics->AttachControl(pShatterKnob);
+    mKeyboardOrder.push_back(pShatterKnob);
 
-    // SHATTER ARM toggle (safe / armed) - explicit arming for full destructive range
-    const IRECT armRect = IRECT(shatterZone.R - (84.0f * std::min(pGraphics->GetBounds().W() / static_cast<float>(PLUG_WIDTH), pGraphics->GetBounds().H() / static_cast<float>(PLUG_HEIGHT))), shatterZone.T + 12.0f, shatterZone.R - 12.0f, shatterZone.T + 48.0f);
-    pGraphics->AttachControl(new IVToggleControl(armRect, kShatterArm, "ARM", DEFAULT_STYLE.WithLabelText(IText(12, clrTextDim, "Arial", EAlign::Center, EVAlign::Middle)).WithShowLabel(true)), kNoParameter, "SHATTER_ARM");
+    // ARM toggle inline with shatter
+    const IRECT armRect = IRECT(outputPanel.MW() - 28.0f * uiScale, shatterKnobRect.B - 28.0f * uiScale, outputPanel.MW() + 28.0f * uiScale, shatterKnobRect.B - 4.0f * uiScale);
+    pGraphics->AttachControl(new IVToggleControl(armRect, kShatterArm, "ARM",
+      DEFAULT_STYLE.WithLabelText(IText(static_cast<int>(10 * uiScale), clrTextDim, "Secondary", EAlign::Center, EVAlign::Middle)).WithShowLabel(true)), kNoParameter, "SHATTER_ARM");
 
-    // Clip LED (reads from audio thread peak)
-    const float uiScaleForClip = std::min(pGraphics->GetBounds().W() / static_cast<float>(PLUG_WIDTH), pGraphics->GetBounds().H() / static_cast<float>(PLUG_HEIGHT));
-    const IRECT clipRect = IRECT(shatterZone.R - 40.0f * uiScaleForClip, shatterZone.B - 40.0f * uiScaleForClip, shatterZone.R - 12.0f * uiScaleForClip, shatterZone.B - 12.0f * uiScaleForClip);
-    pGraphics->AttachControl(new ILambdaControl(clipRect, [this, clrShatterRed](ILambdaControl* pCaller, IGraphics& g, IRECT& r) {
+    // Clip LED
+    const IRECT clipRect = IRECT(outputPanel.R - 24.0f * uiScale, outputPanel.B - 24.0f * uiScale, outputPanel.R - 4.0f * uiScale, outputPanel.B - 4.0f * uiScale);
+    pGraphics->AttachControl(new ILambdaControl(clipRect, [this, clrAccentRed, clrBgTertiary](ILambdaControl* pCaller, IGraphics& g, IRECT& r) {
       const float peak = mPeak.load();
       if (peak > 0.85f) {
-        g.FillCircle(clrShatterRed, r.MW(), r.MH(), std::max(6.f, r.W() * 0.25f));
-        pCaller->StartAnimation(200); // Glow decay
+        g.FillCircle(clrAccentRed, r.MW(), r.MH(), r.W() * 0.4f);
+        pCaller->StartAnimation(200);
         float glow = static_cast<float>(pCaller->GetAnimationProgress());
-        g.DrawCircle(clrShatterRed.WithOpacity(0.4f * (1.0f - glow)), r.MW(), r.MH(), r.W() * 0.4f, nullptr, 2.0f);
+        g.DrawCircle(clrAccentRed.WithOpacity(0.4f * (1.0f - glow)), r.MW(), r.MH(), r.W() * 0.45f, nullptr, 2.0f);
       } else {
-        g.FillCircle(IColor(255, 40, 40, 40), r.MW(), r.MH(), std::max(4.f, r.W() * 0.18f));
+        g.FillCircle(clrBgTertiary, r.MW(), r.MH(), r.W() * 0.35f);
       }
     }, -1, false));
 
-    // CENTER: Control Board (Dials)
-    // Area left between Telemetry and Shatter
-    const IRECT mainBoard = innerBounds.GetReducedFromLeft(kTelemetryWidth).GetReducedFromRight(kShatterWidth).GetPadded(-kMainPadding);
+    // CENTER PANEL: Body Synthesis Controls - Tight grid layout
+    const IRECT centerPanel = content.GetReducedFromLeft(kPanelWidth).GetReducedFromRight(kPanelWidth);
+    
+    // Grid: 3 columns x 2 rows with consistent spacing
+    const float gridCols = 3.0f;
+    const float gridRows = 2.0f;
+    const float gridPadding = 16.0f * uiScale;
+    const float gridGapX = 24.0f * uiScale;
+    const float gridGapY = 24.0f * uiScale;
+    
+    const float gridW = centerPanel.W() - gridPadding * 2;
+    const float gridH = centerPanel.H() - 48.0f * uiScale; // space for label
+    const float knobW = (gridW - gridGapX * (gridCols - 1)) / gridCols;
+    const float knobH = (gridH - gridGapY * (gridRows - 1)) / gridRows;
+    const float knobSize = std::min(knobW, knobH);
+    
+    // Column positions
+    const float col1 = centerPanel.L + gridPadding;
+    const float col2 = col1 + knobSize + gridGapX;
+    const float col3 = col2 + knobSize + gridGapX;
+    
+    // Row positions (top row = tuning, bottom row = character)
+    const float row1 = centerPanel.T + 40.0f * uiScale;
+    const float row2 = row1 + knobSize + gridGapY;
+    
+    // Group labels
+    const IRECT labelRow1 = IRECT(centerPanel.L, centerPanel.T + 8.0f * uiScale, centerPanel.R, centerPanel.T + 28.0f * uiScale);
+    pGraphics->AttachControl(new ITextControl(labelRow1, "TUNING",
+      IText(static_cast<int>(10 * uiScale), clrTextMuted, "Secondary", EAlign::Center, EVAlign::Middle)));
+    const IRECT labelRow2 = IRECT(centerPanel.L, row2 - 24.0f * uiScale, centerPanel.R, row2 - 4.0f * uiScale);
+    pGraphics->AttachControl(new ITextControl(labelRow2, "CHARACTER",
+      IText(static_cast<int>(10 * uiScale), clrTextMuted, "Secondary", EAlign::Center, EVAlign::Middle)));
 
     const IVStyle dialStyle = DEFAULT_STYLE
-      .WithColor(kFG, clrVuGreen)
-      .WithColor(kBG, clrTitaniumDark)
-      .WithLabelText(IText(18, clrTextDim, "Courier", EAlign::Center, EVAlign::Top))
-      .WithValueText(IText(14, clrVuGreen, "Courier", EAlign::Center, EVAlign::Bottom))
+      .WithColor(kFG, clrAccentGreen)
+      .WithColor(kBG, clrBgSecondary)
       .WithShowLabel(false)
-      .WithShowValue(false)
-      .WithWidgetFrac(0.85f);
+      .WithShowValue(false);
 
-    // 5 knobs, arranged in a dense, staggered layout to use the space effectively
-    // Let's do a large 2x2 grid for the main 4, and the 5th (PANG) centered at the bottom or top
-    // For visual rhythm:
-    // TENSION   WEIGHT
-    //   PUNCH
-    // PANG      GRIT
+    // Top row: TENSION | WEIGHT | PUNCH
+    IRECT rTension = IRECT(col1, row1, col1 + knobSize, row1 + knobSize);
+    IRECT rWeight = IRECT(col2, row1, col2 + knobSize, row1 + knobSize);
+    IRECT rPunch = IRECT(col3, row1, col3 + knobSize, row1 + knobSize);
     
-    float rowH = mainBoard.H() / 3.0f;
-    float colW = mainBoard.W() / 2.0f;
-    float sz = kLargeKnobSize; // prominent size for inner dials
-    
-    // Top Row
-    IRECT rTension = IRECT(mainBoard.L, mainBoard.T, mainBoard.L + colW, mainBoard.T + rowH).GetCentredInside(sz).GetTranslated(0, 20);
-    IRECT rWeight = IRECT(mainBoard.L + colW, mainBoard.T, mainBoard.R, mainBoard.T + rowH).GetCentredInside(sz).GetTranslated(0, 20);
-    
-    // Middle Row (Centered)
-    IRECT rPunch = IRECT(mainBoard.L, mainBoard.T + rowH, mainBoard.R, mainBoard.T + rowH * 2).GetCentredInside(sz + 30.0f); // Slightly larger center
-    
-    // Bottom Row
-    IRECT rPang = IRECT(mainBoard.L, mainBoard.T + rowH * 2, mainBoard.L + colW, mainBoard.B).GetCentredInside(sz).GetTranslated(0, -20);
-    IRECT rGrit = IRECT(mainBoard.L + colW, mainBoard.T + rowH * 2, mainBoard.R, mainBoard.B).GetCentredInside(sz).GetTranslated(0, -20);
+    // Bottom row: PANG | GRIT | (spacer)
+    IRECT rPang = IRECT(col1, row2, col1 + knobSize, row2 + knobSize);
+    IRECT rGrit = IRECT(col2, row2, col2 + knobSize, row2 + knobSize);
 
-    {
-      auto* pTension = new ClophSVGKnobControl(rTension, kTension, "", dialStyle, knobSvg);
-      pGraphics->AttachControl(pTension);
-      mKeyboardOrder.push_back(pTension);
+    auto* pTension = new ClophSVGKnobControl(rTension, kTension, "", dialStyle, knobSvg, clrAccentAmber);
+    pGraphics->AttachControl(pTension);
+    mKeyboardOrder.push_back(pTension);
 
-      auto* pWeight = new ClophSVGKnobControl(rWeight, kWeight, "", dialStyle, knobSvg);
-      pGraphics->AttachControl(pWeight);
-      mKeyboardOrder.push_back(pWeight);
+    auto* pWeight = new ClophSVGKnobControl(rWeight, kWeight, "", dialStyle, knobSvg, clrTextMain);
+    pGraphics->AttachControl(pWeight);
+    mKeyboardOrder.push_back(pWeight);
 
-      auto* pPunch = new ClophSVGKnobControl(rPunch, kPunch, "", dialStyle.WithColor(kFG, clrTitaniumLight), knobSvg);
-      pGraphics->AttachControl(pPunch);
-      mKeyboardOrder.push_back(pPunch);
+    auto* pPunch = new ClophSVGKnobControl(rPunch, kPunch, "", dialStyle.WithColor(kFG, clrTextDim), knobSvg, clrAccentAmber);
+    pGraphics->AttachControl(pPunch);
+    mKeyboardOrder.push_back(pPunch);
 
-      auto* pPang = new ClophSVGKnobControl(rPang, kPang, "", dialStyle, knobSvg);
-      pGraphics->AttachControl(pPang);
-      mKeyboardOrder.push_back(pPang);
+    auto* pPang = new ClophSVGKnobControl(rPang, kPang, "", dialStyle, knobSvg, clrAccentGreen);
+    pGraphics->AttachControl(pPang);
+    mKeyboardOrder.push_back(pPang);
 
-      auto* pGrit = new ClophSVGKnobControl(rGrit, kGrit, "", dialStyle, knobSvg);
-      pGraphics->AttachControl(pGrit);
-      mKeyboardOrder.push_back(pGrit);
-    }
+    auto* pGrit = new ClophSVGKnobControl(rGrit, kGrit, "", dialStyle, knobSvg, clrAccentRed);
+    pGraphics->AttachControl(pGrit);
+    mKeyboardOrder.push_back(pGrit);
 
-    // Numeric readouts under knobs (improves discoverability & precision)
-    auto attachReadout = [&](const IRECT& knobRect, int paramIdx) {
-      const IRECT readRect = IRECT(knobRect.L, knobRect.B - 28.0f * uiScale, knobRect.R, knobRect.B);
-      pGraphics->AttachControl(new ILambdaControl(readRect, [this, paramIdx, clrTextMain](ILambdaControl* pCaller, IGraphics& g, IRECT& r) {
-        char buf[64];
+    // Value readouts below each knob
+    auto attachReadout = [&](const IRECT& knobRect, int paramIdx, IColor textColor) {
+      const IRECT readRect = IRECT(knobRect.L, knobRect.B + 4.0f * uiScale, knobRect.R, knobRect.B + 20.0f * uiScale);
+      pGraphics->AttachControl(new ILambdaControl(readRect, [this, paramIdx, textColor, uiScale](ILambdaControl* pCaller, IGraphics& g, IRECT& r) {
+        char buf[32];
         if (paramIdx == kWeight) {
           WDL_String display;
           GetParam(paramIdx)->GetDisplay(display);
           strcpy(buf, display.Get());
-        } else if (paramIdx == kShatter) {
-          sprintf(buf, "%d%%", static_cast<int>(std::round(GetParam(paramIdx)->Value() * 100.0)));
         } else {
-          sprintf(buf, "%.2f", GetParam(paramIdx)->Value());
+          sprintf(buf, "%.0f%%", GetParam(paramIdx)->Value() * 100.0);
         }
-        g.DrawText(IText(12, clrTextMain, "Courier", EAlign::Center, EVAlign::Middle), buf, r);
+        g.DrawText(IText(static_cast<int>(11 * uiScale), textColor, "Secondary", EAlign::Center, EVAlign::Middle), buf, r);
       }, -1, false));
     };
 
-    attachReadout(shatterKnobRect, kShatter);
-    attachReadout(rTension, kTension);
-    attachReadout(rWeight, kWeight);
-    attachReadout(rPunch, kPunch);
-    attachReadout(rPang, kPang);
-    attachReadout(rGrit, kGrit);
+    attachReadout(rTension, kTension, clrAccentAmber);
+    attachReadout(rWeight, kWeight, clrTextMain);
+    attachReadout(rPunch, kPunch, clrTextDim);
+    attachReadout(rPang, kPang, clrAccentGreen);
+    attachReadout(rGrit, kGrit, clrAccentRed);
+    attachReadout(shatterKnobRect, kShatter, clrAccentRed);
 
-    // Global key handler: forward key events to the currently focused control (if any)
+    // FOOTER: Status bar
+    const IRECT statusRect = b.GetFromBottom(kFooterHeight).GetPadded(kGap);
+    pGraphics->AttachControl(new ILambdaControl(statusRect, [this, clrTextDim, clrAccentRed, uiScale](ILambdaControl* pCaller, IGraphics& g, IRECT& r) {
+      if (GetParam(kMidiLearn)->Bool()) {
+        g.DrawText(IText(static_cast<int>(10 * uiScale), clrAccentRed, "Secondary", EAlign::Center, EVAlign::Middle), "WAITING FOR MIDI CC...", r);
+        pCaller->StartAnimation(1000);
+        float alpha = 0.5f + 0.5f * std::sin(pCaller->GetAnimationProgress() * 2.0 * M_PI);
+        g.FillRect(clrAccentRed.WithOpacity(0.08f * alpha), r);
+      } else {
+        g.DrawText(IText(static_cast<int>(10 * uiScale), clrTextDim, "Secondary", EAlign::Center, EVAlign::Middle), "METALLIC SNARE // READY", r);
+      }
+    }, -1, false));
+
+    // Hover tooltip
+    const IRECT tipRect = IRECT(b.MW() - 110.0f, b.T + kHeaderHeight + 6.0f, b.MW() + 110.0f, b.T + kHeaderHeight + 32.0f);
+    pGraphics->AttachControl(new ILambdaControl(tipRect, [this, clrTextMain, clrTextDim, clrBgTertiary, clrBorder, uiScale](ILambdaControl* pCaller, IGraphics& g, IRECT& r) {
+      const int idx = GetHoverParam();
+      if (idx < 0 || idx >= kNumParams) return;
+      const char* name = "";
+      char valBuf[32] = {0};
+      if (idx == kShatter) { name = "SHATTER"; sprintf(valBuf, "%d%%", static_cast<int>(std::round(GetParam(idx)->Value() * 100.0))); }
+      else if (idx == kTension) { name = "TENSION"; sprintf(valBuf, "%.0f%%", GetParam(idx)->Value() * 100.0); }
+      else if (idx == kPang) { name = "PANG"; sprintf(valBuf, "%.0f%%", GetParam(idx)->Value() * 100.0); }
+      else if (idx == kGrit) { name = "GRIT"; sprintf(valBuf, "%.0f%%", GetParam(idx)->Value() * 100.0); }
+      else if (idx == kPunch) { name = "PUNCH"; sprintf(valBuf, "%.0f%%", GetParam(idx)->Value() * 100.0); }
+      else if (idx == kWeight) { name = "WEIGHT"; WDL_String display; GetParam(idx)->GetDisplay(display); sprintf(valBuf, "%s", display.Get()); }
+
+      g.PathRoundRect(r.GetPadded(6.0f), 6.0f);
+      g.PathFill(clrBgTertiary);
+      g.PathStroke(clrBorder, 1.0f);
+
+      IRECT nameRect = IRECT(r.L + 10.f, r.T, r.MW(), r.B);
+      IRECT valRect = IRECT(r.MW(), r.T, r.R - 10.f, r.B);
+      g.DrawText(IText(static_cast<int>(11 * uiScale), clrTextDim, "Secondary", EAlign::Near, EVAlign::Middle), name, nameRect);
+      g.DrawText(IText(static_cast<int>(12 * uiScale), clrTextMain, "Secondary", EAlign::Far, EVAlign::Middle), valBuf, valRect);
+    }, -1, false));
+
+    // Keyboard handler
     pGraphics->SetKeyHandlerFunc([this](const IKeyPress& key, bool isUp) -> bool {
       if (mKeyboardFocusIdx < 0 || mKeyboardFocusIdx >= static_cast<int>(mKeyboardOrder.size())) return false;
-      if (isUp) return false; // only handle key-down events here
+      if (isUp) return false;
       IControl* c = mKeyboardOrder[mKeyboardFocusIdx];
       return c->OnKeyDown(0.0f, 0.0f, key);
     });
-
-    // Keyboard-visible tooltip for focused control (ARIA-like label/value)
-    const IRECT focusTipRect = IRECT(innerBounds.MW() - 140.0f, innerBounds.T + 44.0f, innerBounds.MW() + 140.0f, innerBounds.T + 76.0f);
-    pGraphics->AttachControl(new ILambdaControl(focusTipRect, [this, clrTextMain, clrTextDim](ILambdaControl* pCaller, IGraphics& g, IRECT& r) {
-      if (mKeyboardFocusIdx < 0 || mKeyboardFocusIdx >= static_cast<int>(mKeyboardOrder.size())) return;
-      IControl* c = mKeyboardOrder[mKeyboardFocusIdx];
-      IVKnobControl* knob = static_cast<IVKnobControl*>(c);
-      const int idx = knob->GetParamIdx();
-      const char* name = "";
-      char valBuf[64] = {0};
-      if (idx == kShatter) { name = "SHATTER"; sprintf(valBuf, "%d%%", static_cast<int>(std::round(GetParam(idx)->Value() * 100.0))); }
-      else if (idx == kTension) { name = "TENSION"; sprintf(valBuf, "%.2f", GetParam(idx)->Value()); }
-      else if (idx == kPang) { name = "PANG"; sprintf(valBuf, "%.2f", GetParam(idx)->Value()); }
-      else if (idx == kGrit) { name = "GRIT"; sprintf(valBuf, "%.2f", GetParam(idx)->Value()); }
-      else if (idx == kPunch) { name = "PUNCH"; sprintf(valBuf, "%.2f", GetParam(idx)->Value()); }
-      else if (idx == kWeight) { WDL_String display; GetParam(idx)->GetDisplay(display); sprintf(valBuf, "%s", display.Get()); }
-
-      // Background pill
-      g.PathRoundRect(r.GetPadded(6.0f), 6.0f);
-      g.PathFill(IPattern::CreateLinearGradient(r.L, r.T, r.L, r.B, {{IColor(220,20,20,20), 0.0f}, {IColor(200,30,30,30), 1.0f}}));
-
-      // Draw name + value
-      IRECT nameRect = IRECT(r.L + 8.0f, r.T, r.MW(), r.B);
-      IRECT valRect = IRECT(r.MW(), r.T, r.R - 8.0f, r.B);
-      g.DrawText(IText(14, clrTextDim, "Arial", EAlign::Near, EVAlign::Middle), name, nameRect);
-      g.DrawText(IText(14, clrTextMain, "Courier", EAlign::Far, EVAlign::Middle), valBuf, valRect);
-    }, -1, false));
   };
 #endif
 }

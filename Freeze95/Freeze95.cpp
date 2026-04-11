@@ -72,6 +72,10 @@ float Snap4(float value) {
   return 4.f * std::round(value / 4.f);
 }
 
+float Snap8(float value) {
+  return 8.f * std::round(value / 8.f);
+}
+
 float EaseSmooth(float t) {
   t = Clamp01(t);
   return t * t * (3.f - 2.f * t);
@@ -816,8 +820,9 @@ void FormatPercentDisplay(double normalizedValue, WDL_String& str) {
 
 void FormatBpmDisplay(const IParam* param, double normalizedValue, WDL_String& str) {
   const double bpm = param ? param->FromNormalized(normalizedValue) : normalizedValue;
+  const double clampedBpm = std::max(20.0, std::min(300.0, bpm));
   char buffer[32];
-  std::snprintf(buffer, sizeof(buffer), "%0.1f", bpm);
+  std::snprintf(buffer, sizeof(buffer), "%0.1f", clampedBpm);
   str.Set(buffer);
 }
 
@@ -854,8 +859,9 @@ const char* GetKnobStateLabel(int paramIdx, float normalizedValue) {
 
 void FormatKnobReadout(int paramIdx, double normalizedValue, WDL_String& str) {
   const float value = Clamp01(static_cast<float>(normalizedValue));
+  const float percentValue = std::round(value * 100.f);
   char buffer[48];
-  std::snprintf(buffer, sizeof(buffer), "%s %0.0f%%", GetKnobStateLabel(paramIdx, value), value * 100.f);
+  std::snprintf(buffer, sizeof(buffer), "%s %0.0f%%", GetKnobStateLabel(paramIdx, value), percentValue);
   str.Set(buffer);
 }
 
@@ -870,8 +876,20 @@ public:
 
   void Draw(IGraphics& g) override {
     if (GetValue() < 0.5) {
-      g.FillRect(WithAlpha(kShellDeep, 76), mRECT);
-      g.DrawRect(WithAlpha(kShellDark, 104), mRECT);
+      g.FillRect(WithAlpha(kShellDeep, 112), mRECT);
+      const IRECT centerBand(mRECT.L + mRECT.W() * 0.12f,
+                             mRECT.MH() - 22.f,
+                             mRECT.R - mRECT.W() * 0.12f,
+                             mRECT.MH() + 22.f);
+      g.FillRoundRect(WithAlpha(kShellDeep, 68), centerBand, 8.f);
+      DrawUtilityText(g,
+                      16.f,
+                      WithAlpha(kCoolOn, 178),
+                      EAlign::Center,
+                      EVAlign::Middle,
+                      "BYPASSED",
+                      centerBand.GetPadded(-8.f));
+      g.DrawRect(WithAlpha(kShellDark, 124), mRECT);
     }
   }
 };
@@ -1079,7 +1097,7 @@ public:
 
   void OnResize() override {
     const float footerH = 56.f;
-    const IRECT knobArea(mRECT.L + 8.f, mRECT.T + 4.f, mRECT.R - 8.f, mRECT.B - footerH + 2.f);
+    const IRECT knobArea(mRECT.L + 8.f, mRECT.T + 8.f, mRECT.R - 8.f, mRECT.B - footerH);
     const float socketSize = std::min(knobArea.W(), knobArea.H());
     mSocketBounds = knobArea.GetCentredInside(socketSize, socketSize);
     // Label sits in a taller band above value; value gets generous room at bottom
@@ -1590,7 +1608,7 @@ public:
   }
 
   void OnResize() override {
-    mFieldBounds = IRECT(mRECT.L + 4.f, mRECT.T + 8.f, mRECT.R - 4.f, mRECT.B - 4.f);
+    mFieldBounds = IRECT(mRECT.L + 8.f, mRECT.T + 8.f, mRECT.R - 8.f, mRECT.B - 8.f);
     SetTargetRECT(mFieldBounds);
   }
 
@@ -2146,36 +2164,36 @@ void Freeze95::LayoutUI(IGraphics* g) {
 
   // Allow user to scale the window between 50 % (small laptop DAW) and 200 %
   // (4K display comfort), snapping the entire vector scene.
-  g->SetScaleConstraints(0.5f, 2.0f);
+  g->SetScaleConstraints(0.65f, 2.0f);
 
-  const float outerMargin = Snap4(ClampValue(w * 0.029f, 20.f, 32.f));
-  const float spaceTight = Snap4(ClampValue(w * 0.016f, 12.f, 20.f));
-  const float spaceSection = Snap4(ClampValue(w * 0.031f, 24.f, 36.f));
-  const float spaceIsolation = Snap4(ClampValue(w * 0.041f, 28.f, 44.f));
+  const float outerMargin = Snap8(ClampValue(w * 0.029f, 24.f, 32.f));
+  const float spaceTight = Snap8(ClampValue(w * 0.016f, 8.f, 16.f));
+  const float spaceSection = Snap8(ClampValue(w * 0.031f, 24.f, 40.f));
+  const float spaceIsolation = Snap8(ClampValue(w * 0.041f, 24.f, 48.f));
 
-  const float brandPlateTop = Snap4(ClampValue(h * 0.170f, 44.f, 60.f));
-  const float brandPlateHeight = Snap4(ClampValue(h * 0.101f, 28.f, 40.f));
+  const float brandPlateTop = Snap8(ClampValue(h * 0.170f, 40.f, 64.f));
+  const float brandPlateHeight = Snap8(ClampValue(h * 0.101f, 32.f, 40.f));
   const float badgePlateTop = brandPlateTop;
-  const float badgePlateHeight = Snap4(std::max(24.f, brandPlateHeight - 4.f));
+  const float badgePlateHeight = Snap8(std::max(24.f, brandPlateHeight - 8.f));
 
-  const float headerGap = Snap4(ClampValue(h * 0.039f, 8.f, 20.f));
+  const float headerGap = Snap8(ClampValue(h * 0.039f, 8.f, 24.f));
   const float majorTop = brandPlateTop + brandPlateHeight + headerGap;
   const float lowerMargin = Snap4(ClampValue(h * 0.071f, 20.f, 28.f));
   const float majorBottom = h - lowerMargin;
   const float majorHeight = std::max(152.f, majorBottom - majorTop);
 
-  float chaosWidth = Snap4(ClampValue(w * 0.219f, 152.f, 188.f));
-  float loFiWidth = Snap4(ClampValue(w * 0.196f, 144.f, 176.f));
-  float powerWidth = Snap4(ClampValue(w * 0.146f, 112.f, 132.f));
+  float chaosWidth = Snap8(ClampValue(w * 0.219f, 152.f, 192.f));
+  float loFiWidth = Snap8(ClampValue(w * 0.196f, 144.f, 176.f));
+  float powerWidth = Snap8(ClampValue(w * 0.146f, 112.f, 136.f));
 
-  const float logoPlateWidth = Snap4(ClampValue(chaosWidth * 1.04f, 168.f, 208.f));
-  const float badgePlateWidth = Snap4(ClampValue(loFiWidth * 0.90f, 136.f, 168.f));
+  const float logoPlateWidth = Snap8(ClampValue(chaosWidth * 1.04f, 168.f, 208.f));
+  const float badgePlateWidth = Snap8(ClampValue(loFiWidth * 0.90f, 136.f, 168.f));
 
-  const float bpmPanelTop = majorTop + Snap4(ClampValue(majorHeight * 0.23f, 24.f, 40.f));
-  const float bpmPanelBottom = majorBottom - Snap4(ClampValue(majorHeight * 0.20f, 20.f, 36.f));
-  const float toggleSize = Snap4(std::max(kMinTouchTargetSize + 8.f,
-                                          ClampValue((bpmPanelBottom - bpmPanelTop) * 0.60f, 56.f, 76.f)));
-  const float toggleFieldGap = 12.f;
+  const float bpmPanelTop = majorTop + Snap8(ClampValue(majorHeight * 0.23f, 24.f, 40.f));
+  const float bpmPanelBottom = majorBottom - Snap8(ClampValue(majorHeight * 0.20f, 24.f, 40.f));
+  const float toggleSize = Snap8(std::max(kMinTouchTargetSize + 4.f,
+                                          ClampValue((bpmPanelBottom - bpmPanelTop) * 0.60f, 56.f, 80.f)));
+  const float toggleFieldGap = 8.f;
 
   float bpmGroupWidth = w - outerMargin * 2.f - chaosWidth - loFiWidth - powerWidth
                         - spaceTight - spaceSection - spaceIsolation;
@@ -2252,9 +2270,9 @@ void Freeze95::LayoutUI(IGraphics* g) {
     brandLogoShadow));
   g->AttachControl(new MonitorBadgePlateControl(badgePlateBounds, "Freeze95"));
 
-  const float macroTopInset = Snap4(ClampValue(majorHeight * 0.03f, 4.f, 12.f));
-  const float macroBottomInset = Snap4(ClampValue(majorHeight * 0.04f, 6.f, 16.f));
-  const float loFiTopOffset = Snap4(ClampValue(majorHeight * 0.045f, 8.f, 16.f));
+  const float macroTopInset = Snap8(ClampValue(majorHeight * 0.03f, 8.f, 16.f));
+  const float macroBottomInset = Snap8(ClampValue(majorHeight * 0.04f, 8.f, 16.f));
+  const float loFiTopOffset = Snap8(ClampValue(majorHeight * 0.045f, 8.f, 16.f));
 
   const IRECT chaosBounds(outerMargin,
                           majorTop + macroTopInset,
@@ -2265,7 +2283,7 @@ void Freeze95::LayoutUI(IGraphics* g) {
                          chaosBounds.R + spaceTight + loFiWidth,
                          majorBottom - macroBottomInset - Snap4(4.f));
   const float bpmGroupLeft = loFiBounds.R + spaceSection;
-  const float syncTop = bpmPanelTop + (bpmPanelBottom - bpmPanelTop - toggleSize) * 0.5f;
+  const float syncTop = Snap8(bpmPanelTop + (bpmPanelBottom - bpmPanelTop - toggleSize) * 0.5f);
   const IRECT syncBounds(bpmGroupLeft, syncTop, bpmGroupLeft + toggleSize, syncTop + toggleSize);
   const float bpmPanelLeft = syncBounds.R + toggleFieldGap;
   const IRECT bpmBounds(bpmPanelLeft, bpmPanelTop, bpmGroupLeft + bpmGroupWidth, bpmPanelBottom);
@@ -2273,10 +2291,10 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const float powerBottom = majorBottom - macroBottomInset;
   const IRECT powerBounds(w - outerMargin - powerWidth, powerTop,
                           w - outerMargin, powerBottom);
-  const IRECT transportPanelBounds(syncBounds.L - Snap4(10.f),
-                                   bpmPanelTop - Snap4(12.f),
-                                   bpmBounds.R + Snap4(12.f),
-                                   bpmPanelBottom + Snap4(12.f));
+  const IRECT transportPanelBounds(syncBounds.L - Snap8(8.f),
+                                   bpmPanelTop - Snap8(16.f),
+                                   bpmBounds.R + Snap8(16.f),
+                                   bpmPanelBottom + Snap8(16.f));
 
   g->AttachControl(new TransportGroupPanelControl(
     transportPanelBounds,

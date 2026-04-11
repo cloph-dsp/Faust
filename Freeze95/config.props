@@ -3,6 +3,7 @@
   <PropertyGroup Label="UserMacros">
     <IPLUG2_ROOT>$(ProjectDir)..\..\..</IPLUG2_ROOT>
     <BINARY_NAME>Freeze95</BINARY_NAME>
+    <EXTRA_INC_PATHS>$(SolutionDir)</EXTRA_INC_PATHS>
     <EXTRA_ALL_DEFS>IGRAPHICS_NANOVG;IGRAPHICS_GL2</EXTRA_ALL_DEFS>
     <EXTRA_DEBUG_DEFS />
     <EXTRA_RELEASE_DEFS />
@@ -59,6 +60,10 @@ CALL "$(SolutionDir)scripts\postbuild-freeze95-resources.bat" "$(BUILD_DIR)\$(BI
     </BuildMacro>
     <BuildMacro Include="CREATE_BUNDLE_SCRIPT">
       <Value>$(CREATE_BUNDLE_SCRIPT)</Value>
+    </BuildMacro>
+    <BuildMacro Include="EXTRA_INC_PATHS">
+      <Value>$(EXTRA_INC_PATHS)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
     </BuildMacro>
   </ItemGroup>
 </Project>

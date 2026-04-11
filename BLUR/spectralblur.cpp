@@ -10,8 +10,17 @@ namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kTwoPi = 6.28318530717958647692f;
-constexpr std::array<int, 8> kFftSizeMenu = {512, 1024, 2048, 4096, 8192, 16384, 32768, 65536};
-constexpr int kFixedFftSizeIndex = 5;
+constexpr int kLutSize = 4096;
+const std::array<std::complex<float>, kLutSize> kSinCosLut = []
+{
+    std::array<std::complex<float>, kLutSize> lut {};
+    for (int i = 0; i < kLutSize; ++i)
+    {
+        const float angle = kTwoPi * static_cast<float>(i) / static_cast<float>(kLutSize);
+        lut[static_cast<size_t>(i)] = std::complex<float>(std::cos(angle), std::sin(angle));
+    }
+    return lut;
+}();
 
 float onePoleCoeff(double sampleRate, double timeSeconds)
 {
@@ -66,7 +75,7 @@ void Processor::setParameters(const Parameters& parameters)
     sanitized.loBinCutoffPercent = clamp(sanitized.loBinCutoffPercent, 0.0f, 100.0f);
     sanitized.hiBinCutoffPercent = clamp(sanitized.hiBinCutoffPercent, sanitized.loBinCutoffPercent, 100.0f);
     sanitized.outputGainDb = clamp(sanitized.outputGainDb, -40.0f, 40.0f);
-    sanitized.fftSizeIndex = kFixedFftSizeIndex;
+    sanitized.fftSizeIndex = 5;
 
     const int desiredFftSize = fftSizeFromIndex(sanitized.fftSizeIndex);
     const bool fftSizeChanged = desiredFftSize != fftSize_;
@@ -147,6 +156,8 @@ void Processor::processBlock(const float* const* inputs, float* const* outputs, 
 
         if (samplesSinceLastFrame_ >= hopSize_) {
             samplesSinceLastFrame_ = 0;
+            channelCallCount_ = 0;
+            frameStartPrbs_ = prbs_;
             // Advance all analysis-domain smoothers once per hop.
             updateAnalysisSmoothers();
 
@@ -154,14 +165,12 @@ void Processor::processBlock(const float* const* inputs, float* const* outputs, 
                 const float framePeakAmplitude = computeFramePeakAmplitude();
                 const float blurDepth = blurShape(computeEffectiveBlur(framePeakAmplitude));
                 // VOICING PASS: "Frozen in time" — spectral evolution nearly stops at max blur.
-                // Increased multipliers (18→32 magnitude, 10→22 phase) keep spectral frames
-                // held much longer, creating a crystallized freeze effect. At blurDepth=1.0,
-                // magnitudeFrames=33 (~3s hold at 44.1kHz/4096), phaseFrames=23 (~2.2s).
-                // This locks drums/transients into a persistent spectral snapshot.
-                const float magnitudeFrames = 1.0f + blurDepth * 32.0f;
-                const float phaseFrames = 1.0f + blurDepth * 22.0f;
-                const float magnitudeAlpha = clamp(1.0f - 1.0f / magnitudeFrames, 0.0f, 0.995f);
-                const float phaseAlpha = clamp(1.0f - 1.0f / phaseFrames, 0.0f, 0.9925f);
+                // Increased multipliers (32→72 magnitude, 22→48 phase) keep spectral frames
+                // held much longer, creating a crystallized, massively washed-out freeze effect.
+                const float magnitudeFrames = 1.0f + blurDepth * 72.0f;
+                const float phaseFrames = 1.0f + blurDepth * 48.0f;
+                const float magnitudeAlpha = clamp(1.0f - 1.0f / magnitudeFrames, 0.0f, 0.998f);
+                const float phaseAlpha = clamp(1.0f - 1.0f / phaseFrames, 0.0f, 0.995f);
                 // Reduce phase randomization at high blur to lock in phase coherence for crystalline feel
                 const float phaseRandomizeMix = smoothed_.randomizePhaseBlend * std::pow(blurDepth, 1.5f);
 
@@ -182,6 +191,8 @@ void Processor::processBlock(const float* const* inputs, float* const* outputs, 
                 for (int channel = 0; channel < activeChannels; ++channel) {
                     analyseFrame(states_[channel], loBin, hiBin, magnitudeAlpha, phaseAlpha, phaseRandomizeMix, blurDepth);
                 }
+
+                prbs_ = prbs32(prbs_);
             }
         }
     }
@@ -189,7 +200,7 @@ void Processor::processBlock(const float* const* inputs, float* const* outputs, 
 
 void Processor::rebuildBuffers(int numChannels)
 {
-    fftSize_ = fftSizeFromIndex(kFixedFftSizeIndex);
+    fftSize_ = fftSizeFromIndex(5);
     hopSize_ = fftSize_ / 4;
     // Per-hop smoothing blend: equivalent of applying per-sample smoothingBlend_
     // exactly hopSize_ times.  smoothingCoeff_ is already set by prepare() before
@@ -199,7 +210,7 @@ void Processor::rebuildBuffers(int numChannels)
     overlapAddMask_ = (fftSize_ * 8) - 1;
     positiveBinCount_ = fftSize_ / 2 + 1;
     nyquistBin_ = fftSize_ / 2;
-    fftSizeNorm_ = static_cast<float>(kFixedFftSizeIndex) / static_cast<float>(kFftSizeMenu.size() - 1);
+    fftSizeNorm_ = 5.0f / 7.0f;
 
     const float safeSampleRate = static_cast<float>(std::max(1.0, sampleRate_));
     const float hopSamples = static_cast<float>(hopSize_);
@@ -240,7 +251,6 @@ void Processor::rebuildBuffers(int numChannels)
 
     for (int channel = 0; channel < numChannels; ++channel) {
         ChannelState& state = states_[channel];
-        std::uniform_real_distribution<float> phaseDistribution(-kPi, kPi);
 
         state.inputHistory.assign(fftSize_, 0.0f);
         state.inputWriteIndex = 0;
@@ -252,11 +262,12 @@ void Processor::rebuildBuffers(int numChannels)
         state.smoothedPhaseAdvance.assign(positiveBinCount_, 0.0f);
         state.synthPhase.assign(positiveBinCount_, 0.0f);
         state.phaseRotationAngles.assign(positiveBinCount_, 0.0f);
-        state.randomGenerator.seed(0x12345u + static_cast<unsigned>(channel * 7919) + static_cast<unsigned>(fftSize_));
+        state.prbsState = 0xACE1u + static_cast<unsigned>(channel * 7919);
 
-        for (int bin = 1; bin < positiveBinCount_ - 1; ++bin) {
-            state.phaseRotationAngles[bin] = phaseDistribution(state.randomGenerator);
-        }
+        // We don't pre-populate phaseRotationAngles with random values anymore.
+        // It's just used as per-bin persistent phase offsets if needed.
+        // But actually the PRBS does that per-bin in analyseFrame.
+        // For backwards compatibility of the struct memory we leave it zeroed.
 
         state.hasAnalysisHistory = false;
     }
@@ -286,6 +297,8 @@ void Processor::analyseFrame(
     const int nyquistBin = nyquistBin_;
     const bool initializeHistory = !state.hasAnalysisHistory;
 
+    uint32_t binPrbsState = frameStartPrbs_;
+
     for (int bin = 0; bin <= nyquistBin; ++bin) {
         const std::complex<float> inputBin = state.fftBuffer[bin];
         const float magnitude = std::abs(inputBin);
@@ -307,8 +320,19 @@ void Processor::analyseFrame(
 
             if (phaseRandomizeMix > 0.0f && bin > 0 && bin < nyquistBin) {
                 const float phaseGlassyWeight = 0.35f + 0.65f * binNorm;
-                const float phaseOffset = state.phaseRotationAngles[bin] * phaseRandomizeMix * phaseGlassyWeight;
-                state.fftBuffer[bin] = inputBin * std::polar(1.0f, phaseOffset);
+                
+                binPrbsState = prbs32(binPrbsState);
+                const int lutIdx = static_cast<int>(binPrbsState & static_cast<uint32_t>(kLutSize - 1));
+                const std::complex<float> randUnit = kSinCosLut[static_cast<size_t>(lutIdx)];
+
+                // phaseGlassyWeight acts to scale down the randomization, we can blend identity vs randUnit
+                const float blendWeight = phaseRandomizeMix * phaseGlassyWeight;
+                const std::complex<float> blended {
+                    randUnit.real() * blendWeight + (1.0f - blendWeight),
+                    randUnit.imag() * blendWeight
+                };
+
+                state.fftBuffer[bin] = inputBin * blended;
             } else {
                 state.fftBuffer[bin] = inputBin;
             }
@@ -366,8 +390,18 @@ void Processor::analyseFrame(
 
         if (phaseRandomizeMix > 0.0f && bin > 0 && bin < nyquistBin) {
             const float phaseGlassyWeight = 0.35f + 0.65f * binNorm;
-            const float phaseOffset = state.phaseRotationAngles[bin] * phaseRandomizeMix * phaseGlassyWeight;
-            blurredBin *= std::polar(1.0f, phaseOffset);
+            
+            binPrbsState = prbs32(binPrbsState);
+            const int lutIdx = static_cast<int>(binPrbsState & static_cast<uint32_t>(kLutSize - 1));
+            const std::complex<float> randUnit = kSinCosLut[static_cast<size_t>(lutIdx)];
+
+            const float blendWeight = phaseRandomizeMix * phaseGlassyWeight;
+            const std::complex<float> blended {
+                randUnit.real() * blendWeight + (1.0f - blendWeight),
+                randUnit.imag() * blendWeight
+            };
+            
+            blurredBin *= blended;
         }
 
         // Blend between the unmodified analysis bin and the PV output.
@@ -380,9 +414,7 @@ void Processor::analyseFrame(
         state.hasAnalysisHistory = true;
     }
 
-    if (phaseRandomizeMix > 0.0f) {
-        rotatePhaseTable(state, loBin, hiBin);
-    }
+    // rotatePhaseTable is removed
 
     state.fftBuffer[0] = std::complex<float>(state.fftBuffer[0].real(), 0.0f);
     state.fftBuffer[nyquistBin] = std::complex<float>(state.fftBuffer[nyquistBin].real(), 0.0f);
@@ -533,18 +565,7 @@ void Processor::updateTargetFromParameters()
 
 void Processor::rotatePhaseTable(ChannelState& state, int loBin, int hiBin)
 {
-    const int startBin = std::max(1, loBin);
-    const int endBin = std::min(hiBin, fftSize_ / 2 - 1);
-    const int span = endBin - startBin + 1;
-
-    if (span <= 1) {
-        return;
-    }
-
-    std::uniform_int_distribution<int> prefixDistribution(1, span - 1);
-    const int prefixLength = prefixDistribution(state.randomGenerator);
-    auto begin = state.phaseRotationAngles.begin() + startBin;
-    std::rotate(begin, begin + prefixLength, begin + span);
+    // Function obsolete; left stub for compatibility if declared
 }
 
 void Processor::fft(std::vector<std::complex<float>>& values, bool inverse)
@@ -623,6 +644,12 @@ int Processor::fftSizeFromIndex(int fftSizeIndex)
 {
     (void) fftSizeIndex;
     return kFftSizeMenu[static_cast<size_t>(kFixedFftSizeIndex)];
+}
+
+uint32_t Processor::prbs32(uint32_t x) noexcept
+{
+    const uint32_t mask = static_cast<uint32_t>(-static_cast<int32_t>(x & 1u));
+    return (x >> 1) ^ (mask & 0xD0000001u);
 }
 
 }  // namespace spectralblur

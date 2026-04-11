@@ -40,3 +40,6 @@
 
 #define KNOB_SVG_FN "metallic_knob.svg"
 #define SCREW_SVG_FN "metallic_screw_head.svg"
+
+#define FONT_PRIMARY_FN "Scratched Letters.otf"
+#define FONT_SECONDARY_FN "Fresco Stamp.ttf"

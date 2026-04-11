@@ -1,0 +1,74 @@
+# ============================================================
+# CognitoniBlkFx - Projucer-first repository
+# Keep only source + .jucer + docs/assets required to regenerate
+# ============================================================
+
+# Generated JUCE project output
+Builds/
+JuceLibraryCode/
+
+# Local reference
+reference/
+context.md
+
+# Binary/artifact outputs
+*.dll
+*.lib
+*.exp
+*.ilk
+*.pdb
+*.exe
+*.app
+*.dylib
+*.so
+*.vst
+*.vst3
+*.component
+*.aaxplugin
+*.lv2
+
+# Object/intermediate files
+*.obj
+*.o
+*.lo
+*.la
+*.d
+*.idb
+*.tlog
+*.ipdb
+*.iobj
+
+# CMake/Ninja/Meson (if used locally)
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+build/
+out/
+.ninja_*
+
+# macOS / Linux / Windows cruft
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+
+# IDE/editor
+.vscode/
+.idea/
+*.suo
+*.user
+*.VC.db
+*.VC.opendb
+*.opensdf
+*.sdf
+*.swp
+*.tmp
+
+# Logs / temp
+*.log
+*.bak
+*.orig
+*.temp
+*.cache

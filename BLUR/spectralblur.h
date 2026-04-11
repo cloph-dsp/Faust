@@ -62,7 +62,7 @@ private:
         std::vector<float> synthPhase;
         std::vector<float> phaseRotationAngles;
 
-        std::minstd_rand randomGenerator{0x12345u};
+        uint32_t prbsState;
         bool hasAnalysisHistory = false;
         float hopPeak = 0.0f;
     };
@@ -93,6 +93,7 @@ private:
     static float dbToLinear(float db);
     static float sanitizeSample(float x);
     static int fftSizeFromIndex(int fftSizeIndex);
+    static uint32_t prbs32(uint32_t x) noexcept;
 
     Parameters parameters_;
     SmoothedRuntime smoothed_;
@@ -122,6 +123,10 @@ private:
     std::vector<int> fftBitReversal_;
     std::vector<std::complex<float>> fftStageTwiddleIncrements_;
     std::vector<ChannelState> states_;
+
+    uint32_t prbs_ = 0xACE1u;
+    uint32_t frameStartPrbs_ = 0xACE1u;
+    int channelCallCount_ = 0;
 
     int totalSamplesSeen_ = 0;
     int samplesSinceLastFrame_ = 0;
