@@ -19,6 +19,9 @@ BRAND_LOGO_SHADOW_FN     SVG   BRAND_LOGO_SHADOW_FN
 // Utility / label font (in resources/)
 UTILITY_UI_FN  TTF  UTILITY_UI_FN
 
+// Tertiary UI font (in resources/)
+TERTIARY_UI_FN  TTF  TERTIARY_UI_FN
+
 // DOS / pixel font — sits one level up from resources/
 GOOD_OLD_DOS_RES  TTF  "..\Freeze95DOS.ttf"
 

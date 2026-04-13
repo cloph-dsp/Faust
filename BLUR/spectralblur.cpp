@@ -10,6 +10,8 @@ namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kTwoPi = 6.28318530717958647692f;
+constexpr std::array<int, 8> kFftSizeMenu = {512, 1024, 2048, 4096, 8192, 16384, 32768, 65536};
+constexpr int kFixedFftSizeIndex = 5;
 constexpr int kLutSize = 4096;
 const std::array<std::complex<float>, kLutSize> kSinCosLut = []
 {

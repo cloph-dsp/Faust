@@ -26,6 +26,7 @@ namespace {
 constexpr float kPi = 3.14159265358979323846f;
 constexpr const char* kDOSFontID = "DOSFont";
 constexpr const char* kFallbackFontID = "UIFontFallback";
+constexpr const char* kTertiaryFontID = "UITertiaryFont";
 constexpr const char* kUtilityFontID = "UIUtilityFont";
 constexpr float kRetroTTFSizeScale = 0.9f;
 constexpr float kMinTouchTargetSize = 44.f;
@@ -33,6 +34,7 @@ constexpr float kMinTouchTargetSize = 44.f;
 const char* gActiveFontID = kDOSFontID;
 bool gUsePixelTextFallback = true;
 bool gUseUtilityFont = false;
+bool gUseTertiaryFont = false;
 
 const IColor kShellBg         {255, 168, 159, 145};
 const IColor kShellFace       {255, 211, 197, 148};
@@ -133,6 +135,12 @@ void FillPatternCircle(IGraphics& g, float cx, float cy, float radius, const IPa
   g.PathFill(pattern, IFillOptions(), blend);
 }
 
+void FillPatternEllipse(IGraphics& g, float cx, float cy, float rx, float ry, const IPattern& pattern,
+                        const IBlend* blend = nullptr) {
+  g.PathEllipse(cx, cy, rx, ry);
+  g.PathFill(pattern, IFillOptions(), blend);
+}
+
 const char* GetActiveFontID() {
   return gActiveFontID;
 }
@@ -149,12 +157,20 @@ bool ShouldUseUtilityFont() {
   return gUseUtilityFont;
 }
 
+bool ShouldUseTertiaryFont() {
+  return gUseTertiaryFont;
+}
+
 void SetUsePixelTextFallback(bool usePixelTextFallback) {
   gUsePixelTextFallback = usePixelTextFallback;
 }
 
 void SetUseUtilityFont(bool useUtilityFont) {
   gUseUtilityFont = useUtilityFont;
+}
+
+void SetUseTertiaryFont(bool useTertiaryFont) {
+  gUseTertiaryFont = useTertiaryFont;
 }
 
 IText MakeUIText(float size, const IColor& color, EAlign align, EVAlign valign) {
@@ -164,6 +180,10 @@ IText MakeUIText(float size, const IColor& color, EAlign align, EVAlign valign) 
 IText MakeUtilityText(float size, const IColor& color, EAlign align, EVAlign valign) {
   const char* fontID = ShouldUseUtilityFont() ? kUtilityFontID : kFallbackFontID;
   return IText{size, color, fontID, align, valign};
+}
+
+IText MakeTertiaryText(float size, const IColor& color, EAlign align, EVAlign valign) {
+  return IText{size, color, kTertiaryFontID, align, valign};
 }
 
 struct PixelGlyph {
@@ -484,14 +504,27 @@ void DrawRetroText(IGraphics& g, float requestedSize, const IColor& color,
 }
 
 void DrawUtilityText(IGraphics& g, float size, const IColor& color,
-                     EAlign align, EVAlign valign, const char* text, const IRECT& bounds) {
+                     EAlign align, EVAlign valign,
+                     const char* text, const IRECT& bounds) {
   if (!text || !text[0]) {
     return;
   }
 
   const char* fontID = ShouldUseUtilityFont() ? kUtilityFontID : kFallbackFontID;
-  const float fittedSize = FitTextSizeToBounds(g, fontID, text, size, bounds, 8.f);
-  g.DrawText(MakeUtilityText(fittedSize, color, align, valign), text, bounds);
+  const float fitted = FitTextSizeToBounds(g, fontID, text, size, bounds, 8.f);
+  g.DrawText(IText{fitted, color, fontID, align, valign}, text, bounds);
+}
+
+void DrawTertiaryText(IGraphics& g, float size, const IColor& color,
+                      EAlign align, EVAlign valign,
+                      const char* text, const IRECT& bounds) {
+  if (!text || !text[0]) {
+    return;
+  }
+
+  const char* fontID = ShouldUseTertiaryFont() ? kTertiaryFontID : kFallbackFontID;
+  const float fitted = FitTextSizeToBounds(g, fontID, text, size, bounds, 8.f);
+  g.DrawText(IText{fitted, color, fontID, align, valign}, text, bounds);
 }
 
 IColor GetValidationAlertColor() {
@@ -690,17 +723,12 @@ bool LoadFallbackUIFont(IGraphics* g) {
     return true;
   }
 
-#ifdef OS_WIN
-  if (LoadBundledFont(g, kFallbackFontID, ROBOTO_FN)) {
-    return true;
-  }
-#endif
 
-  if (g->LoadFont(kFallbackFontID, ROBOTO_FN)) {
+  if (g->LoadFont(kFallbackFontID, "Courier New", ETextStyle::Normal)) {
     return true;
   }
 
-  return g->LoadFont(kFallbackFontID, "Courier New", ETextStyle::Normal);
+  return g->LoadFont(kFallbackFontID, "Arial", ETextStyle::Normal);
 }
 
 bool LoadUtilityUIFont(IGraphics* g) {
@@ -708,12 +736,11 @@ bool LoadUtilityUIFont(IGraphics* g) {
     return false;
   }
 
-#ifdef OS_WIN
   if (LoadBundledFont(g, kUtilityFontID, UTILITY_UI_FN)) {
     return true;
   }
-#endif
 
+#ifdef OS_WIN
   if (g->LoadFont(kUtilityFontID, UTILITY_UI_FN)) {
     return true;
   }
@@ -721,9 +748,34 @@ bool LoadUtilityUIFont(IGraphics* g) {
   if (g->LoadFont(kUtilityFontID, "Segoe UI", ETextStyle::Normal)) {
     return true;
   }
+#endif
 
   return g->LoadFont(kUtilityFontID, "Tahoma", ETextStyle::Normal);
 }
+
+bool LoadTertiaryUIFont(IGraphics* g) {
+  if (!g) {
+    return false;
+  }
+
+  if (LoadBundledFont(g, kTertiaryFontID, TERTIARY_UI_FN)) {
+    return true;
+  }
+
+#ifdef OS_WIN
+  if (g->LoadFont(kTertiaryFontID, TERTIARY_UI_FN)) {
+    return true;
+  }
+
+  if (g->LoadFont(kTertiaryFontID, "Trebuchet MS", ETextStyle::Normal)) {
+    return true;
+  }
+#endif
+
+  return g->LoadFont(kTertiaryFontID, "Verdana", ETextStyle::Normal);
+}
+
+
 
 bool TryLoadDOSFont(IGraphics* g, const char* fontID) {
   bool fontLoaded = false;
@@ -752,19 +804,31 @@ const char* LoadActiveDOSFont(IGraphics* g) {
 }
 
 void FillClassicPanel(IGraphics& g, const IRECT& bounds, const IColor& fill,
-                      bool sunken = false, float thickness = 1.f) {
-  g.FillRect(fill, bounds);
-  DrawBevel(g, bounds,
-            sunken ? kShellDark : kShellLight,
-            sunken ? kShellLight : kShellDark,
-            thickness);
+                      bool sunken = false, float thickness = 1.f, float radius = 0.f) {
+  if (radius > 0.0f) {
+    g.FillRoundRect(fill, bounds, radius);
+    g.DrawRoundRect(sunken ? kShellDark : kShellLight, bounds.GetTranslated(-0.5f, -0.5f), radius, nullptr, thickness);
+    g.DrawRoundRect(sunken ? kShellLight : kShellDark, bounds.GetTranslated(0.5f, 0.5f), radius, nullptr, thickness);
 
-  const IRECT inner = bounds.GetPadded(-1.f);
-  if (inner.W() > 2.f && inner.H() > 2.f) {
-    DrawBevel(g, inner,
-              sunken ? kFieldInset : kShellFace,
-              sunken ? kShellLight : kFieldInset,
+    const IRECT inner = bounds.GetPadded(-1.f);
+    if (inner.W() > 2.f && inner.H() > 2.f) {
+      g.DrawRoundRect(sunken ? kFieldInset : kShellFace, inner.GetTranslated(-0.5f, -0.5f), radius, nullptr, thickness);
+      g.DrawRoundRect(sunken ? kShellLight : kFieldInset, inner.GetTranslated(0.5f, 0.5f), radius, nullptr, thickness);
+    }
+  } else {
+    g.FillRect(fill, bounds);
+    DrawBevel(g, bounds,
+              sunken ? kShellDark : kShellLight,
+              sunken ? kShellLight : kShellDark,
               thickness);
+
+    const IRECT inner = bounds.GetPadded(-1.f);
+    if (inner.W() > 2.f && inner.H() > 2.f) {
+      DrawBevel(g, inner,
+                sunken ? kFieldInset : kShellFace,
+                sunken ? kShellLight : kFieldInset,
+                thickness);
+    }
   }
 }
 
@@ -956,24 +1020,24 @@ public:
 
     g.FillRect(kShellBg, mRECT);
 
-    const IRECT shell = mRECT.GetPadded(-1.f);
-    g.FillRoundRect(kShellBg, shell, 14.f);
-    g.DrawRoundRect(WithAlpha(kShellLight, 170), shell.GetTranslated(-0.3f, -0.3f), 14.f, nullptr, 1.4f);
-    g.DrawRoundRect(WithAlpha(kShellDeep, 145), shell, 14.f, nullptr, 1.5f);
+    const IRECT shell = mRECT.GetPadded(-8.f);
+    g.FillRoundRect(kShellBg, shell, 16.f);
+    g.DrawRoundRect(WithAlpha(kShellLight, 170), shell.GetTranslated(-0.3f, -0.3f), 16.f, nullptr, 1.4f);
+    g.DrawRoundRect(WithAlpha(kShellDeep, 145), shell, 16.f, nullptr, 1.5f);
 
     const IRECT face = shell.GetPadded(-4.f);
-    g.FillRoundRect(kShellFace, face, 11.f);
-    g.DrawRoundRect(WithAlpha(kShellLight, 150), face.GetTranslated(-0.2f, -0.2f), 11.f, nullptr, 1.0f);
-    g.DrawRoundRect(WithAlpha(kShellDark, 140), face, 11.f, nullptr, 1.0f);
+    g.FillRoundRect(kShellFace, face, 8.f);
+    g.DrawRoundRect(WithAlpha(kShellLight, 150), face.GetTranslated(-0.2f, -0.2f), 8.f, nullptr, 1.0f);
+    g.DrawRoundRect(WithAlpha(kShellDark, 140), face, 8.f, nullptr, 1.0f);
 
-    const IRECT topSeam(face.L + face.W() * 0.34f, face.T + 18.f,
-                        face.R - face.W() * 0.34f, face.T + 23.f);
-    g.FillRoundRect(WithAlpha(kShellDeep, 86), topSeam, 2.5f);
-    g.DrawLine(WithAlpha(kShellLight, 110), topSeam.L + 3.f, topSeam.T - 1.f,
-               topSeam.R - 3.f, topSeam.T - 1.f, nullptr, 1.f);
+    const IRECT topSeam(face.L + face.W() * 0.34f, face.T + 16.f,
+                        face.R - face.W() * 0.34f, face.T + 24.f);
+    g.FillRoundRect(WithAlpha(kShellDeep, 86), topSeam, 4.f);
+    g.DrawLine(WithAlpha(kShellLight, 110), topSeam.L + 4.f, topSeam.T - 1.f,
+               topSeam.R - 4.f, topSeam.T - 1.f, nullptr, 1.f);
 
-    const IRECT lowerLip(face.L + 14.f, face.B - 62.f, face.R - 14.f, face.B - 10.f);
-    g.FillRoundRect(BlendColor(kShellFace, kShellMid, 0.16f), lowerLip, 9.f);
+    const IRECT lowerLip(face.L + 16.f, face.B - 64.f, face.R - 16.f, face.B - 8.f);
+    g.FillRoundRect(BlendColor(kShellFace, kShellMid, 0.16f), lowerLip, 8.f);
     g.DrawLine(WithAlpha(kShellLight, 108), lowerLip.L + 8.f, lowerLip.T + 1.f,
                lowerLip.R - 8.f, lowerLip.T + 1.f, nullptr, 1.f);
     g.DrawLine(WithAlpha(kShellDark, 110), lowerLip.L + 8.f, lowerLip.B - 1.f,
@@ -983,7 +1047,6 @@ public:
     DrawDustTexture(g, face);
     DrawMonitorGlassOverlay(g, mRECT, powerOn);
     DrawPowerPulseOverlay(g);
-
   }
 
   void OnEndAnimation() override {
@@ -1344,13 +1407,13 @@ public:
         const float readoutSize = 18.5f + mReadoutPulse * 0.9f;
         const IColor readoutBase = active ? kFieldText : BlendColor(kShellText, kFieldText, 0.28f);
         const IColor readoutColor = BlendColor(readoutBase, kCoolOn, 0.24f * Clamp01(mReadoutPulse));
-    DrawUtilityText(g,
-                readoutSize,
-                readoutColor,
-                    EAlign::Center,
-                    EVAlign::Middle,
-                    valueTextStr.Get(),
-                    mValueBounds);
+    DrawTertiaryText(g,
+                     readoutSize,
+                     readoutColor,
+                     EAlign::Center,
+                     EVAlign::Middle,
+                     valueTextStr.Get(),
+                     mValueBounds);
   }
 
 protected:
@@ -1409,41 +1472,45 @@ public:
     mIgnoreMouse = true;
   }
 
+  bool IsSyncEnabled() {
+    auto* delegate = GetDelegate();
+    if (delegate) {
+      if (const IParam* syncParam = delegate->GetParam(kParamSync)) {
+        return syncParam->Value() > 0.5;
+      }
+    }
+    return false;
+  }
+
   void Draw(IGraphics& g) override {
     if (!g.CheckLayer(mLayer)) {
       g.StartLayer(this, mRECT);
       const IRECT panel = mRECT.GetPadded(-1.f);
-      g.FillRoundRect(WithAlpha(kShellDeep, 30), panel.GetTranslated(0.f, 2.f), 9.f);
-      FillClassicPanel(g, panel, BlendColor(kShellFace, kFieldFace, 0.17f), true, 1.f);
+      g.FillRoundRect(WithAlpha(kShellDeep, 30), panel.GetTranslated(0.f, 2.f), 8.f);
+      FillClassicPanel(g, panel, BlendColor(kShellFace, kFieldFace, 0.17f), true, 1.f, 8.f);
       g.DrawRoundRect(WithAlpha(kShellLight, 72), panel.GetPadded(-2.f), 8.f, nullptr, 0.9f);
       
-      // Hardware weathering on the transport panel (dirty hardware look)
       const float w = panel.W();
       const float h = panel.H();
       
-      // Large dust/grime smudges
       g.FillCircle(WithAlpha(kShellDeep, 7), panel.L + w * 0.15f, panel.T + h * 0.8f, h * 0.4f);
       g.FillCircle(WithAlpha(IColor{15, 60, 56, 50}, 5), panel.R - w * 0.1f, panel.B - h * 0.3f, h * 0.5f);
       g.FillCircle(WithAlpha(IColor{20, 85, 78, 70}, 8), panel.MW(), panel.MH() - h * 0.2f, h * 0.6f);
       
-      // Speckled oxidation
       g.FillCircle(WithAlpha(IColor{28, 80, 76, 68}, 14), panel.L + 12.f, panel.B - 8.f, 1.2f);
       g.FillCircle(WithAlpha(IColor{22, 92, 86, 79}, 11), panel.R - 18.f, panel.T + 12.f, 0.8f);
       g.FillCircle(WithAlpha(IColor{18, 70, 64, 58}, 16), panel.MW() + 24.f, panel.B - 6.f, 1.5f);
       g.FillCircle(WithAlpha(IColor{12, 50, 46, 40}, 10), panel.MW() - 32.f, panel.T + 8.f, 0.7f);
       g.FillCircle(WithAlpha(IColor{24, 88, 82, 75}, 12), panel.L + 28.f, panel.B - 14.f, 1.1f);
       
-      // Surface scratches and wear marks
       g.DrawLine(WithAlpha(IColor{32, 72, 68, 60}, 16), panel.L + 8.f, panel.MH() + 4.f, panel.L + 22.f, panel.MH() - 2.f, nullptr, 0.7f);
       g.DrawLine(WithAlpha(IColor{28, 65, 60, 54}, 18), panel.R - 15.f, panel.B - 12.f, panel.R - 5.f, panel.B - 4.f, nullptr, 0.9f);
       g.DrawLine(WithAlpha(kShellDeep, 20), panel.MW() - 10.f, panel.T + 6.f, panel.MW() + 15.f, panel.T + 12.f, nullptr, 0.6f);
       g.DrawLine(WithAlpha(IColor{20, 55, 50, 45}, 14), panel.MW() + 40.f, panel.B - 18.f, panel.MW() + 52.f, panel.B - 8.f, nullptr, 0.8f);
 
-      const float dividerX = panel.L + ClampValue(w * 0.26f, 56.f, 74.f);
-      g.DrawLine(WithAlpha(kShellDark, 112), dividerX, panel.T + 24.f, dividerX, panel.B - 8.f, nullptr, 1.f);
-      g.DrawLine(WithAlpha(kShellLight, 88), dividerX + 1.f, panel.T + 24.f, dividerX + 1.f, panel.B - 8.f, nullptr, 1.f);
-      DrawUtilityText(g, 16.5f, kShellText, EAlign::Near, EVAlign::Middle, "TEMPO",
-                      IRECT(panel.L + 8.f, panel.T + 2.f, dividerX - 8.f, panel.T + 20.f));
+      // Removed "TEMPO" text and explicit background line to fix alignment
+      // and prevent text bleeding behind the toggle button.
+      
       mLayer = g.EndLayer();
     }
     g.DrawLayer(mLayer);
@@ -1521,7 +1588,8 @@ public:
   }
 
   void OnResize() override {
-    const float size = std::max(18.f, std::min(mRECT.W(), mRECT.H()) - 10.f);
+    const float targetSize = Snap8(std::min(mRECT.W(), mRECT.H()));
+    const float size = std::max(kMinTouchTargetSize, targetSize - Snap8(8.f));
     mButtonBounds = mRECT.GetCentredInside(size, size);
     SetTargetRECT(mRECT);
   }
@@ -1534,7 +1602,11 @@ public:
     const float cx = mButtonBounds.MW() + shiftX;
     const float cy = mButtonBounds.MH() + (mMouseDown ? 1.8f : 0.f) + mPulse * 0.35f + shiftY;
     const float ringR = mButtonBounds.W() * 0.52f;
-    const float glow = Clamp01(mVisualManual * 0.92f + mPulse * 0.42f);
+    
+    // Add hover state modifier logic
+    const bool isHovered = GetMouseIsOver();
+    const float hoverGlow = isHovered ? 0.15f : 0.f;
+    const float glow = Clamp01(mVisualManual * 0.92f + mPulse * 0.42f + hoverGlow);
 
     if (glow > 0.01f) {
       g.FillCircle(WithAlpha(kCoolGlow, static_cast<int>(118.f * glow)), cx, cy, ringR + 2.f);
@@ -1608,7 +1680,9 @@ public:
   }
 
   void OnResize() override {
-    mFieldBounds = IRECT(mRECT.L + 8.f, mRECT.T + 8.f, mRECT.R - 8.f, mRECT.B - 8.f);
+    const float insetX = Snap8(8.f);
+    const float insetY = Snap8(8.f);
+    mFieldBounds = IRECT(mRECT.L + insetX, mRECT.T + insetY, mRECT.R - insetX, mRECT.B - insetY);
     SetTargetRECT(mFieldBounds);
   }
 
@@ -1652,57 +1726,60 @@ public:
 
   void Draw(IGraphics& g) override {
     const bool manual = IsManualEnabled();
-    const bool hover = manual && GetMouseIsOver();
+    const bool isHovered = GetMouseIsOver();
     const IRECT fieldShadow = mFieldBounds.GetTranslated(0.f, 3.f);
 
     g.FillRoundRect(WithAlpha(kShellDeep, 42), fieldShadow, 8.f);
-    FillClassicPanel(g,
-                     mFieldBounds,
-                     manual ? kFieldFace : BlendColor(kShellFace, kFieldFace, 0.30f),
-                     true,
-                     1.f);
-
-    // [P3] Discoverability: LCD-style recessed frame when in Manual mode
-    if (manual) {
-      const IRECT lcdFrame = mFieldBounds.GetPadded(0.5f);
-      // Dark inner-top shadow for recess depth
-      g.DrawLine(WithAlpha(kShellDeep, 180), lcdFrame.L, lcdFrame.T, lcdFrame.R, lcdFrame.T, nullptr, 1.2f);
-      g.DrawLine(WithAlpha(kShellDeep, 140), lcdFrame.L, lcdFrame.T, lcdFrame.L, lcdFrame.B, nullptr, 1.2f);
-      // Light outer-bottom rim for bezel highlight
-      g.DrawLine(WithAlpha(kShellLight, 110), lcdFrame.L, lcdFrame.B, lcdFrame.R, lcdFrame.B, nullptr, 1.0f);
-      g.DrawLine(WithAlpha(kShellLight, 80), lcdFrame.R, lcdFrame.T, lcdFrame.R, lcdFrame.B, nullptr, 1.0f);
+    
+    if (!manual) {
+      const IRECT syncedBounds = mFieldBounds;
+      FillClassicPanel(g, syncedBounds, BlendColor(kShellFace, kFieldFace, 0.35f), true, 1.5f, 4.f);
       
-      // Subtle "backlight" glow for the LCD field
-      g.FillRect(WithAlpha(kCoolOn, 12), mFieldBounds.GetPadded(-1.f));
+      g.FillRoundRect(WithAlpha(kShellDeep, 45), syncedBounds.GetPadded(-1.f), 4.f);
+
+      const IColor hostColor = BlendColor(kCoolOn, kShellLight, 0.18f);
+
+      // Centered "HOST" text taking up the full bounds evenly
+      DrawRetroText(g, 18.f, BlendColor(kFieldText, kCoolOn, 0.40f),
+                    EAlign::Center, EVAlign::Middle, "HOST", syncedBounds);
+    } else {
+      FillClassicPanel(g,
+                     mFieldBounds,
+                     kFieldFace,
+                     true,
+                     1.5f,
+                     4.f);
+
+      g.FillRoundRect(WithAlpha(kCoolOn, 12), mFieldBounds.GetPadded(-1.f), 4.f);
+      
+      if (isHovered) {
+        g.DrawRoundRect(WithAlpha(kShellLight, 160), mFieldBounds.GetPadded(-1.f), 8.f, nullptr, 1.0f);
+      }
+
+      if (mValidFlash > 0.001f) {
+        const int validAlpha = static_cast<int>(std::lround(132.f * Clamp01(mValidFlash)));
+        const IColor validColor = BlendColor(kCoolOn, kShellLight, 0.25f);
+        g.DrawRoundRect(WithAlpha(validColor, validAlpha), mFieldBounds.GetPadded(-1.f), 8.f, nullptr, 1.3f);
+      }
+
+      if (mInvalidFlash > 0.001f) {
+        const int flashAlpha = static_cast<int>(std::lround(188.f * Clamp01(mInvalidFlash)));
+        g.DrawRoundRect(WithAlpha(GetValidationAlertColor(), flashAlpha), mFieldBounds.GetPadded(-1.f), 8.f, nullptr, 1.6f);
+      }
+
+      g.DrawLine(WithAlpha(kShellLight, 120), mFieldBounds.L + 6.f, mFieldBounds.T + 4.f,
+                 mFieldBounds.R - 6.f, mFieldBounds.T + 4.f, nullptr, 1.f);
+
+      WDL_String display;
+      FormatBpmDisplay(GetParam(), GetValue(), display);
+      DrawRetroText(g,
+                    18.f,
+                    kFieldText,
+                    EAlign::Center,
+                    EVAlign::Middle,
+                    display.Get(),
+                    mFieldBounds);
     }
-
-    if (hover) {
-      g.DrawRoundRect(WithAlpha(kShellLight, 160), mFieldBounds.GetPadded(-1.f), 6.f, nullptr, 1.0f);
-    }
-
-    if (mValidFlash > 0.001f) {
-      const int validAlpha = static_cast<int>(std::lround(132.f * Clamp01(mValidFlash)));
-      const IColor validColor = BlendColor(kCoolOn, kShellLight, 0.25f);
-      g.DrawRoundRect(WithAlpha(validColor, validAlpha), mFieldBounds.GetPadded(-1.f), 6.f, nullptr, 1.3f);
-    }
-
-    if (mInvalidFlash > 0.001f) {
-      const int flashAlpha = static_cast<int>(std::lround(188.f * Clamp01(mInvalidFlash)));
-      g.DrawRoundRect(WithAlpha(GetValidationAlertColor(), flashAlpha), mFieldBounds.GetPadded(-1.f), 6.f, nullptr, 1.6f);
-    }
-
-    g.DrawLine(WithAlpha(kShellLight, 120), mFieldBounds.L + 6.f, mFieldBounds.T + 4.f,
-               mFieldBounds.R - 6.f, mFieldBounds.T + 4.f, nullptr, 1.f);
-
-    WDL_String display;
-    FormatBpmDisplay(GetParam(), GetValue(), display);
-    DrawRetroText(g,
-                  31.f,
-                  manual ? kFieldText : BlendColor(kFieldText, kShellMid, 0.45f),
-                  EAlign::Center,
-                  EVAlign::Middle,
-                  display.Get(),
-                  mFieldBounds.GetPadded(-6.f));
   }
 
   void OnTextEntryCompletion(const char* str, int valIdx) override {
@@ -1772,7 +1849,7 @@ private:
 
     WDL_String display;
     FormatBpmDisplay(GetParam(), GetValue(), display);
-    const char* entryFontID = ShouldUseUtilityFont() ? kUtilityFontID : kFallbackFontID;
+    const char* entryFontID = ShouldUseTertiaryFont() ? kTertiaryFontID : kFallbackFontID;
     const IRECT entryBounds = mFieldBounds.GetPadded(-6.f);
     const float entrySize = FitTextSizeToBounds(*ui, entryFontID, display.Get(), 20.f, entryBounds, 10.f);
     const IText entryText {entrySize, kFieldText, entryFontID, EAlign::Center, EVAlign::Middle};
@@ -1944,33 +2021,41 @@ public:
     const float rimR = outerR - 3.2f;
     const float wellR = outerR - 9.2f;
     const float faceBaseR = outerR - 10.2f;
-    const float faceScale = Lerp(1.f, 0.935f, mPressAmount);
-    const float faceFlatten = Lerp(1.f, 0.945f, mPressAmount);
+    
+    // Enhance 3D depression physics
+    const float faceScale = Lerp(1.f, 0.95f, mPressAmount);
+    const float faceFlatten = Lerp(1.f, 0.96f, mPressAmount);
     const float faceRx = faceBaseR * faceScale;
     const float faceRy = faceBaseR * faceScale * faceFlatten;
     const float faceCx = cx;
-    const float faceCy = cy + mPressAmount * 0.9f;
-    const float symbolR = std::min(faceRx, faceRy) * 0.33f;
-    const float symbolThickness = 3.2f * faceScale;
-    const float ledHousingR = 4.2f * faceScale;
-    const float ledR = 2.7f * faceScale;
-    const float ledCx = faceCx - faceRx * 0.63f;
+    const float faceCy = cy + mPressAmount * 2.2f; // Deeper physical travel
+    
+    const float symbolR = std::min(faceRx, faceRy) * 0.31f;
+    const float symbolThickness = 3.6f * faceScale; // slightly bolder
+    const float ledHousingR = 4.6f * faceScale;
+    const float ledR = 2.9f * faceScale;
+    const float ledCx = faceCx - faceRx * 0.65f;
     const float ledCy = faceCy;
 
-    // These 9 colors are fully constant; computed once on first Draw call.
-    static const IColor outerShell  = BlendColor(kShellDark,  kFieldInset, 0.34f);
-    static const IColor rimLight    = BlendColor(kShellLight,  kKnobTop,   0.24f);
-    static const IColor rimDark     = BlendColor(kShellMid,   kFieldInset, 0.38f);
-    static const IColor wellLight   = BlendColor(kShellFace,   kKnobTop,   0.18f);
-    static const IColor wellDark    = BlendColor(kShellDark,  kFieldInset, 0.24f);
-    static const IColor faceLight   = BlendColor(kShellLight,  kKnobTop,   0.42f);
-    static const IColor faceMid     = BlendColor(kShellFace,   kKnobTop,   0.22f);
-    static const IColor faceDark    = BlendColor(kFieldFace,  kShellFace,  0.18f);
-    static const IColor symbolColor = BlendColor(kShellDark,  kFieldInset, 0.10f);
-    static const IColor ledOff      {255, 222,  82,  78};
-    static const IColor ledOn       {255, 124, 255, 152};
-    static const IColor ledGlowOff  { 58, 255,  94,  86};
-    static const IColor ledGlowOn   {140, 142, 255, 178};
+    // Blended colors from the global shell palette for perfect UI coherence
+    static const IColor outerShell  = BlendColor(kShellDeep, kFieldInset, 0.40f);
+    static const IColor rimLight    = kShellLight;
+    static const IColor rimDark     = BlendColor(kShellMid, kFieldInset, 0.30f);
+    static const IColor wellLight   = kShellFace;
+    static const IColor wellDark    = kShellDark;
+    
+    // Core plastic face marching perfectly with the classic layout casing
+    static const IColor faceLight   = BlendColor(kShellLight, kKnobTop, 0.35f);
+    static const IColor faceMid     = BlendColor(kShellFace, kKnobTop, 0.20f);
+    static const IColor faceDark    = BlendColor(kShellMid, kShellFace, 0.40f);
+    static const IColor faceBarrel  = BlendColor(kShellDark, kShellMid, 0.45f);
+    
+    static const IColor symbolColor = BlendColor(kShellText, kFieldInset, 0.15f);
+    static const IColor ledOff      {255, 110,  30,  30};
+    static const IColor ledOn       {255, 255,  60,  60}; // Brighter red
+    static const IColor ledGlowOff  { 40, 255,  40,  40};
+    static const IColor ledGlowOn   {180, 255,  50,  50};
+
     // These two change with mVisualOn and must remain non-static:
     const IColor ledColor = BlendColor(ledOff, ledOn, mVisualOn);
     const IColor ledGlow  = BlendColor(ledGlowOff, ledGlowOn, mVisualOn);
@@ -1998,51 +2083,68 @@ public:
 
     g.FillCircle(WithAlpha(kShellDeep, 74), cx, cy + 4.6f, outerR + 4.0f);
     g.FillCircle(outerShell, cx, cy, outerR);
-    FillPatternCircle(g, cx - 0.2f, cy - 0.1f, rimR,
-                      IPattern::CreateRadialGradient(cx - rimR * 0.54f, cy - rimR * 0.62f, rimR * 1.75f,
+    FillPatternCircle(g, cx, cy, rimR,
+                      IPattern::CreateLinearGradient(cx - rimR, cy - rimR, cx + rimR, cy + rimR,
                                                      {{rimLight, 0.f},
-                                                      {BlendColor(rimLight, rimDark, 0.32f), 0.34f},
                                                       {rimDark, 1.f}}));
-    FillPatternCircle(g, cx + 0.1f, cy + 0.2f, wellR,
-                      IPattern::CreateRadialGradient(cx - wellR * 0.06f, cy - wellR * 0.34f, wellR * 1.28f,
+    FillPatternCircle(g, cx, cy, wellR,
+                      IPattern::CreateLinearGradient(cx, cy - wellR, cx, cy + wellR,
                                                      {{wellDark, 0.f},
-                                                      {BlendColor(wellDark, wellLight, 0.52f), 0.60f},
                                                       {wellLight, 1.f}}));
-    g.DrawCircle(WithAlpha(kShellLight, 110), cx - 0.45f, cy - 0.5f, rimR, nullptr, 0.9f);
-    g.DrawCircle(WithAlpha(kShellDark, 140), cx + 0.2f, cy + 0.25f, wellR, nullptr, 0.85f);
+
     if (mHoverAmt > 0.01f || mMouseDown) {
-      const int rimA = static_cast<int>(168.f * (mMouseDown ? 1.f : mHoverAmt));
+      const int rimA = static_cast<int>(120.f * (mMouseDown ? 1.f : mHoverAmt));
       g.DrawCircle(WithAlpha(kShellLight, rimA), cx - 0.22f, cy - 0.24f, rimR + 0.45f, nullptr, 1.2f);
     }
+    
+    // Draw the 3D barrel (the side of the button cylinder) underneath
+    const float barrelDepression = 3.6f * (1.f - mPressAmount); 
+    if (barrelDepression > 0.5f) {
+      // Use the barrel linear gradient matching SVG #b (vertical)
+      FillPatternEllipse(g, faceCx, faceCy + barrelDepression * 0.5f, faceRx, faceRy + barrelDepression * 0.5f,
+                         IPattern::CreateLinearGradient(faceCx, (faceCy - faceRy), faceCx, (faceCy + faceRy + barrelDepression),
+                                                        {{faceBarrel, 0.f},
+                                                         {wellLight, 1.f}}));
+    }
 
-    g.FillEllipse(BlendColor(faceDark, wellDark, 0.10f), faceCx + 0.45f, faceCy + 0.75f, faceRx, faceRy);
-    g.FillEllipse(faceDark, faceCx, faceCy, faceRx, faceRy);
-    g.FillEllipse(faceMid, faceCx - 0.55f, faceCy - 0.7f, faceRx * 0.97f, faceRy * 0.95f);
-    g.FillEllipse(WithAlpha(faceLight, 168), faceCx - faceRx * 0.12f, faceCy - faceRy * 0.18f, faceRx * 0.72f, faceRy * 0.50f);
-    g.DrawEllipse(WithAlpha(kShellLight, 118), faceCx - 0.3f, faceCy - 0.35f, faceRx, faceRy, 0.f, nullptr, 0.9f);
-    g.DrawEllipse(WithAlpha(symbolColor, 98), faceCx + 0.1f, faceCy + 0.15f, faceRx, faceRy, 0.f, nullptr, 0.85f);
+    // Shadow cast by the button inside the well
+    const float faceDropShadowY = 4.2f * (1.1f - mPressAmount); 
+    g.FillEllipse(WithAlpha(kFieldInset, static_cast<int>(110 * (1.f - mPressAmount * 0.5f))), 
+                  faceCx, faceCy + faceDropShadowY, faceRx + 1.2f, faceRy + 0.8f);
 
+    // The actual button face top surface - linear gradient matching SVG #c
+    FillPatternEllipse(g, faceCx, faceCy, faceRx, faceRy, 
+                       IPattern::CreateLinearGradient(faceCx - faceRx, faceCy - faceRy, faceCx + faceRx, faceCy + faceRy,
+                                                      {{faceLight, 0.f},
+                                                       {faceDark, 1.f}}));
+    g.DrawEllipse(WithAlpha(faceLight, 100), faceCx - 0.3f, faceCy - 0.35f, faceRx, faceRy, 0.f, nullptr, 0.8f);
+    g.DrawEllipse(WithAlpha(faceBarrel, 80), faceCx + 0.2f, faceCy + 0.45f, faceRx, faceRy, 0.f, nullptr, 0.8f);
+
+    // Power Symbol
     g.DrawArc(symbolColor, faceCx, faceCy + 0.8f * mPressAmount, symbolR, 42.f, 318.f, nullptr, symbolThickness);
     g.DrawLine(symbolColor,
                faceCx,
-               faceCy - symbolR - 7.4f * faceScale,
+               faceCy - symbolR - 7.6f * faceScale,
                faceCx,
-               faceCy - symbolR * 0.06f,
+               faceCy - symbolR * 0.08f,
                nullptr,
                symbolThickness);
 
-    g.FillCircle(BlendColor(symbolColor, kShellDeep, 0.20f), ledCx + 0.35f, ledCy + 0.45f, ledHousingR + 0.55f);
+    // Embedded LED Housing
+    g.FillCircle(BlendColor(symbolColor, kShellDeep, 0.20f), ledCx + 0.45f, ledCy + 0.65f, ledHousingR + 0.75f);
     g.FillCircle(symbolColor, ledCx, ledCy, ledHousingR);
-    FillPatternCircle(g, ledCx, ledCy, ledR + 1.0f,
-                      IPattern::CreateRadialGradient(ledCx - ledR * 0.35f, ledCy - ledR * 0.42f, ledR * 2.1f,
+    
+    // LED Inner Glow and bulb
+    FillPatternCircle(g, ledCx, ledCy, ledR + 2.0f,
+                      IPattern::CreateRadialGradient(ledCx - ledR * 0.35f, ledCy - ledR * 0.42f, ledR * 2.8f,
                                                      {{WithAlpha(ledGlow, static_cast<int>(ledGlow.A * std::max(0.18f, mVisualOn))), 0.f},
-                                                      {WithAlpha(ledGlow, static_cast<int>(ledGlow.A * 0.45f)), 0.56f},
+                                                      {WithAlpha(ledGlow, static_cast<int>(ledGlow.A * 0.65f)), 0.46f},
                                                       {WithAlpha(ledGlow, 0), 1.f}}));
     FillPatternCircle(g, ledCx, ledCy, ledR,
                       IPattern::CreateRadialGradient(ledCx - ledR * 0.34f, ledCy - ledR * 0.40f, ledR * 1.6f,
-                                                     {{IColor{255, 255, 246, 232}, 0.f},
-                                                      {ledColor, 0.28f},
-                                                      {BlendColor(ledColor, symbolColor, 0.36f), 1.f}}));
+                                                     {{IColor{255, 255, 236, 182}, 0.f},
+                                                      {ledColor, 0.32f},
+                                                      {BlendColor(ledColor, symbolColor, 0.46f), 1.f}}));
 
     if (mTitleBounds.H() > 8.f) {
       const IColor titleColor = active
@@ -2167,50 +2269,32 @@ void Freeze95::LayoutUI(IGraphics* g) {
   g->SetScaleConstraints(0.65f, 2.0f);
 
   const float outerMargin = Snap8(ClampValue(w * 0.029f, 24.f, 32.f));
-  const float spaceTight = Snap8(ClampValue(w * 0.016f, 8.f, 16.f));
-  const float spaceSection = Snap8(ClampValue(w * 0.031f, 24.f, 40.f));
-  const float spaceIsolation = Snap8(ClampValue(w * 0.041f, 24.f, 48.f));
 
-  const float brandPlateTop = Snap8(ClampValue(h * 0.170f, 40.f, 64.f));
-  const float brandPlateHeight = Snap8(ClampValue(h * 0.101f, 32.f, 40.f));
+  // Plates position and height: larger and aligned with the SVG computer screen bezel
+  const float brandPlateTop = Snap8(ClampValue(h * 0.200f, 48.f, 72.f));
+  const float brandPlateHeight = Snap8(ClampValue(h * 0.120f, 36.f, 48.f));
   const float badgePlateTop = brandPlateTop;
-  const float badgePlateHeight = Snap8(std::max(24.f, brandPlateHeight - 8.f));
+  const float badgePlateHeight = brandPlateHeight; // Identical height for perfect symmetry
 
-  const float headerGap = Snap8(ClampValue(h * 0.039f, 8.f, 24.f));
+  const float headerGap = Snap8(ClampValue(h * 0.035f, 4.f, 16.f));
   const float majorTop = brandPlateTop + brandPlateHeight + headerGap;
-  const float lowerMargin = Snap4(ClampValue(h * 0.071f, 20.f, 28.f));
+  const float lowerMargin = Snap8(ClampValue(h * 0.08f, 24.f, 36.f));
   const float majorBottom = h - lowerMargin;
   const float majorHeight = std::max(152.f, majorBottom - majorTop);
 
-  float chaosWidth = Snap8(ClampValue(w * 0.219f, 152.f, 192.f));
-  float loFiWidth = Snap8(ClampValue(w * 0.196f, 144.f, 176.f));
-  float powerWidth = Snap8(ClampValue(w * 0.146f, 112.f, 136.f));
+  // Knobs are noticeably larger and evenly constrained
+  float chaosWidth = Snap8(ClampValue(w * 0.19f, 152.f, 184.f));
+  float loFiWidth = chaosWidth;
+  float powerWidth = chaosWidth;
 
-  const float logoPlateWidth = Snap8(ClampValue(chaosWidth * 1.04f, 168.f, 208.f));
-  const float badgePlateWidth = Snap8(ClampValue(loFiWidth * 0.90f, 136.f, 168.f));
+  const float logoPlateWidth = Snap8(ClampValue(chaosWidth * 1.5f, 200.f, 240.f));
+  const float badgePlateWidth = Snap8(ClampValue(powerWidth * 1.4f, 160.f, 192.f));
 
-  const float bpmPanelTop = majorTop + Snap8(ClampValue(majorHeight * 0.23f, 24.f, 40.f));
-  const float bpmPanelBottom = majorBottom - Snap8(ClampValue(majorHeight * 0.20f, 24.f, 40.f));
-  const float toggleSize = Snap8(std::max(kMinTouchTargetSize + 4.f,
-                                          ClampValue((bpmPanelBottom - bpmPanelTop) * 0.60f, 56.f, 80.f)));
-  const float toggleFieldGap = 8.f;
-
-  float bpmGroupWidth = w - outerMargin * 2.f - chaosWidth - loFiWidth - powerWidth
-                        - spaceTight - spaceSection - spaceIsolation;
-  if (bpmGroupWidth < 216.f) {
-    const float shortfall = 216.f - bpmGroupWidth;
-    const float chaosSlack = std::max(0.f, chaosWidth - 148.f);
-    const float loFiSlack = std::max(0.f, loFiWidth - 140.f);
-    const float powerSlack = std::max(0.f, powerWidth - 108.f);
-    const float chaosReduce = std::min(shortfall * 0.45f, chaosSlack);
-    chaosWidth -= chaosReduce;
-    const float loFiReduce = std::min(shortfall * 0.35f, loFiSlack);
-    loFiWidth -= loFiReduce;
-    powerWidth -= std::min(shortfall - chaosReduce - loFiReduce, powerSlack);
-    bpmGroupWidth = w - outerMargin * 2.f - chaosWidth - loFiWidth - powerWidth
-            - spaceTight - spaceSection - spaceIsolation;
-  }
-  bpmGroupWidth = std::max(208.f, bpmGroupWidth);
+  const float bpmPanelTop = majorTop + Snap8(ClampValue(majorHeight * 0.20f, 24.f, 40.f));
+  const float bpmPanelBottom = majorBottom - Snap8(ClampValue(majorHeight * 0.18f, 24.f, 40.f));
+  const float bpmPanelHeight = std::max(64.f, bpmPanelBottom - bpmPanelTop);
+  const float toggleSize = Snap8(ClampValue(bpmPanelHeight * 0.54f, 48.f, 64.f));
+  const float toggleFieldGap = Snap8(16.f);
 
   if (g->NControls()) {
     return;
@@ -2219,6 +2303,7 @@ void Freeze95::LayoutUI(IGraphics* g) {
   g->EnableMouseOver(true);
   const bool fallbackFontLoaded = LoadFallbackUIFont(g);
   const bool utilityFontLoaded = LoadUtilityUIFont(g);
+  const bool tertiaryFontLoaded = LoadTertiaryUIFont(g);
   const char* activeFontID = LoadActiveDOSFont(g);
   bool usePixelTextFallback = false;
 
@@ -2230,6 +2315,7 @@ void Freeze95::LayoutUI(IGraphics* g) {
   SetActiveFontID(activeFontID);
   SetUsePixelTextFallback(usePixelTextFallback);
   SetUseUtilityFont(utilityFontLoaded);
+  SetUseTertiaryFont(tertiaryFontLoaded);
 
   // Load monitor background SVGs with multiple fallback paths
   // First try: direct filename (bundle resource)
@@ -2259,42 +2345,67 @@ void Freeze95::LayoutUI(IGraphics* g) {
     monitorBackgroundOn,
     monitorBackgroundOff));
 
-  const IRECT logoPlateBounds(outerMargin, brandPlateTop,
-                              outerMargin + logoPlateWidth, brandPlateTop + brandPlateHeight);
+  const float macroTopInset = Snap8(ClampValue(majorHeight * 0.03f, 8.f, 16.f));
+  const float macroBottomInset = Snap8(ClampValue(majorHeight * 0.04f, 8.f, 16.f));
+  const float loFiTopOffset = Snap8(ClampValue(majorHeight * 0.045f, 8.f, 16.f));
+
+  const float transportInsetX = Snap8(16.f);
+  const float transportInsetY = Snap8(16.f);
+
+  const float innerSpace = w - (outerMargin * 2.f);
+  const float bpmGroupWidth = Snap8(ClampValue(w * 0.285f, 208.f, 272.f));
+  const float totalTransportWidth = bpmGroupWidth + transportInsetX * 2.f;
+
+  const float remainingWidth = innerSpace - chaosWidth - loFiWidth - totalTransportWidth - powerWidth;
+  // Calculate gap exactly, float division without snapping so errors don't multiply
+  const float gap = std::max(16.f, remainingWidth / 3.f);
+
+  const IRECT chaosBounds(outerMargin,
+                          majorTop + macroTopInset,
+                          outerMargin + chaosWidth,
+                          majorBottom - macroBottomInset);
+
+  const IRECT loFiBounds(chaosBounds.R + gap,
+                         majorTop + macroTopInset + loFiTopOffset,
+                         chaosBounds.R + gap + loFiWidth,
+                         majorBottom - macroBottomInset - Snap8(4.f));
+
+  // Position exactly next logically so spaces are 100% mathematically even
+  const float transportPanelL = loFiBounds.R + gap;
+  const IRECT transportPanelBounds(transportPanelL,
+                                   bpmPanelTop - transportInsetY,
+                                   transportPanelL + totalTransportWidth,
+                                   bpmPanelBottom + transportInsetY);
+
+  const float powerTop = majorTop + macroTopInset;
+  const float powerBottom = majorBottom - macroBottomInset;
+  const float powerPanelL = transportPanelBounds.R + gap;
+  const IRECT powerBounds(powerPanelL, powerTop, powerPanelL + powerWidth, powerBottom);
+
+  // Plates anchored to align exactly with inner bezels.
+  const float logoOffsetLeft = Snap8(16.f);
+  const IRECT logoPlateBounds(outerMargin + logoOffsetLeft, badgePlateTop,
+                              outerMargin + logoOffsetLeft + logoPlateWidth, badgePlateTop + badgePlateHeight);
+  // Align badge plate precisely on the right margin just like the Power bounds below it
   const IRECT badgePlateBounds(w - outerMargin - badgePlateWidth, badgePlateTop,
                                w - outerMargin, badgePlateTop + badgePlateHeight);
+
   g->AttachControl(new MonitorLogoPlateControl(
     logoPlateBounds,
     brandLogoFace,
     brandLogoHighlight,
     brandLogoShadow));
   g->AttachControl(new MonitorBadgePlateControl(badgePlateBounds, "Freeze95"));
+  const IRECT transportInner = transportPanelBounds.GetPadded(-transportInsetX);
 
-  const float macroTopInset = Snap8(ClampValue(majorHeight * 0.03f, 8.f, 16.f));
-  const float macroBottomInset = Snap8(ClampValue(majorHeight * 0.04f, 8.f, 16.f));
-  const float loFiTopOffset = Snap8(ClampValue(majorHeight * 0.045f, 8.f, 16.f));
+  const float syncTop = Snap8(transportInner.MH() - toggleSize * 0.5f);
+  const IRECT syncBounds(transportInner.L, syncTop, transportInner.L + toggleSize, syncTop + toggleSize);
 
-  const IRECT chaosBounds(outerMargin,
-                          majorTop + macroTopInset,
-                          outerMargin + chaosWidth,
-                          majorBottom - macroBottomInset);
-  const IRECT loFiBounds(chaosBounds.R + spaceTight,
-                         majorTop + macroTopInset + loFiTopOffset,
-                         chaosBounds.R + spaceTight + loFiWidth,
-                         majorBottom - macroBottomInset - Snap4(4.f));
-  const float bpmGroupLeft = loFiBounds.R + spaceSection;
-  const float syncTop = Snap8(bpmPanelTop + (bpmPanelBottom - bpmPanelTop - toggleSize) * 0.5f);
-  const IRECT syncBounds(bpmGroupLeft, syncTop, bpmGroupLeft + toggleSize, syncTop + toggleSize);
   const float bpmPanelLeft = syncBounds.R + toggleFieldGap;
-  const IRECT bpmBounds(bpmPanelLeft, bpmPanelTop, bpmGroupLeft + bpmGroupWidth, bpmPanelBottom);
-  const float powerTop = majorTop + macroTopInset;
-  const float powerBottom = majorBottom - macroBottomInset;
-  const IRECT powerBounds(w - outerMargin - powerWidth, powerTop,
-                          w - outerMargin, powerBottom);
-  const IRECT transportPanelBounds(syncBounds.L - Snap8(8.f),
-                                   bpmPanelTop - Snap8(16.f),
-                                   bpmBounds.R + Snap8(16.f),
-                                   bpmPanelBottom + Snap8(16.f));
+  const IRECT bpmBounds(bpmPanelLeft,
+                        transportInner.T,
+                        transportInner.R,
+                        transportInner.B);
 
   g->AttachControl(new TransportGroupPanelControl(
     transportPanelBounds,
@@ -2378,7 +2489,7 @@ void Freeze95::OnReset() {
 
   mDSP->init(static_cast<int>(GetSampleRate()));
 
-  const int preallocFrames = std::max(256, GetBlockSize());
+  const int preallocFrames = std::max(8192, GetBlockSize());
   mInL.resize(preallocFrames);
   mInR.resize(preallocFrames);
   mOutL.resize(preallocFrames);
@@ -2429,10 +2540,11 @@ void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
   }
 
   if (static_cast<int>(mInL.size()) < nFrames) {
-    mInL.resize(nFrames);
-    mInR.resize(nFrames);
-    mOutL.resize(nFrames);
-    mOutR.resize(nFrames);
+    // Failsafe. Should not happen if preallocated adequately in OnReset(),
+    // but prevents buffer overflow if host violates expected block sizes.
+    // However, this violates the real-time safety constraint as it allocates 
+    // on the audio thread. So we clamp processing to our available buffers instead
+    nFrames = static_cast<int>(mInL.size());
   }
 
   // Hoist channel-count branches out of the hot sample loop

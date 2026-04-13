@@ -887,14 +887,14 @@ void SpectralBlur::LayoutUI(IGraphics* pGraphics)
 
   // ── Responsive dimensions (all N×kUnit, clamped to integer unit bounds) ──
   const float headerH   = ClampedScale(kUnit * 6,  scale, kUnit * 5,  kUnit * 8);  // 48 → [40, 64]
-  const float headerGap = ClampedScale(kUnit,       scale, kUnit,      kUnit * 2);  //  8 → [ 8, 16]
-  const float colGap    = ClampedScale(kUnit * 2,  scale, kUnit,      kUnit * 3);  // 16 → [ 8, 24]
-  const float inGap     = ClampedScale(kUnit,       scale, kUnit,      kUnit * 2);  //  8 → [ 8, 16]
-  const float kBlurSz   = ClampedScale(kUnit * 32, scale, kUnit * 24, kUnit * 52); // 256 → [192, 416] — max extends to window ceiling
-  const float kLoHiSz   = ClampedScale(kUnit * 19, scale, kUnit * 15, kUnit * 32); // 152 → [120, 256] — max extends to window ceiling
-  const float kHoldSz   = ClampedScale(kUnit * 25, scale, kUnit * 19, kUnit * 42); // 200 → [152, 336] — max extends to window ceiling
-  const float kBtnH     = ClampedScale(kUnit * 6,  scale, kUnit * 5,  kUnit * 7);  //  48 → [ 40,  56]
-  const float kGainH    = ClampedScale(kUnit * 5,  scale, kUnit * 4,  kUnit * 6);  //  40 → [ 32,  48]
+  const float headerGap = ClampedScale(kUnit * 2.5f, scale, kUnit * 1.5f, kUnit * 3); // 20 → [12, 24]
+  const float colGap    = ClampedScale(kUnit * 5,  scale, kUnit * 3,  kUnit * 7);  // 40 → [24, 56]
+  const float inGap     = ClampedScale(kUnit * 1.5f, scale, kUnit * 1, kUnit * 2); // 12 → [8, 16]
+  const float kBlurSz   = ClampedScale(kUnit * 30, scale, kUnit * 22, kUnit * 48); // 240 → [176, 384]
+  const float kLoHiSz   = ClampedScale(kUnit * 18, scale, kUnit * 14, kUnit * 30); // 144 → [112, 240]
+  const float kHoldSz   = ClampedScale(kUnit * 24, scale, kUnit * 18, kUnit * 40); // 192 → [144, 320]
+  const float kBtnH     = ClampedScale(kUnit * 5,  scale, kUnit * 4,  kUnit * 6);  // 40 → [32, 48]
+  const float kGainH    = ClampedScale(kUnit * 4.5f, scale, kUnit * 3.5f, kUnit * 6); // 36 → [28, 48]
 
   // ── Compute all layout rects (computed on every call) ───────────────────
   const IRECT headerArea    = padded.GetFromTop(headerH);
@@ -905,30 +905,36 @@ void SpectralBlur::LayoutUI(IGraphics* pGraphics)
   // Logo is hidden to reduce visual clutter (CRYO + SPECTRAL text is sufficient)
   const float titleW  = ClampedScale(kUnit * 42, scale, kUnit * 32, kUnit * 52); // 336→[256,416] — expanded title space
 
-  // Logo: subtle watermark in bottom-right corner (responsive scaling with design system)
+  // Logo: subtle watermark in bottom-left corner (responsive scaling with design system)
   // Size: 80 units at reference → scales responsively with scale factor
   const float logoSz = ClampedScale(kUnit * 10, scale, kUnit * 8, kUnit * 15);  // 80 → [64, 120] responsive
-  const IRECT logoR  = IRECT(padded.R - logoSz, padded.B - logoSz, padded.R, padded.B);
+  // Placed bottom-left to avoid overlapping right-side Hold controls.
+  const IRECT logoR  = IRECT(padded.L, padded.B - logoSz, padded.L + logoSz, padded.B);
   // Title positioned from left with full available space
   const IRECT titleR  = headerArea.GetFromLeft(titleW);
 
-  // Column widths with sensible min/max bounds
-  const float kBlurColW_target = std::max(100.f, bodyArea.W() * 0.40f);  // at least 100px wide
-  const float kLoHiColW_target = std::max(80.f, bodyArea.W() * 0.27f);   // at least 80px wide
-  // ACTUAL widths used (account for caps to maintain column alignment)
-  const float blurColW = std::min(kBlurColW_target, bodyArea.W() * 0.5f);  // cap at 50% to ensure space for other cols
-  const float loHiColW = std::min(kLoHiColW_target, bodyArea.W() * 0.35f); // cap at 35%
-  // Columns positioned using ACTUAL widths, not targets
+  // Column widths based strictly on the required element sizes to prevent clipping
+  const float blurColW = kBlurSz;
+  const float loHiColW = kLoHiSz;
+  const float holdColW = kHoldSz;
+
+  // Distribute columns evenly using the remaining space
+  const float dynamicColGap = std::max(colGap, (bodyArea.W() - blurColW - loHiColW - holdColW) / 2.0f);
+
   const IRECT blurCol   = bodyArea.GetFromLeft(blurColW);
-  const IRECT loHiCol   = bodyArea.GetReducedFromLeft(blurColW + colGap).GetFromLeft(loHiColW);
-  const IRECT holdCol   = bodyArea.GetReducedFromLeft(blurColW + colGap + loHiColW + colGap);
+  const IRECT loHiCol   = bodyArea.GetReducedFromLeft(blurColW + dynamicColGap).GetFromLeft(loHiColW);
+  const IRECT holdCol   = bodyArea.GetFromRight(holdColW);
 
   // Bypass aligned with hold column left edge, centered vertically in header
   const IRECT bypassR = IRECT(holdCol.L, headerArea.T, holdCol.R, headerArea.B).GetCentredInside(holdCol.W(), headerH * 0.7f);
 
   const IRECT blurKnobR = blurCol.GetFromTop(kBlurSz + inGap * 2.f).GetCentredInside(kBlurSz, kBlurSz);
-  const IRECT gainR     = blurCol.GetReducedFromTop(kBlurSz + inGap * 2.f + inGap)
-                            .GetFromTop(kGainH).GetCentredInside(blurCol.W() * 0.9f, kGainH);
+  // Move Gain into header area: center between title and bypass to avoid
+  // overlap with the right-side Hold column controls.
+  const float gainW = ClampedScale(kUnit * 18, scale, kUnit * 10, kUnit * 26);
+  const IRECT gainZone = IRECT(titleR.R + inGap, headerArea.T, bypassR.L - inGap, headerArea.B);
+  const float gw = std::min(gainW, gainZone.W());
+  const IRECT gainR = gainZone.GetCentredInside(gw, kGainH);
 
   const IRECT stackArea = loHiCol.GetFromTop(kLoHiSz * 2.f + inGap);
   const IRECT loKnobR   = stackArea.GetFromTop(kLoHiSz).GetCentredInside(kLoHiSz, kLoHiSz);
@@ -941,7 +947,7 @@ void SpectralBlur::LayoutUI(IGraphics* pGraphics)
   // Hold column: scatter → cycle → hold knob → mode hint
   // Responsive padding: scale inset from fixed 2px to responsive fraction of button height
   const float btnPadding = std::max(1.f, kBtnH * 0.04f);  // ~2-4% of button height
-  const float sepInset   = std::max(2.f, colGap * 0.5f);  // responsive separator inset
+  const float sepInset   = std::max(2.f, dynamicColGap * 0.25f);  // clear separator inset
   const float contentH    = kBtnH + inGap + kBtnH + inGap + kHoldSz + inGap + kBtnH;
   const IRECT holdContent = holdCol.GetFromTop(contentH);
   const IRECT phaseScatterR = holdContent.GetFromTop(kBtnH).GetPadded(-btnPadding);

@@ -6,8 +6,8 @@
 #define PLUG_VERSION_STR "1.0.0"
 #define PLUG_UNIQUE_ID 'F95G'
 #define PLUG_MFR_ID 'Clph'
-#define PLUG_URL_STR "https://example.com"
-#define PLUG_EMAIL_STR "dev@example.com"
+#define PLUG_URL_STR "https://cloph.gumroad.com"
+#define PLUG_EMAIL_STR "pedrocastromusic@gmail.com"
 #define PLUG_COPYRIGHT_STR "Copyright 2026 cloph"
 #define PLUG_CLASS_NAME Freeze95
 
@@ -31,6 +31,10 @@
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
 #define PLUG_HOST_RESIZE 1
+#define PLUG_MIN_WIDTH 420
+#define PLUG_MIN_HEIGHT 153
+#define PLUG_MAX_WIDTH 1680
+#define PLUG_MAX_HEIGHT 612
 
 #define AUV2_ENTRY Freeze95_Entry
 #define AUV2_ENTRY_STR "Freeze95_Entry"
@@ -40,7 +44,7 @@
 
 #define AAX_TYPE_IDS 'F951', 'F952'
 #define AAX_TYPE_IDS_AUDIOSUITE 'F95A', 'F95B'
-#define AAX_PLUG_MFR_STR "clph"
+#define AAX_PLUG_MFR_STR "cloph"
 #define AAX_PLUG_NAME_STR "Freeze95\nF95G"
 #define AAX_PLUG_CATEGORY_STR "Effect"
 #define AAX_DOES_AUDIOSUITE 0
@@ -53,7 +57,7 @@
 #define APP_COPY_AUV3 0
 #define APP_SIGNAL_VECTOR_SIZE 64
 
-#define ROBOTO_FN "Roboto-Regular.ttf"
+#define TERTIARY_UI_FN "citaro_zij_ds.ttf"
 #define UTILITY_UI_FN "Trigram-Light.ttf"
 #define GOOD_OLD_DOS_FN "Freeze95DOS.ttf"
 #define GOOD_OLD_DOS_RES "FREEZE95DOS"

@@ -69,12 +69,12 @@ counter = (+(1) : %(update_rate)) ~ _;
 chaos_prev = chaos_raw';
 chaos_delta = abs(chaos_raw - chaos_prev);
 chaos_moved = chaos_delta > 0.004;
-chaos_edge = max(0.0, chaos_moved - chaos_moved');
+chaos_edge = abs(chaos_moved - chaos_moved');
 
 lofi_prev = lofi_raw';
 lofi_delta = abs(lofi_raw - lofi_prev);
 lofi_moved = lofi_delta > 0.004;
-lofi_edge = max(0.0, lofi_moved - lofi_moved');
+lofi_edge = abs(lofi_moved - lofi_moved');
 
 trig = max(counter == 0, max(chaos_edge, lofi_edge));
 
@@ -132,7 +132,7 @@ buf_sz = max(256, int(ma.SR * buf_seconds));
 write_ptr = ba.period(buf_sz);
 
 min_repeat_hz = (0.35 + chaos_sharp * 2.6) * (1.0 - simple_mode) + 0.7 * simple_mode;
-max_repeat_hz = 18.0 + 110.0 * chaos_sharp;
+max_repeat_hz = 1.5 + 116.5 * chaos_sharp;
 
 beat_hz = bpm_safe / 60.0;
 g1 = beat_hz * 0.25;
@@ -155,22 +155,24 @@ sync_quantize(freq) = ba.if(freq < m12, g1,
 										 ba.if(freq < m56, g5,
 										 ba.if(freq < m67, g6, g7))))));
 
-repeat_rate_base = min_repeat_hz + (max_repeat_hz - min_repeat_hz) * r3;
+repeat_skew = 1.0 + (1.0 - chaos_sharp) * 3.0;
+
+repeat_rate_base = min_repeat_hz + (max_repeat_hz - min_repeat_hz) * pow(r3, repeat_skew);
 repeat_rate_nom = repeat_rate_base * (1.0 - 0.65 * fidelity) + 0.9 * 0.65 * fidelity;
 repeat_rate_free = repeat_rate_nom * (1.0 + walk_repeat);
 repeat_rate = ba.if(sync_on > 0.0, sync_quantize(repeat_rate_free), repeat_rate_free);
 
-repeat_rate_base_low = min_repeat_hz + (max_repeat_hz - min_repeat_hz) * r3_low;
+repeat_rate_base_low = min_repeat_hz + (max_repeat_hz - min_repeat_hz) * pow(r3_low, repeat_skew);
 repeat_rate_nom_low = repeat_rate_base_low * (1.0 - 0.65 * fidelity) + 0.9 * 0.65 * fidelity;
 repeat_rate_low_free = repeat_rate_nom_low * (1.0 + walk_repeat_low) * 0.82;
 repeat_rate_low = ba.if(sync_on > 0.0, sync_quantize(repeat_rate_low_free), repeat_rate_low_free);
 
-repeat_rate_base_mid = min_repeat_hz + (max_repeat_hz - min_repeat_hz) * r3_mid;
+repeat_rate_base_mid = min_repeat_hz + (max_repeat_hz - min_repeat_hz) * pow(r3_mid, repeat_skew);
 repeat_rate_nom_mid = repeat_rate_base_mid * (1.0 - 0.65 * fidelity) + 0.9 * 0.65 * fidelity;
 repeat_rate_mid_free = repeat_rate_nom_mid * (1.0 + walk_repeat_mid);
 repeat_rate_mid = ba.if(sync_on > 0.0, sync_quantize(repeat_rate_mid_free), repeat_rate_mid_free);
 
-repeat_rate_base_high = min_repeat_hz + (max_repeat_hz - min_repeat_hz) * r3_high;
+repeat_rate_base_high = min_repeat_hz + (max_repeat_hz - min_repeat_hz) * pow(r3_high, repeat_skew);
 repeat_rate_nom_high = repeat_rate_base_high * (1.0 - 0.65 * fidelity) + 0.9 * 0.65 * fidelity;
 repeat_rate_high_free = repeat_rate_nom_high * (1.0 + walk_repeat_high) * 1.22;
 repeat_rate_high = ba.if(sync_on > 0.0, sync_quantize(repeat_rate_high_free), repeat_rate_high_free);
