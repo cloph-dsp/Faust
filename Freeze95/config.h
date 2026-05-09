@@ -20,6 +20,7 @@
 #define PLUG_CHANNEL_IO "2-2"
 
 #define PLUG_LATENCY 0
+// Memory: ~48 MB static delay buffer allocation (6x float[2097152] for 3-band stutter processing)
 #define PLUG_TYPE 0
 #define PLUG_DOES_MIDI_IN 0
 #define PLUG_DOES_MIDI_OUT 0

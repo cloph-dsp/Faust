@@ -57,6 +57,10 @@ const IColor kKnobPointerDark {255,  70,  58,  33};
 const IColor kCoolOn          {255, 244, 228, 178};
 const IColor kCoolGlow        {100, 255, 230, 154};
 const IColor kCoolOff         {255, 136, 118,  77};
+const IColor kLedOff          {255, 110,  30,  30};
+const IColor kLedOn           {255, 255,  60,  60}; // Brighter red
+const IColor kLedGlowOff      { 40, 255,  40,  40};
+const IColor kLedGlowOn       {180, 255,  50,  50};
 
 float Clamp01(float value) {
   return std::max(0.f, std::min(1.f, value));
@@ -537,9 +541,9 @@ void DrawEmbossedBadgeText(IGraphics& g, float requestedSize, const char* text, 
     return;
   }
 
-  const IColor badgeFace(255, 184, 170, 132); // #B8AA84
-  const IColor badgeHighlight(255, 238, 228, 199); // #EEE4C7
-  const IColor badgeShadow(255, 116, 104, 70); // #746846
+  const IColor badgeFace = BlendColor(kShellFace, kShellMid, 0.48f);
+  const IColor badgeHighlight = BlendColor(kShellLight, kShellFace, 0.52f);
+  const IColor badgeShadow = BlendColor(kShellDark, kShellDeep, 0.44f);
 
   DrawRetroText(g,
                 requestedSize,
@@ -1495,20 +1499,20 @@ public:
       const float w = panel.W();
       const float h = panel.H();
       
-      g.FillCircle(WithAlpha(kShellDeep, 7), panel.L + w * 0.15f, panel.T + h * 0.8f, h * 0.4f);
-      g.FillCircle(WithAlpha(IColor{15, 60, 56, 50}, 5), panel.R - w * 0.1f, panel.B - h * 0.3f, h * 0.5f);
-      g.FillCircle(WithAlpha(IColor{20, 85, 78, 70}, 8), panel.MW(), panel.MH() - h * 0.2f, h * 0.6f);
+      g.FillCircle(WithAlpha(kShellDeep, 7), Snap8(panel.L + w * 0.15f), Snap8(panel.T + h * 0.8f), h * 0.4f);
+      g.FillCircle(WithAlpha(kShellDeep, 5), Snap8(panel.R - w * 0.1f), Snap8(panel.B - h * 0.3f), h * 0.5f);
+      g.FillCircle(WithAlpha(kShellDeep, 8), Snap8(panel.MW()), Snap8(panel.MH() - h * 0.2f), h * 0.6f);
       
-      g.FillCircle(WithAlpha(IColor{28, 80, 76, 68}, 14), panel.L + 12.f, panel.B - 8.f, 1.2f);
-      g.FillCircle(WithAlpha(IColor{22, 92, 86, 79}, 11), panel.R - 18.f, panel.T + 12.f, 0.8f);
-      g.FillCircle(WithAlpha(IColor{18, 70, 64, 58}, 16), panel.MW() + 24.f, panel.B - 6.f, 1.5f);
-      g.FillCircle(WithAlpha(IColor{12, 50, 46, 40}, 10), panel.MW() - 32.f, panel.T + 8.f, 0.7f);
-      g.FillCircle(WithAlpha(IColor{24, 88, 82, 75}, 12), panel.L + 28.f, panel.B - 14.f, 1.1f);
+      g.FillCircle(WithAlpha(kShellDeep, 14), Snap8(panel.L + 12.f), Snap8(panel.B - 8.f), 1.2f);
+      g.FillCircle(WithAlpha(kShellDeep, 11), Snap8(panel.R - 18.f), Snap8(panel.T + 12.f), 0.8f);
+      g.FillCircle(WithAlpha(kShellDeep, 16), Snap8(panel.MW() + 24.f), Snap8(panel.B - 6.f), 1.5f);
+      g.FillCircle(WithAlpha(kShellDeep, 10), Snap8(panel.MW() - 32.f), Snap8(panel.T + 8.f), 0.7f);
+      g.FillCircle(WithAlpha(kShellDeep, 12), Snap8(panel.L + 28.f), Snap8(panel.B - 14.f), 1.1f);
       
-      g.DrawLine(WithAlpha(IColor{32, 72, 68, 60}, 16), panel.L + 8.f, panel.MH() + 4.f, panel.L + 22.f, panel.MH() - 2.f, nullptr, 0.7f);
-      g.DrawLine(WithAlpha(IColor{28, 65, 60, 54}, 18), panel.R - 15.f, panel.B - 12.f, panel.R - 5.f, panel.B - 4.f, nullptr, 0.9f);
-      g.DrawLine(WithAlpha(kShellDeep, 20), panel.MW() - 10.f, panel.T + 6.f, panel.MW() + 15.f, panel.T + 12.f, nullptr, 0.6f);
-      g.DrawLine(WithAlpha(IColor{20, 55, 50, 45}, 14), panel.MW() + 40.f, panel.B - 18.f, panel.MW() + 52.f, panel.B - 8.f, nullptr, 0.8f);
+      g.DrawLine(WithAlpha(kShellDeep, 16), Snap8(panel.L + 8.f), Snap8(panel.MH() + 4.f), Snap8(panel.L + 22.f), Snap8(panel.MH() - 2.f), nullptr, 0.7f);
+      g.DrawLine(WithAlpha(kShellDeep, 18), Snap8(panel.R - 15.f), Snap8(panel.B - 12.f), Snap8(panel.R - 5.f), Snap8(panel.B - 4.f), nullptr, 0.9f);
+      g.DrawLine(WithAlpha(kShellDeep, 20), Snap8(panel.MW() - 10.f), Snap8(panel.T + 6.f), Snap8(panel.MW() + 15.f), Snap8(panel.T + 12.f), nullptr, 0.6f);
+      g.DrawLine(WithAlpha(kShellDeep, 14), Snap8(panel.MW() + 40.f), Snap8(panel.B - 18.f), Snap8(panel.MW() + 52.f), Snap8(panel.B - 8.f), nullptr, 0.8f);
 
       // Removed "TEMPO" text and explicit background line to fix alignment
       // and prevent text bleeding behind the toggle button.
@@ -1690,6 +1694,20 @@ public:
 
   void SetValueFromDelegate(double value, int valIdx = 0) override {
     IControl::SetValueFromDelegate(value, valIdx);
+    SetDirty(false);
+  }
+
+  void OnMouseOver(float x, float y, const IMouseMod& mod) override {
+    if (IsManualEnabled() && GetUI()) {
+      GetUI()->SetMouseCursor(ECursor::HAND);
+    }
+    SetDirty(false);
+  }
+
+  void OnMouseOut() override {
+    if (GetUI()) {
+      GetUI()->SetMouseCursor();
+    }
     SetDirty(false);
   }
 
@@ -1942,6 +1960,8 @@ public:
     mAnimFromOn = mVisualOn;
     mTargetOn = mVisualOn;
     mPressAmount = 0.f;
+    mHoverAmt = 0.f;
+    mHoverTarget = 0.f;
   }
 
   void SetValueFromDelegate(double value, int valIdx = 0) override {
@@ -1965,9 +1985,12 @@ public:
     }
     mHoverTarget = 1.f;
     mHoverFadeFrom = mHoverAmt;
-    mHoverFadeStart = std::chrono::steady_clock::now();
-    mHoverFadeDuration = 140.f;
-    SetDirty(false);
+    SetAnimation([](IControl* c) {
+      auto* self = c->As<MonitorPowerButtonControl>();
+      const float t = EaseOutQuint(static_cast<float>(self->GetAnimationProgress()));
+      self->mHoverAmt = self->mHoverFadeFrom + (1.f - self->mHoverFadeFrom) * t;
+      self->SetDirty(false);
+    }, 140);
   }
 
   void OnMouseOut() override {
@@ -1975,12 +1998,14 @@ public:
     if (GetUI()) {
       GetUI()->SetMouseCursor();
     }
-    mHoverFadeStart = std::chrono::steady_clock::now();
-    mHoverFadeDuration = 80.f;
-    // Start from current amount, not from 0
     mHoverFadeFrom = mHoverAmt;
     mHoverTarget = 0.f;
-    SetDirty(false);
+    SetAnimation([](IControl* c) {
+      auto* self = c->As<MonitorPowerButtonControl>();
+      const float t = EaseOutQuint(static_cast<float>(self->GetAnimationProgress()));
+      self->mHoverAmt = self->mHoverFadeFrom * (1.f - t);
+      self->SetDirty(false);
+    }, 80);
   }
 
   bool OnKeyDown(float x, float y, const IKeyPress& key) override {
@@ -2001,6 +2026,7 @@ public:
   void OnEndAnimation() override {
     mVisualOn = mTargetOn;
     mPressAmount = 0.f;
+    mHoverAmt = mHoverTarget;
     IControl::OnEndAnimation();
   }
 
@@ -2053,30 +2079,15 @@ public:
     static const IColor faceBarrel  = BlendColor(kShellDark, kShellMid, 0.45f);
     
     static const IColor symbolColor = BlendColor(kShellText, kFieldInset, 0.15f);
-    static const IColor ledOff      {255, 110,  30,  30};
-    static const IColor ledOn       {255, 255,  60,  60}; // Brighter red
-    static const IColor ledGlowOff  { 40, 255,  40,  40};
-    static const IColor ledGlowOn   {180, 255,  50,  50};
+    // LED colors — promoted from local statics to named constants for palette consistency
+    static const IColor ledOff      = kLedOff;
+    static const IColor ledOn       = kLedOn;
+    static const IColor ledGlowOff  = kLedGlowOff;
+    static const IColor ledGlowOn   = kLedGlowOn;
 
     // These two change with mVisualOn and must remain non-static:
     const IColor ledColor = BlendColor(ledOff, ledOn, mVisualOn);
     const IColor ledGlow  = BlendColor(ledGlowOff, ledGlowOn, mVisualOn);
-
-    // Update hover fade (runs off wall-clock because SetAnimation is reserved for press/LED)
-    {
-      const float elapsed = std::chrono::duration<float, std::milli>(
-        std::chrono::steady_clock::now() - mHoverFadeStart).count();
-      const float t = EaseOutQuint(elapsed / mHoverFadeDuration);
-      if (mHoverTarget > 0.5f) {
-        mHoverAmt = mHoverFadeFrom + (1.f - mHoverFadeFrom) * t;  // fade in from current amount
-      } else {
-        mHoverAmt = mHoverFadeFrom * (1.f - t);  // fade out from mHoverFadeFrom
-      }
-      mHoverAmt = Clamp01(mHoverAmt);
-      if (elapsed < mHoverFadeDuration) {
-        SetDirty(false);  // keep repainting during fade
-      }
-    }
 
     const float hoverGlow = mMouseDown ? 0.75f : mHoverAmt * 0.45f;
     if (hoverGlow > 0.01f) {
@@ -2206,8 +2217,6 @@ private:
   float mHoverAmt = 0.f;
   float mHoverTarget = 0.f;
   float mHoverFadeFrom = 0.f;
-  float mHoverFadeDuration = 140.f;
-  std::chrono::steady_clock::time_point mHoverFadeStart;
   IRECT mButtonBounds;
   IRECT mTitleBounds;
 };
@@ -2508,7 +2517,7 @@ void Freeze95::OnReset() {
 
   mDSP->init(static_cast<int>(GetSampleRate()));
 
-  const int preallocFrames = std::max(8192, GetBlockSize());
+  const int preallocFrames = std::max(16384, GetBlockSize());
   mInL.resize(preallocFrames);
   mInR.resize(preallocFrames);
   mOutL.resize(preallocFrames);
@@ -2539,6 +2548,13 @@ void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
   };
 
   if (!mDSP || nFrames <= 0) {
+    outputDry();
+    return;
+  }
+
+  // Respect host VST3 bypass — output dry when bypassed so the power button
+  // and host bypass stay functionally equivalent (both pass dry signal).
+  if (GetBypassed()) {
     outputDry();
     return;
   }
