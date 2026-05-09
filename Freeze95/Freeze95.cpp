@@ -2245,7 +2245,7 @@ private:
 }  // namespace
 
 Freeze95::Freeze95(const InstanceInfo& info)
-  : Plugin(info, MakeConfig(kNumParams, kNumPresets)) {
+  : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets)) {
   GetParam(kParamPower)->InitBool("Effect On", true);
   GetParam(kParamChaos)->InitDouble("Chaos Amount", 0.55, 0.0, 1.0, 0.01, "%");
   GetParam(kParamLoFi)->InitDouble("Lo-Fi Amount", 0.30, 0.0, 1.0, 0.01, "%");
