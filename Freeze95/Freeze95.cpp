@@ -883,7 +883,7 @@ void DrawCornerPatina(IGraphics& g, const IRECT& bounds) {
 
 void FormatPercentDisplay(double normalizedValue, WDL_String& str) {
   char buffer[32];
-  std::snprintf(buffer, sizeof(buffer), "%0.0f%%", normalizedValue * 100.0);
+  std::snprintf(buffer, sizeof(buffer), "%0.0f", normalizedValue * 100.0);
   str.Set(buffer);
 }
 
@@ -930,7 +930,7 @@ void FormatKnobReadout(int paramIdx, double normalizedValue, WDL_String& str) {
   const float value = Clamp01(static_cast<float>(normalizedValue));
   const float percentValue = std::round(value * 100.f);
   char buffer[48];
-  std::snprintf(buffer, sizeof(buffer), "%s %0.0f%%", GetKnobStateLabel(paramIdx, value), percentValue);
+  std::snprintf(buffer, sizeof(buffer), "%s %0.0f", GetKnobStateLabel(paramIdx, value), percentValue);
   str.Set(buffer);
 }
 
