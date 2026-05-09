@@ -741,11 +741,11 @@ bool LoadUtilityUIFont(IGraphics* g) {
     return false;
   }
 
+#ifdef OS_WIN
   if (LoadBundledFont(g, kUtilityFontID, UTILITY_UI_FN)) {
     return true;
   }
 
-#ifdef OS_WIN
   if (g->LoadFont(kUtilityFontID, UTILITY_UI_FN)) {
     return true;
   }
@@ -763,11 +763,11 @@ bool LoadTertiaryUIFont(IGraphics* g) {
     return false;
   }
 
+#ifdef OS_WIN
   if (LoadBundledFont(g, kTertiaryFontID, TERTIARY_UI_FN)) {
     return true;
   }
 
-#ifdef OS_WIN
   if (g->LoadFont(kTertiaryFontID, TERTIARY_UI_FN)) {
     return true;
   }
