@@ -27,9 +27,16 @@ class Freeze95 final : public iplug::Plugin {
 public:
   explicit Freeze95(const iplug::InstanceInfo& info);
 
+#if IPLUG_EDITOR
+  void OnParentWindowResize(int width, int height) override;
+#endif
+
   void OnParamChange(int paramIdx) override;
   void OnReset() override;
   void ProcessBlock(iplug::sample** inputs, iplug::sample** outputs, int nFrames) override;
+
+  bool SerializeState(IByteChunk& chunk) const override;
+  int UnserializeState(const IByteChunk& chunk, int startPos) override;
 
 private:
   void LayoutUI(iplug::igraphics::IGraphics* pGraphics);

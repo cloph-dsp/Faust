@@ -13,6 +13,7 @@
 
 #ifdef OS_WIN
 #include <windows.h>
+#include <intrin.h>
 #endif
 
 #include "IPlug_include_in_plug_src.h"
@@ -536,9 +537,9 @@ void DrawEmbossedBadgeText(IGraphics& g, float requestedSize, const char* text, 
     return;
   }
 
-  const IColor badgeFace = WithAlpha(BlendColor(kShellFace, kFieldFace, 0.26f), 244);
-  const IColor badgeHighlight = WithAlpha(BlendColor(kShellLight, kShellFace, 0.22f), 228);
-  const IColor badgeShadow = WithAlpha(BlendColor(kShellDark, kShellDeep, 0.20f), 212);
+  const IColor badgeFace(255, 184, 170, 132); // #B8AA84
+  const IColor badgeHighlight(255, 238, 228, 199); // #EEE4C7
+  const IColor badgeShadow(255, 116, 104, 70); // #746846
 
   DrawRetroText(g,
                 requestedSize,
@@ -1159,8 +1160,8 @@ public:
   }
 
   void OnResize() override {
-    const float footerH = 56.f;
-    const IRECT knobArea(mRECT.L + 8.f, mRECT.T + 8.f, mRECT.R - 8.f, mRECT.B - footerH);
+    const float footerH = 48.f;
+    const IRECT knobArea(mRECT.L + 6.f, mRECT.T + 6.f, mRECT.R - 6.f, mRECT.B - footerH);
     const float socketSize = std::min(knobArea.W(), knobArea.H());
     mSocketBounds = knobArea.GetCentredInside(socketSize, socketSize);
     // Label sits in a taller band above value; value gets generous room at bottom
@@ -1220,7 +1221,8 @@ public:
     const float innerR = outerR * 0.88f;
     const float bodyR = outerR * 0.80f;
     constexpr int numTeeth = 24;
-    const float rotationDeg = Lerp(135.f, 405.f, value) - 270.f;
+    const float lineAngle = Lerp(135.f, 405.f, value);
+    const float rotationDeg = lineAngle - 270.f;
     const float rotationRad = DegToRad(rotationDeg);
 
     const IColor knobFill = BlendColor(kKnobTop, kShellLight, active ? 0.28f : 0.19f);
@@ -1283,7 +1285,8 @@ public:
 
     // Travel arc — shows consumed range at a glance without decoding numbers
     if (value > 0.002f) {
-      const float arcEnd = Lerp(135.f, 405.f, value);
+      const float arcStart = 225.f;
+      const float arcEnd = lineAngle + 90.f;
       const float arcR = outerR + 4.5f;
       const int arcAlpha = active
         ? 148
@@ -1291,10 +1294,10 @@ public:
       const IColor arcColor = active
         ? WithAlpha(kCoolGlow, arcAlpha)
         : WithAlpha(kCoolOn, arcAlpha);
-      g.DrawArc(arcColor, cx, knobCy, arcR, 135.f, arcEnd, nullptr, 1.8f);
+      g.DrawArc(arcColor, cx, knobCy, arcR, arcStart, arcEnd, nullptr, 1.8f);
     }
     // Faint full-range track so the arc has a reference groove
-    g.DrawArc(WithAlpha(kShellDark, 44), cx, knobCy, outerR + 4.5f, 135.f, 405.f, nullptr, 1.0f);
+    g.DrawArc(WithAlpha(kShellDark, 44), cx, knobCy, outerR + 4.5f, 225.f, 495.f, nullptr, 1.0f);
 
     if (mReadoutPulse > 0.01f && value > 0.002f) {
       const float arcEndRad = DegToRad(Lerp(135.f, 405.f, value));
@@ -1342,7 +1345,7 @@ public:
         {WithAlpha(kShellLight, 0), 0.75f},
         {WithAlpha(kShellLight, static_cast<int>(35 * hlA)), 0.88f},
         {WithAlpha(kShellLight, 0), 1.0f}
-      }, (rotationRad - kPi * 0.25f) * (180.f / kPi));
+      }, lineAngle - 45.f);
       g.PathCircle(cx, knobCy, bodyR);
       g.PathFill(hl);
     }
@@ -1385,7 +1388,6 @@ public:
       g.DrawCircle(WithAlpha(kShellLight, rimAlpha), cx - 0.2f, knobCy - 0.2f, outerR + 0.9f, nullptr, 1.0f);
     }
 
-    const float lineAngle = Lerp(135.f, 405.f, value);
     DrawRadialLine(g,
                    WithAlpha(grooveDark, 196),
                    cx + 0.15f, knobCy + 0.18f, lineAngle,
@@ -1874,7 +1876,7 @@ public:
       g.StartLayer(this, mRECT);
       const IRECT plate(mRECT.L + 2.f, mRECT.T + 2.f, mRECT.R - 2.f, mRECT.B - 1.f);
       DrawBrandPlate(g, plate);
-      DrawEmbossedBadgeText(g, 19.f, mText.Get(), plate);
+      DrawEmbossedBadgeText(g, 24.f, mText.Get(), plate);
       mLayer = g.EndLayer();
     }
     g.DrawLayer(mLayer);
@@ -2234,12 +2236,17 @@ private:
 }  // namespace
 
 Freeze95::Freeze95(const InstanceInfo& info)
-  : Plugin(info, MakeConfig(kNumParams, 0)) {
+  : Plugin(info, MakeConfig(kNumParams, kNumPresets)) {
   GetParam(kParamPower)->InitBool("Effect On", true);
   GetParam(kParamChaos)->InitDouble("Chaos Amount", 0.55, 0.0, 1.0, 0.01, "%");
   GetParam(kParamLoFi)->InitDouble("Lo-Fi Amount", 0.30, 0.0, 1.0, 0.01, "%");
   GetParam(kParamBpm)->InitDouble("Tempo (BPM)", 120.0, 20.0, 300.0, 0.1, "bpm");
   GetParam(kParamSync)->InitBool("Sync to Host", true);
+
+  // Factory presets - these work with iPlug2's MakePreset API.
+  // NOTE: Some DAWs (e.g., certain VST3 hosts) do not expose factory presets in their
+  // preset browser. Presets can still be saved/loaded via chunk state (host project files).
+  // The preset visibility depends on the DAW's VST3 preset support implementation.
 
   mDSP = std::make_unique<Freeze95DSP>();
   ZoneCaptureUI captureUI(mFaustZones);
@@ -2282,13 +2289,19 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const float majorBottom = h - lowerMargin;
   const float majorHeight = std::max(152.f, majorBottom - majorTop);
 
-  // Knobs are noticeably larger and evenly constrained
-  float chaosWidth = Snap8(ClampValue(w * 0.19f, 152.f, 184.f));
-  float loFiWidth = chaosWidth;
-  float powerWidth = chaosWidth;
+  const float knobGap = Snap8(16.f);
+  const float transportGap = Snap8(24.f);
+  const float powerGap = Snap8(40.f);
 
-  const float logoPlateWidth = Snap8(ClampValue(chaosWidth * 1.5f, 200.f, 240.f));
-  const float badgePlateWidth = Snap8(ClampValue(powerWidth * 1.4f, 160.f, 192.f));
+  // Equal raw gaps looked uneven because the knob faces occupy much less of
+  // their bounds than the transport panel and power button. Weight the row by
+  // visible mass instead.
+  float chaosWidth = Snap8(ClampValue(w * 0.175f, 144.f, 152.f));
+  float loFiWidth = chaosWidth;
+  float powerWidth = Snap8(ClampValue(w * 0.175f, 144.f, 152.f));
+
+  const float logoPlateWidth = chaosWidth;
+  const float badgePlateWidth = powerWidth;
 
   const float bpmPanelTop = majorTop + Snap8(ClampValue(majorHeight * 0.20f, 24.f, 40.f));
   const float bpmPanelBottom = majorBottom - Snap8(ClampValue(majorHeight * 0.18f, 24.f, 40.f));
@@ -2347,31 +2360,26 @@ void Freeze95::LayoutUI(IGraphics* g) {
 
   const float macroTopInset = Snap8(ClampValue(majorHeight * 0.03f, 8.f, 16.f));
   const float macroBottomInset = Snap8(ClampValue(majorHeight * 0.04f, 8.f, 16.f));
-  const float loFiTopOffset = Snap8(ClampValue(majorHeight * 0.045f, 8.f, 16.f));
+  const float loFiTopOffset = 0.f;
 
   const float transportInsetX = Snap8(16.f);
   const float transportInsetY = Snap8(16.f);
 
-  const float innerSpace = w - (outerMargin * 2.f);
-  const float bpmGroupWidth = Snap8(ClampValue(w * 0.285f, 208.f, 272.f));
-  const float totalTransportWidth = bpmGroupWidth + transportInsetX * 2.f;
+  const float totalTransportWidth = Snap8(ClampValue(w * 0.27f, 216.f, 224.f));
+  const float contentWidth = chaosWidth + knobGap + loFiWidth + transportGap + totalTransportWidth + powerGap + powerWidth;
+  const float rowLeft = std::max(outerMargin, 0.5f * (w - contentWidth));
 
-  const float remainingWidth = innerSpace - chaosWidth - loFiWidth - totalTransportWidth - powerWidth;
-  // Calculate gap exactly, float division without snapping so errors don't multiply
-  const float gap = std::max(16.f, remainingWidth / 3.f);
-
-  const IRECT chaosBounds(outerMargin,
+  const IRECT chaosBounds(rowLeft,
                           majorTop + macroTopInset,
-                          outerMargin + chaosWidth,
+                          rowLeft + chaosWidth,
                           majorBottom - macroBottomInset);
 
-  const IRECT loFiBounds(chaosBounds.R + gap,
+  const IRECT loFiBounds(chaosBounds.R + knobGap,
                          majorTop + macroTopInset + loFiTopOffset,
-                         chaosBounds.R + gap + loFiWidth,
+                         chaosBounds.R + knobGap + loFiWidth,
                          majorBottom - macroBottomInset - Snap8(4.f));
 
-  // Position exactly next logically so spaces are 100% mathematically even
-  const float transportPanelL = loFiBounds.R + gap;
+  const float transportPanelL = loFiBounds.R + transportGap;
   const IRECT transportPanelBounds(transportPanelL,
                                    bpmPanelTop - transportInsetY,
                                    transportPanelL + totalTransportWidth,
@@ -2379,16 +2387,15 @@ void Freeze95::LayoutUI(IGraphics* g) {
 
   const float powerTop = majorTop + macroTopInset;
   const float powerBottom = majorBottom - macroBottomInset;
-  const float powerPanelL = transportPanelBounds.R + gap;
+  const float powerPanelL = transportPanelBounds.R + powerGap;
   const IRECT powerBounds(powerPanelL, powerTop, powerPanelL + powerWidth, powerBottom);
 
   // Plates anchored to align exactly with inner bezels.
-  const float logoOffsetLeft = Snap8(16.f);
-  const IRECT logoPlateBounds(outerMargin + logoOffsetLeft, badgePlateTop,
-                              outerMargin + logoOffsetLeft + logoPlateWidth, badgePlateTop + badgePlateHeight);
+  const IRECT logoPlateBounds(chaosBounds.L, badgePlateTop,
+                              chaosBounds.L + logoPlateWidth, badgePlateTop + badgePlateHeight);
   // Align badge plate precisely on the right margin just like the Power bounds below it
-  const IRECT badgePlateBounds(w - outerMargin - badgePlateWidth, badgePlateTop,
-                               w - outerMargin, badgePlateTop + badgePlateHeight);
+  const IRECT badgePlateBounds(powerBounds.L, badgePlateTop,
+                               powerBounds.L + badgePlateWidth, badgePlateTop + badgePlateHeight);
 
   g->AttachControl(new MonitorLogoPlateControl(
     logoPlateBounds,
@@ -2435,13 +2442,25 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const IRECT bypassCoverBounds(0.f, 0.f, w, h);
   g->AttachControl(new BypassOverlayControl(bypassCoverBounds, kParamPower));
 
-  // Corner resizer — Scale mode zooms the entire vector scene without
-  // changing logical coordinates.  Styled to blend with the shell shadow.
+  // Corner resizer - Scale mode zooms the entire vector scene without
+  // changing logical coordinates. layoutOnResize MUST be false.
   g->AttachCornerResizer(EUIResizerMode::Scale, false,
-                         IColor(0, 0, 0, 0),             // invisible at rest
+                         IColor(60, 255, 255, 255),             // visible at rest
                          WithAlpha(kShellDark, 120),     // visible on hover
                          WithAlpha(kShellText, 210),     // solid while dragging
-                         18.f);
+                         24.f);
+}
+
+void Freeze95::OnParentWindowResize(int width, int height) {
+  if (!GetUI()) {
+    return;
+  }
+
+  const float scaleX = static_cast<float>(width) / static_cast<float>(PLUG_WIDTH);
+  const float scaleY = static_cast<float>(height) / static_cast<float>(PLUG_HEIGHT);
+  const float scale = ClampValue(std::min(scaleX, scaleY), 0.65f, 2.0f);
+
+  GetUI()->Resize(PLUG_WIDTH, PLUG_HEIGHT, scale, false);
 }
 #endif
 
@@ -2499,6 +2518,11 @@ void Freeze95::OnReset() {
 }
 
 void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
+#ifdef _WIN32
+  // FTZ (Flush To Zero) and DAZ (Denormals Are Zero) to prevent CPU spikes
+  _mm_setcsr(_mm_getcsr() | 0x8040);
+#endif
+
   const int nIn = NInChansConnected();
   const int nOut = NOutChansConnected();
 
@@ -2584,4 +2608,15 @@ void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
   for (int c = 2; c < nOut; ++c) {
     std::fill(outputs[c], outputs[c] + nFrames, static_cast<sample>(0.0));
   }
+}
+
+bool Freeze95::SerializeState(IByteChunk& chunk) const {
+  return SerializeParams(chunk);
+}
+
+int Freeze95::UnserializeState(const IByteChunk& chunk, int startPos) {
+  if (GetUI()) GetUI()->SetAllControlsDirty();
+  const int result = UnserializeParams(chunk, startPos);
+  SyncParamsToDSP();
+  return result;
 }

@@ -24,7 +24,7 @@
 #define PLUG_DOES_MIDI_IN 0
 #define PLUG_DOES_MIDI_OUT 0
 #define PLUG_DOES_MPE 0
-#define PLUG_DOES_STATE_CHUNKS 0
+#define PLUG_DOES_STATE_CHUNKS 1
 #define PLUG_HAS_UI 1
 #define PLUG_WIDTH 840
 #define PLUG_HEIGHT 306
@@ -49,7 +49,7 @@
 #define AAX_PLUG_CATEGORY_STR "Effect"
 #define AAX_DOES_AUDIOSUITE 0
 
-#define VST3_SUBCATEGORY "Fx|Distortion"
+#define VST3_SUBCATEGORY "Fx|Modulation"
 
 #define APP_NUM_CHANNELS 2
 #define APP_N_VECTOR_WAIT 0

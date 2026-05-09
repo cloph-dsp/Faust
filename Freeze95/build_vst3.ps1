@@ -51,23 +51,23 @@ if (-not (Test-Path $sourceBundle)) {
   exit 1
 }
 
-Write-Host "Deploying VST3 bundle..."
+Write-Host "Deploying VST3..."
 
-# 1 — Workspace copy
+# 1 – Workspace copy
 if (-not (Test-Path $commonFilesDir)) {
   New-Item -ItemType Directory -Path $commonFilesDir -Force | Out-Null
 }
-Remove-Item -Recurse -Force (Join-Path $commonFilesDir "Freeze95.vst3") -ErrorAction SilentlyContinue
-Copy-Item -Path $sourceBundle -Destination $commonFilesDir -Recurse -Force
+Remove-Item -Path (Join-Path $commonFilesDir "Freeze95.vst3") -Force -ErrorAction SilentlyContinue
+Copy-Item -Path $sourceBundle -Destination $commonFilesDir -Force
 Write-Host "  -> $commonFilesDir"
 
-# 2 — System VST3 folder (C:\Program Files\Common Files\VST3)
+# 2 – System VST3 folder (C:\Program Files\Common Files\VST3)
 $systemVst3 = Join-Path $env:CommonProgramW6432 "VST3"
 $systemBundle = Join-Path $systemVst3 "Freeze95.vst3"
 
 try {
-  Remove-Item -Recurse -Force $systemBundle -ErrorAction SilentlyContinue
-  Copy-Item -Path $sourceBundle -Destination $systemVst3 -Recurse -Force
+  Remove-Item -Force $systemBundle -ErrorAction SilentlyContinue
+  Copy-Item -Path $sourceBundle -Destination $systemVst3 -Force
   Write-Host "  -> $systemVst3"
 } catch {
   Write-Warning "Could not write to system VST3 folder (need admin?): $_"

@@ -21,11 +21,8 @@ bypass_env = stutter_on : smooth_ms(fast_glide_ms);
 chaos = chaos_raw : smooth_ms(slow_glide_ms);
 lofi_knob = lofi_raw : smooth_ms(slow_glide_ms);
 
-chaos_focus = pow(chaos, 1.1);
-chaos_texture = pow(clamp01((chaos - 0.18) / 0.62), 1.35);
-chaos_damage = pow(clamp01((chaos - 0.58) / 0.42), 1.8);
-chaos_sharp = min(1.0, 0.64 * chaos_focus + 0.26 * chaos_texture + 0.10 * chaos_damage);
-chaos_wild = min(1.0, 0.58 * chaos_texture + 0.42 * chaos_damage);
+chaos_sharp = pow(chaos, 1.3);
+chaos_wild = pow(clamp01(chaos - 0.3), 1.5);
 fidelity = 1.0 - chaos_sharp;
 calm_mode = clamp01(1.0 - chaos_raw / 0.12);
 simple_mode = clamp01(1.0 - chaos_raw / 0.2);
@@ -62,7 +59,7 @@ rnd3H = (+(3033) ~ *(1103515245)) : +(33467) : %(2147483647) : /(2147483647.0);
 rnd4H = (+(3044) ~ *(1103515245)) : +(34578) : %(2147483647) : /(2147483647.0);
 rnd5H = (+(3055) ~ *(1103515245)) : +(35689) : %(2147483647) : /(2147483647.0);
 
-update_time_ms = max(60.0, 12000.0 - chaos_sharp * 11980.0);
+update_time_ms = max(60.0, 9000.0 - chaos_sharp * 8900.0);
 update_rate = max(1, int(update_time_ms * ma.SR / 1000.0));
 counter = (+(1) : %(update_rate)) ~ _;
 
@@ -102,7 +99,7 @@ r3_high = ba.sAndH(trig, rnd3H);
 r4_high = ba.sAndH(trig, rnd4H);
 r5_high = ba.sAndH(trig, rnd5H);
 
-walk_time_ms = 5000.0 + (1.0 - chaos_focus) * 15000.0;
+	walk_time_ms = 5000.0 + (1.0 - chaos_sharp) * 15000.0;
 walk_rate = max(1, int(walk_time_ms * ma.SR / 1000.0));
 walk_counter = (+(1) : %(walk_rate)) ~ _;
 walk_trig = (walk_counter == 0);
@@ -258,7 +255,7 @@ with {
 	energy_norm = min(1.0, energy_env / 0.25);
 	effect_selector = min(1.0, max(0.0, effect_selector_raw + (energy_norm - 0.5) * 0.2));
 
-	normal_prob_raw = 0.90 + (0.45 - 0.90) * chaos_effect;
+	normal_prob_raw = 0.95 + (0.45 - 0.95) * pow(chaos_effect, 1.5);
 	normal_prob = prob_slew(max(0.05, normal_prob_raw + 0.04 * fidelity));
 	reverse_raw = 0.05 + 0.25 * chaos_effect;
 	slow_raw = 0.03 + 0.22 * chaos_effect;
@@ -310,9 +307,17 @@ with {
 	grain_window = sin(granular_phase_1 * ma.PI);
 	delayed_granular = grain_sample_1 * grain_window * 0.8;
 
-	effect_out_raw = ba.if(effect_mode == 0, delayed,
-									 ba.if(effect_mode == 1, delayed_reverse,
-									 ba.if(effect_mode == 2, delayed_slow, delayed_granular)));
+	mode_transition = abs(effect_mode - effect_mode');
+	mode_xfade_trig = float(mode_transition > 0);
+	mode_xfade_env = si.smooth(exp(-1.0 / max(1.0, ma.SR * 0.005)))(mode_xfade_trig);
+
+	effect_out_prev = ba.if(effect_mode' == 0, delayed,
+									  ba.if(effect_mode' == 1, delayed_reverse,
+									  ba.if(effect_mode' == 2, delayed_slow, delayed_granular)));
+	effect_out_curr = ba.if(effect_mode == 0, delayed,
+									  ba.if(effect_mode == 1, delayed_reverse,
+									  ba.if(effect_mode == 2, delayed_slow, delayed_granular)));
+	effect_out_raw = effect_out_prev * (1.0 - mode_xfade_env) + effect_out_curr * mode_xfade_env;
 	chaos_makeup = 1.0 + 0.18 * chaos_wild;
 	effect_out = effect_out_raw * burst_gain * chaos_makeup;
 	effect_out_guard = ba.if((calm_force > 0.02) | (chaos_raw < 0.12), delayed, effect_out);
@@ -321,9 +326,9 @@ with {
 	transient_edge = max(0.0, transient_hit - transient_hit');
 	inj_rel_coeff = exp(-1.0 / max(1.0, (140.0 * ma.SR / 1000.0)));
 	inj_env = transient_edge : (+ ~ *(inj_rel_coeff));
-	inj_mix_raw = min(0.22, inj_env * (0.28 + 0.4 * transient_norm) * (0.6 + 0.4 * fidelity));
+	inj_mix_raw = min(0.35, inj_env * (0.28 + 0.4 * transient_norm) * (0.6 + 0.4 * fidelity));
 	inj_mix = inj_mix_raw * bypass_env;
-	ghost = x * 0.65 + delayed * 0.35;
+	ghost = x * 0.35 + delayed * 0.65;
 	effect_pre_gap = effect_out_guard * (1.0 - inj_mix) + ghost * inj_mix;
 
 	gap_noise_duck = 1.0 - min(0.8, energy_norm * 0.8);
@@ -346,12 +351,14 @@ with {
 	comp_drive = comp_drive_amt(amount) + 0.75 * lofi_curve;
 	comp_instant = comp_curve(pre_shaped, comp_drive);
 
-	bits = max(5.0, 16.0 - amount * 10.0);
+	bits = max(8.0, 16.0 - amount * 8.0);
 	step = 1.0 / pow(2.0, bits);
 	dither_amp = step * (0.20 + 0.30 * amount);
 
-	lp_hz = max(140.0, 16000.0 - amount * 14000.0);
-	sr_hz = max(450.0, 22050.0 - amount * 21600.0);
+	// Pre-filter before downsampling to prevent aliasing above new Nyquist
+	sr_hz = max(3000.0, 22050.0 - amount * 19050.0);
+	nyquist_sr = sr_hz * 0.45;
+	lp_hz = max(nyquist_sr, 20000.0 - amount * 16000.0);
 	sr_period = max(1, int(ma.SR / sr_hz));
 	sr_trig = (ba.period(sr_period) == 0);
 	held_shaped = ba.sAndH(sr_trig, pre_shaped);
@@ -382,7 +389,7 @@ with {
 	bit_mix = amount;
 	bit_blend = pre_shaped * (1.0 - bit_mix) + bit_tilt * bit_mix;
 
-	rate_div = max(1, int(1 + amount * 7));
+	rate_div = max(1, int(1 + amount * 3));
 	rate_counter = (+(1) : %(rate_div)) ~ _;
 	rate_trig = (rate_counter == 0);
 	rate_hold = ba.sAndH(rate_trig, bit_tilt);
@@ -430,8 +437,14 @@ with {
 	// Phase-coherent Linkwitz-Riley 4th-order (LR4) 3-band split
 	// This ensures perfectly flat magnitude summation and in-phase bands
 	// replaces the older overlapping Butterworth filters
-	(low_l, mid_l, high_l) = left_in : fi.crossover3LR4(xover_lo, xover_hi);
-	(low_r, mid_r, high_r) = right_in : fi.crossover3LR4(xover_lo, xover_hi);
+	left_bands = left_in : fi.crossover3LR4(xover_lo, xover_hi);
+	right_bands = right_in : fi.crossover3LR4(xover_lo, xover_hi);
+	low_l = left_bands : _,!,!;
+	mid_l = left_bands : !,_,!;
+	high_l = left_bands : !,!,_;
+	low_r = right_bands : _,!,!;
+	mid_r = right_bands : !,_,!;
+	high_r = right_bands : !,!,_;
 
 	// Normalization trims to compensate for band-pass energy (LR4 cutoffs are -6dB)
 	band_trim_low = 0.98;
@@ -447,7 +460,7 @@ with {
 	high_stutter_r = stutter_processor(high_r, r1_high, r2_high, r3_high, r4_high, r5_high, walk_repeat_high, walk_capture_high, repeat_rate_high, capture_scale_high) * band_trim_high;
 
 	lofi_low_amt = lofi_amt * 0.35;
-	lofi_mid_amt = min(1.0, lofi_amt * 0.95 + 0.05 * chaos_texture);
+	lofi_mid_amt = min(1.0, lofi_amt * 0.95 + 0.05 * chaos_sharp);
 	lofi_high_amt = min(1.0, lofi_amt * 1.20);
 
 	low_proc_l = lofi(low_stutter_l, lofi_low_amt);
@@ -458,8 +471,10 @@ with {
 	mid_proc_r = lofi(mid_stutter_r, lofi_mid_amt);
 	high_proc_r = lofi(high_stutter_r, lofi_high_amt);
 
-	left_stutter = low_proc_l + mid_proc_l + high_proc_l;
-	right_stutter = low_proc_r + mid_proc_r + high_proc_r;
+	left_stutter_raw = low_proc_l + mid_proc_l + high_proc_l;
+	right_stutter_raw = low_proc_r + mid_proc_r + high_proc_r;
+	left_stutter = left_stutter_raw * bypass_env + left_in * (1.0 - bypass_env);
+	right_stutter = right_stutter_raw * bypass_env + right_in * (1.0 - bypass_env);
 
 	decor_scale = bypass_env * (1.0 - 0.7 * fidelity);
 	decor_max_samps = max(0, min(1023, int(ma.SR * 0.0025 * decor_scale)));
@@ -491,8 +506,8 @@ with {
 	guard_l = mid_pan + side_pan * side_shaper;
 	guard_r = mid_pan - side_pan * side_shaper;
 
-	enabled_l = in_l + bypass_env * (guard_l - in_l);
-	enabled_r = in_r + bypass_env * (guard_r - in_r);
+	enabled_l = bypass_env * guard_l + (1.0 - bypass_env) * left_in;
+	enabled_r = bypass_env * guard_r + (1.0 - bypass_env) * right_in;
 
 	out_l = enabled_l * output_gain : limiter : soft_sat : fi.dcblocker;
 	out_r = enabled_r * output_gain : limiter : soft_sat : fi.dcblocker;
