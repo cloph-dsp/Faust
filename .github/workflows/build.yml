@@ -14,7 +14,6 @@ on:
 
 env:
   BINARY_NAME: Freeze95
-  IPLUG2_ROOT: ${{ github.workspace }}/Freeze95/iPlug2
 
 jobs:
   build-windows:
@@ -25,6 +24,10 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+
+      - name: Checkout iPlug2 framework
+        run: |
+          git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2
 
       - name: Build with MSBuild
         working-directory: Freeze95
@@ -49,6 +52,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout iPlug2 framework
+        run: |
+          git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2
+
       - name: Build VST3
         run: |
           cd Freeze95
@@ -58,7 +65,7 @@ jobs:
           cp Freeze95.h iPlug2/Examples/IPlugEffect/IPlugEffect.h
           cp config.h iPlug2/Examples/IPlugEffect/config.h
 
-          # Write a Freeze95 xcconfig that points to Freeze95 headers
+          # Write a Freeze95 xcconfig — adds Freeze95/ to include paths for Freeze95/*.h
           cat > iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig << 'XCCONFIG'
           IPLUG2_ROOT = ../../..
           #include "../../../common-mac.xcconfig"
@@ -85,5 +92,3 @@ jobs:
         with:
           name: Freeze95-macOS
           path: Freeze95/build-mac/Release/Freeze95.vst3
-
-
