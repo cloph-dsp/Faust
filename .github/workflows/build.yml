@@ -73,7 +73,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Freeze95-Windows-CLAP
-          path: Freeze95/build-win/Freeze95.clap
+          path: Freeze95/build-win/clap/x64/Release/Freeze95.clap
 
   build-macos:
     name: macOS
