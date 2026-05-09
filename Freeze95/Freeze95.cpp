@@ -2264,7 +2264,7 @@ Freeze95::Freeze95(const InstanceInfo& info)
 
 #if IPLUG_EDITOR
   mMakeGraphicsFunc = [&]() {
-    auto* graphics = MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_HEIGHT));
+    auto* graphics = MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
     return graphics;
   };
 

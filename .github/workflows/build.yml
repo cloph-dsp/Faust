@@ -29,6 +29,23 @@ jobs:
         run: |
           git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2
 
+      - name: Download VST3 SDK
+        shell: bash
+        working-directory: Freeze95/iPlug2/Dependencies/IPlug
+        run: bash download-vst3-sdk.sh
+
+      - name: Setup Freeze95 resources
+        working-directory: Freeze95
+        run: |
+          # Swap Freeze95 source into IPlugEffect
+          Copy-Item Freeze95.cpp iPlug2/Examples/IPlugEffect/IPlugEffect.cpp -Force
+          Copy-Item Freeze95.h iPlug2/Examples/IPlugEffect/IPlugEffect.h -Force
+          Copy-Item config.h iPlug2/Examples/IPlugEffect/config.h -Force
+          # Resources (SVGs, fonts, main.rc)
+          Copy-Item resources/* iPlug2/Examples/IPlugEffect/resources/ -Force
+          Copy-Item Freeze95DOS.ttf iPlug2/Examples/IPlugEffect/Freeze95DOS.ttf -Force
+          Copy-Item Freeze95DOS.ttf iPlug2/Examples/IPlugEffect/resources/Freeze95DOS.ttf -Force
+
       - name: Build with MSBuild
         working-directory: Freeze95
         run: |
@@ -56,17 +73,22 @@ jobs:
         run: |
           git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2
 
-      - name: Build VST3
+      - name: Download VST3 SDK
+        working-directory: Freeze95/iPlug2/Dependencies/IPlug
+        run: bash download-vst3-sdk.sh
+
+      - name: Setup Freeze95 resources
         run: |
           cd Freeze95
-
-          # Swap Freeze95 source into IPlugEffect's place so the Xcode project compiles it
           cp Freeze95.cpp iPlug2/Examples/IPlugEffect/IPlugEffect.cpp
           cp Freeze95.h iPlug2/Examples/IPlugEffect/IPlugEffect.h
           cp config.h iPlug2/Examples/IPlugEffect/config.h
+          cp resources/* iPlug2/Examples/IPlugEffect/resources/ 2>/dev/null || true
+          cp Freeze95DOS.ttf iPlug2/Examples/IPlugEffect/Freeze95DOS.ttf 2>/dev/null || true
 
-          # Write a Freeze95 xcconfig — adds Freeze95/ to include paths for Freeze95/*.h
-          cat > iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig << 'XCCONFIG'
+      - name: Write Freeze95 xcconfig
+        run: |
+          cat > Freeze95/iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig << 'XCCONFIG'
           IPLUG2_ROOT = ../../..
           #include "../../../common-mac.xcconfig"
           BINARY_NAME = Freeze95
@@ -79,8 +101,9 @@ jobs:
           CODE_SIGNING_REQUIRED = NO
           XCCONFIG
 
-          # Build VST3 target with xcodebuild
-          cd iPlug2/Examples/IPlugEffect
+      - name: Build VST3
+        run: |
+          cd Freeze95/iPlug2/Examples/IPlugEffect
           xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
             -target IPlugEffect-vst3 \
             -configuration Release \
