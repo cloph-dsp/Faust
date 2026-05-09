@@ -105,10 +105,12 @@ jobs:
         run: |
           cd Freeze95/iPlug2/Examples/IPlugEffect
           xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
-            -target IPlugEffect-vst3 \
+            -scheme "macOS-VST3" \
             -configuration Release \
             -arch x86_64 \
             BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac"
+          # xcodebuild may output to a subdirectory; find the .vst3 bundle
+          find "${{ github.workspace }}/Freeze95/build-mac" -name "Freeze95.vst3" -type d 2>/dev/null || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
