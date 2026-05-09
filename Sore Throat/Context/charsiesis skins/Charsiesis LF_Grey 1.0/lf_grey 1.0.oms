@@ -1,0 +1,736 @@
+# "lf_Grey" skin for Oatmeal
+# Skin created by Limeflavour / Flavours of Lime
+# contact: migraine_only@hotmail.com 
+# Rev. 2021-02-19
+######################################################################
+# 
+# lines starting with # are comments.
+# currently, only PNGs are supported! the alpha channel, if present, is thrown away.
+# the order of things is not important, as the loader goes through the file section type
+# by section type rather than section by section; this means things like "the last image
+# referred to" can be confusing, however. the order is:
+# 1) global (only the first is read)
+# 2) font
+# 3) control
+# 4) placement
+# 5) display
+# 6) statusbar (only the first is read)
+
+# global section:
+# size: gui size.
+# background: background image, relative to the text file.
+
+@global
+size=1092,468
+background=lf_grey\main_background.png
+
+
+# font sections define font data.
+# name: name of the font
+# src: source image. if omitted, the last image referred to is used.
+# pos: position of the font (top left corner of the first character) in the source image.
+#      if omitted, 0,0 is assumed.
+# startchar: first character of the font (ascii - e.g. 32 for space)
+# numchars: number of chars represented in the font - contiguously. (so if startchar is 32
+#           and this is 96, characters 32-127 will be looked for.)
+# 32 and 96 are the defaults for startchar and numchars, and will be substituted if no
+# values are given.
+# size: size of each character. narrower characters can be limited by the delimiter colour
+#       set below.
+# charsperline: number of characters in one line of the font. 16 by default.
+# step: first value: how far characters are apart x-wise. second: how far apart the lines are.
+# delimiter: r,g,b. pure full-intensity red by default, as in the default skin.
+# this will all be more or less clear if you look at the default skin png, I hope.
+
+@font
+name=statusfont
+src=lf_grey\statusfont.png
+pos=0,0
+size=16,15
+step=16,16
+delimiter=255,0,0
+
+# status bar section:
+# font: font to use for the status bar.
+# pos: position of the status bar on the gui (of the actual text itself, that is)
+# size: size of the slice of background reserved for the status bar's text. anything taller
+#       than the font would be silly.
+
+@statusbar
+font=statusfont
+pos=676,244
+size=410,15
+
+# display section:
+# pos: position of the display on the gui
+# size: size of the display
+# col: colour of the voice dots
+
+@display
+pos=428,97
+size=236,106
+col=24,138,197
+
+# gaind section:
+# pos: position of the gain distribution control on the gui
+# size: size of the control
+# col: colour of the area under the distribution curve
+
+@gaind
+pos=428,210
+size=236,72
+col=24,138,197
+
+# ulfo section:
+# pos: position of the user lfo control on the gui
+# size: size of the control
+# col: colour of the area under the lfo curve
+
+@ulfo
+pos=570,329
+size=157,81
+col=24,138,197
+
+# control sections define controls for later use.
+# name: name of the control
+# type: type of control - switch, knob, slider, or button.
+# src: source image. if omitted, the last image referred to is used.
+# size: size of the control - x,y
+# frames: number of frames, or states for a switch. if a switch with more frames than
+#         necessary is used for a switchy parameter, the later frames will be cut off; if
+#         you give fewer frames than necessary, the rest will be replaced by copies of the
+#         last frame.
+# x: x coordinates of each frame in the source image; if fewer frames than necessary are
+#    given, the last value is repeated. (coordinates refer to top left corners)
+# y: y coordinates of each frame; if fewer frames than necessary are given, the rest is
+#    filled by jumping ahead by the difference between the last two frames, or the height
+#    of the control if only one frame is given.
+# if you give no coordinates, the result will be the same as for
+# x=0
+# y=0
+# handlepos: position of the handle in the source image (for sliders)
+# handlesize: size of the handle (for sliders)
+# horizontal: sliders can be horizontal or vertical. 1 or 0 (default)
+# quant: slider position quantization. number of steps, step width, offset. if absent, no quantization.
+
+### FADER.png ###
+
+@control
+src=lf_grey\slider.png
+name=fader
+type=slider
+size=20,110
+x=0
+y=0
+handlepos=24,0
+handlesize=20,30
+quant=81,1,0
+
+
+
+### KNOBS.png ###
+
+@control
+src=lf_grey\knobs.png
+name=sknob1uni
+type=knob
+size=54,54
+frames=127
+x=0
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob1uni32
+type=knob
+size=54,54
+frames=32
+x=810
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob2uni
+type=knob
+size=54,54
+frames=127
+x=54
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob3uni
+type=knob
+size=54,54
+frames=127
+x=108
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob4uni
+type=knob
+size=54,54
+frames=127
+x=162
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob5uni
+type=knob
+size=54,54
+frames=127
+x=216
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob5bip
+type=knob
+size=54,54
+frames=127
+x=756
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob6uni
+type=knob
+size=54,54
+frames=127
+x=270
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob6bip
+type=knob
+size=54,54
+frames=127
+x=324
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob7uni
+type=knob
+size=54,54
+frames=127
+x=702
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob7bip
+type=knob
+size=54,54
+frames=127
+x=378
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob7bip45
+type=knob
+size=54,54
+frames=127
+x=432
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob8bip
+type=knob
+size=54,54
+frames=127
+x=486
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob9uni
+type=knob
+size=54,54
+frames=127
+x=540
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob9bip
+type=knob
+size=54,54
+frames=127
+x=594
+y=0
+
+@control
+src=lf_grey\knobs.png
+name=sknob10bip
+type=knob
+size=54,54
+frames=127
+x=648
+y=0
+
+
+
+### BOXES.png ##
+
+@control
+src=lf_grey\boxes.png
+name=followsw
+type=switch
+size=84,34
+frames=4
+x=0
+y=0
+
+@control
+src=lf_grey\boxes.png
+name=stereosw
+type=switch
+size=58,34
+frames=4
+x=0
+y=140
+
+@control
+src=lf_grey\boxes.png
+name=lfoshapesw
+type=switch
+size=58,34
+frames=7
+x=0
+y=280
+
+@control
+src=lf_grey\boxes.png
+name=unitsw
+type=switch
+size=58,34
+frames=15
+x=90
+y=0
+
+
+
+### BUTTONS.png ###
+
+@control
+src=lf_grey\buttons.png
+name=toggleupdcol
+type=switch
+size=36,36
+frames=2
+x=0
+y=0
+
+@control
+src=lf_grey\buttons.png
+name=toggleupdquant
+type=switch
+size=36,36
+frames=2
+x=40
+y=0
+
+@control
+src=lf_grey\buttons.png
+name=toggleseqlfo
+type=switch
+size=36,36
+frames=2
+x=80
+y=0
+
+@control
+src=lf_grey\buttons.png
+name=panicbt
+type=button
+size=28,24
+frames=2
+x=120
+y=0
+
+@control
+src=lf_grey\buttons.png
+name=skinbt
+type=button
+size=38,24
+frames=2
+x=150
+y=0
+
+@control
+src=lf_grey\buttons.png
+name=aboutbt
+type=button
+size=50,24
+frames=2
+x=190
+y=0
+
+@control
+src=lf_grey\buttons.png
+name=resetbt
+type=button
+size=50,24
+frames=2
+x=250
+y=0
+
+@control
+src=lf_grey\buttons.png
+name=prevbt
+type=button
+size=38,24
+frames=2
+x=310
+y=0
+
+@control
+src=lf_grey\buttons.png
+name=nextbt
+type=button
+size=38,24
+frames=2
+x=350
+y=0
+
+
+# placement sections place controls on the gui.
+# control: has to be the name of a control defined above. if omitted, the last control
+#          referred to is used.
+# action: parameter or action the control is associated with.
+# pos: position of the control on the gui. (again, top left corner)
+
+
+### === DELAY SECTION === ###
+
+### Voices Knob bg1-Unipolar### 
+@placement
+control=sknob1uni32
+action=Voices
+pos=119,38
+
+### Min.rate Knob bg2-Unipolar ### 
+@placement
+control=sknob2uni
+action=MinRate
+pos=187,38
+
+### Min.delay Knob bg3-Unipolar ### 
+@placement
+control=sknob3uni
+action=MinDelay
+pos=79,98
+
+### Stereo mode Box ###
+@placement
+control=stereosw
+action=StereoMode
+pos=151,108
+
+### Rate range Knob bg4-Unipolar ### 
+@placement
+control=sknob4uni
+action=RateRange
+pos=227,98
+
+### Delay range Knob bg5-Unipolar ### 
+@placement
+control=sknob5uni
+action=DelayRange
+pos=119,158
+
+### Rate update Knob bg6-Unipolar ### 
+@placement
+control=sknob6uni
+action=RateUpdate
+pos=187,158
+
+### Update on collision On/Off ### 
+@placement
+control=toggleupdcol
+action=UpdateOnCollision
+pos=311,47
+
+### Update unit Box ### 
+@placement
+control=unitsw
+action=UpdateUnit
+pos=342,108
+
+### Update Quantize On/Off ### 
+@placement
+control=toggleupdquant
+action=UpdateQuantize
+pos=311,167
+
+### Env > Delay Knob bg7-Bipolar### 
+@placement
+control=sknob7bip
+action=EnvDelay
+pos=267,208
+
+
+
+### === FEEDBACK SECTION === ###
+
+### Feedback Knob bg7-Bipolar ### 
+@placement
+control=sknob7bip
+action=Feedback
+pos=433,8
+
+### Follow level Box ### 
+@placement
+control=followsw
+action=FollowLevel
+pos=504,18
+
+### Rotation Knob bg7-Bipolar### 
+@placement
+control=sknob7bip
+action=Rotation
+pos=605,8
+
+
+
+### === FILTER SECTION === ###
+
+### Lowpass Knob bg1-Unipolar ### 
+@placement
+control=sknob1uni
+action=Lowpass
+pos=745,38
+
+### Highpass Knob bg2-Unipolar ### 
+@placement
+control=sknob2uni
+action=Highpass
+pos=813,38
+
+### ResonanceLP Knob bg3-Unipolar ### 
+@placement
+control=sknob3uni
+action=LPRes
+pos=705,98
+
+### ResonanceHP Knob bg4-Unipolar ### 
+@placement
+control=sknob4uni
+action=HPRes
+pos=853,98
+
+### Env > LP Knob bg5-Bipolar### 
+@placement
+control=sknob5bip
+action=EnvLP
+pos=745,158
+
+### Env > HP Knob bg6-Bipolar### 
+@placement
+control=sknob6bip
+action=EnvHP
+pos=813,158
+
+
+
+### === MIXER SECTION === ###
+
+### Mix Knob bg7-Unipolar### 
+@placement
+control=sknob7uni
+action=Mix
+pos=969,38
+
+### Pregain Knob 7-Bipolar/Offset### 
+@placement
+control=sknob7bip45
+action=Pregain
+pos=969,98
+
+### Postgain Knob 7-Bipolar/Offset### 
+@placement
+control=sknob7bip45
+action=Postgain
+pos=969,158
+
+
+
+### === SEQUENCER SECTION === ###
+
+### Sequencer > LP Knob bg8-Bipolar### 
+@placement
+control=sknob8bip
+action=SeqLP
+pos=119,293
+
+### Sequencer > HP Knob bg9-Bipolar### 
+@placement
+control=sknob9bip
+action=SeqHP
+pos=85,347
+
+### Sequencer steps Knob bg9-Unipolar### 
+@placement
+control=sknob9uni
+action=SeqStep
+pos=153,347
+
+### Sequencer > Delay Knob bg10-Bipolar### 
+@placement
+control=sknob10bip
+action=SeqDelay
+pos=119,401
+
+### Sequencer quantize On/Off ### 
+@placement
+control=toggleseqlfo
+action=SeqQuant
+pos=178,302
+
+### Sequencer unit Box ### 
+@placement
+control=unitsw
+action=SeqUnit
+pos=189,411
+
+### Sequencer Step1 Fader ### 
+@placement
+control=fader
+action=Seq0
+pos=287,334
+
+### Sequencer Step2 Fader ### 
+@placement
+control=fader
+action=Seq1
+pos=317,334
+
+### Sequencer Step3 Fader ###
+@placement
+control=fader
+action=Seq2
+pos=347,334
+
+### Sequencer Step4 Fader ###
+@placement
+control=fader
+action=Seq3
+pos=377,334
+
+### Sequencer Step5 Fader ###
+@placement
+control=fader
+action=Seq4
+pos=407,334
+
+### Sequencer Step6 Fader ###
+@placement
+control=fader
+action=Seq5
+pos=437,334
+
+### Sequencer Step7 Fader ###
+@placement
+control=fader
+action=Seq6
+pos=467,334
+
+### Sequencer Step8 Fader ###
+@placement
+control=fader
+action=Seq7
+pos=497,334
+
+
+
+### === LFO SECTION === ###
+
+### LFO > LP Knob bg8-Bipolar### 
+@placement
+control=sknob8bip
+action=LFOLP
+pos=919,293
+
+### LFO rate Knob bg9-Unipolar### 
+@placement
+control=sknob9uni
+action=LFORate
+pos=885,347
+
+### LFO > HP Knob bg9-Bipolar### 
+@placement
+control=sknob9bip
+action=LFOHP
+pos=953,347
+
+### LFO > Delay Knob bg10-Bipolar### 
+@placement
+control=sknob10bip
+action=LFODelay
+pos=919,401
+
+### LFO quantize On/Off ### 
+@placement
+control=toggleseqlfo
+action=LFOQuant
+pos=878,302
+
+### LFO unit Box ### 
+@placement
+control=unitsw
+action=LFOUnit
+pos=765,357
+
+### LFO shape Box ### 
+@placement
+control=lfoshapesw
+action=LFOShape
+pos=825,411
+
+
+
+### === MENU BUTTONS SECTION === ###
+
+### Panic button ###
+@placement
+control=panicbt
+action=Panic
+pos=425,285
+
+### Skin button ###
+@placement
+control=skinbt
+action=SelectSkin
+pos=453,285
+
+### About button ###
+@placement
+control=aboutbt
+action=About
+pos=491,285
+
+### Reset button ###
+@placement
+control=resetbt
+action=ResetPatch
+pos=541,285
+
+### Previous button ###
+@placement
+control=prevbt
+action=PrevPatch
+pos=591,285
+
+### Next button ###
+@placement
+control=nextbt
+action=NextPatch
+pos=629,285
+
+### END OF FILE ###

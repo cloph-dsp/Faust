@@ -1,0 +1,432 @@
+# default skin.
+# lines starting with # are comments.
+# currently, only PNGs are supported! the alpha channel, if present, is thrown away.
+# the order of things is not important, as the loader goes through the file section type
+# by section type rather than section by section; this means things like "the last image
+# referred to" can be confusing, however. the order is:
+# 1) global (only the first is read)
+# 2) font
+# 3) control
+# 4) placement
+# 5) display
+# 6) statusbar (only the first is read)
+
+# global section:
+# size: gui size.
+# background: background image, relative to the text file.
+
+@global
+size=489,193
+background=default\charsiesis.png
+
+# font sections define font data.
+# name: name of the font
+# src: source image. if omitted, the last image referred to is used.
+# pos: position of the font (top left corner of the first character) in the source image.
+#      if omitted, 0,0 is assumed.
+# startchar: first character of the font (ascii - e.g. 32 for space)
+# numchars: number of chars represented in the font - contiguously. (so if startchar is 32
+#           and this is 96, characters 32-127 will be looked for.)
+# 32 and 96 are the defaults for startchar and numchars, and will be substituted if no
+# values are given.
+# size: size of each character. narrower characters can be limited by the delimiter colour
+#       set below.
+# charsperline: number of characters in one line of the font. 16 by default.
+# step: first value: how far characters are apart x-wise. second: how far apart the lines are.
+# delimiter: r,g,b. pure full-intensity red by default, as in the default skin.
+# this will all be more or less clear if you look at the default skin png, I hope.
+
+@font
+name=statusfont
+src=default\statusfont.png
+pos=0,1
+size=12,11
+step=12,12
+delimiter=255,0,0
+
+# status bar section:
+# font: font to use for the status bar.
+# pos: position of the status bar on the gui (of the actual text itself, that is)
+# size: size of the slice of background reserved for the status bar's text. anything taller
+#       than the font would be silly.
+
+@statusbar
+font=statusfont
+pos=5,176
+size=473,11
+
+# display section:
+# pos: position of the display on the gui
+# size: size of the display
+# col: colour of the voice dots
+
+@display
+pos=344,4
+size=141,98
+col=195,181,147
+
+# gaind section:
+# pos: position of the gain distribution control on the gui
+# size: size of the control
+# col: colour of the area under the distribution curve
+
+@gaind
+pos=344,107
+size=141,63
+col=195,181,147
+
+# ulfo section:
+# pos: position of the user lfo control on the gui
+# size: size of the control
+# col: colour of the area under the lfo curve
+
+@ulfo
+pos=191,125
+size=148,45
+col=195,181,147
+
+# control sections define controls for later use.
+# name: name of the control
+# type: type of control - switch, knob, slider, or button.
+# src: source image. if omitted, the last image referred to is used.
+# size: size of the control - x,y
+# frames: number of frames, or states for a switch. if a switch with more frames than
+#         necessary is used for a switchy parameter, the later frames will be cut off; if
+#         you give fewer frames than necessary, the rest will be replaced by copies of the
+#         last frame.
+# x: x coordinates of each frame in the source image; if fewer frames than necessary are
+#    given, the last value is repeated. (coordinates refer to top left corners)
+# y: y coordinates of each frame; if fewer frames than necessary are given, the rest is
+#    filled by jumping ahead by the difference between the last two frames, or the height
+#    of the control if only one frame is given.
+# if you give no coordinates, the result will be the same as for
+# x=0
+# y=0
+# handlepos: position of the handle in the source image (for sliders)
+# handlesize: size of the handle (for sliders)
+# horizontal: sliders can be horizontal or vertical. 1 or 0 (default)
+# quant: slider position quantization. number of steps, step width, offset. if absent, no quantization.
+
+@control
+src=default\unitsw.png
+name=unitsw
+type=switch
+size=16,18
+frames=15
+
+@control
+src=default\knob.png
+name=sknob
+type=knob
+size=11,11
+frames=31
+y=0,12
+
+@control
+src=default\charsiesis.png
+name=toggle
+type=switch
+size=8,8
+frames=2
+x=507
+y=32
+
+@control
+name=seqsl
+type=slider
+size=11,18
+x=557
+y=34
+handlepos=557,53
+handlesize=11,3
+
+@control
+name=stereosw
+type=switch
+size=10,10
+frames=4
+x=507
+y=50
+
+@control
+name=followsw
+type=switch
+size=10,10
+frames=4
+x=518
+y=50
+
+@control
+name=lfoshapesw
+type=switch
+size=30,17
+frames=7
+x=574
+y=33
+
+@control
+name=aboutbt
+type=button
+size=35,13
+frames=2
+x=540
+y=1
+
+@control
+name=resetbt
+type=button
+size=32,13
+frames=2
+x=576
+y=1
+
+@control
+name=prevbt
+type=button
+size=11,13
+frames=2
+x=501
+y=1
+
+@control
+name=panicbt
+type=button
+size=14,13
+frames=2
+x=513
+y=1
+
+@control
+name=nextbt
+type=button
+size=11,13
+frames=2
+x=528
+y=1
+
+@control
+name=skinbt
+type=button
+size=25,13
+frames=2
+x=609
+y=1
+
+# placement sections place controls on the gui.
+# control: has to be the name of a control defined above. if omitted, the last control
+#          referred to is used.
+# action: parameter or action the control is associated with.
+# pos: position of the control on the gui. (again, top left corner)
+
+@placement
+control=stereosw
+action=StereoMode
+pos=7,53
+
+@placement
+control=unitsw
+action=UpdateUnit
+pos=168,49
+
+@placement
+action=SeqUnit
+pos=91,99
+
+@placement
+action=LFOUnit
+pos=7,149
+
+@placement
+control=toggle
+action=UpdateOnCollision
+pos=172,36
+
+@placement
+action=UpdateQuantize
+pos=100,54
+
+@placement
+action=SeqQuant
+pos=129,79
+
+@placement
+action=LFOQuant
+pos=54,154
+
+@placement
+control=lfoshapesw
+action=LFOShape
+pos=7,128
+
+@placement
+control=followsw
+action=FollowLevel
+pos=258,35
+
+@placement
+control=sknob
+action=Voices
+pos=7,7
+
+@placement
+action=MinDelay
+pos=7,21
+
+@placement
+action=DelayRange
+pos=7,35
+
+@placement
+action=MinRate
+pos=97,7
+
+@placement
+action=RateRange
+pos=97,21
+
+@placement
+action=RateUpdate
+pos=97,35
+
+@placement
+action=Lowpass
+pos=171,7
+
+@placement
+action=Highpass
+pos=171,21
+
+@placement
+action=LPRes
+pos=239,7
+
+@placement
+action=HPRes
+pos=239,21
+
+@placement
+action=Feedback
+pos=277,7
+
+@placement
+action=Rotation
+pos=277,21
+
+@placement
+action=Mix
+pos=214,53
+
+@placement
+action=Pregain
+pos=257,53
+
+@placement
+action=Postgain
+pos=300,53
+
+@placement
+action=EnvLP
+pos=7,78
+
+@placement
+action=EnvHP
+pos=7,92
+
+@placement
+action=EnvDelay
+pos=7,106
+
+@placement
+action=LFORate
+pos=73,132
+
+@placement
+action=LFOLP
+pos=114,128
+
+@placement
+action=LFOHP
+pos=114,142
+
+@placement
+action=LFODelay
+pos=114,156
+
+@placement
+action=SeqStep
+pos=91,78
+
+@placement
+action=SeqLP
+pos=208,78
+
+@placement
+action=SeqHP
+pos=208,92
+
+@placement
+action=SeqDelay
+pos=208,106
+
+@placement
+control=seqsl
+action=Seq0
+pos=142,78
+
+@placement
+action=Seq1
+pos=156,78
+
+@placement
+action=Seq2
+pos=170,78
+
+@placement
+action=Seq3
+pos=184,78
+
+@placement
+action=Seq4
+pos=142,99
+
+@placement
+action=Seq5
+pos=156,99
+
+@placement
+action=Seq6
+pos=170,99
+
+@placement
+action=Seq7
+pos=184,99
+
+@placement
+control=aboutbt
+action=About
+pos=274,90
+
+@placement
+control=resetbt
+action=ResetPatch
+pos=266,74
+
+@placement
+control=prevbt
+action=PrevPatch
+pos=329,74
+
+@placement
+control=panicbt
+action=Panic
+pos=312,90
+
+@placement
+control=nextbt
+action=NextPatch
+pos=329,90
+
+@placement
+control=skinbt
+action=SelectSkin
+pos=301,74

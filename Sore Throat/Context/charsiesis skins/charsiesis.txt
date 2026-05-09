@@ -1,0 +1,59 @@
+Charsiesis. (this file last updated for release 2-1)
+
+Hello. There'll be real documentation later, but for now this will have to do.
+
+Charsiesis is a chorus/delay/wackiness effect; if you've used my Buzz effect Chorpse, you'll be familiar with the general idea, but if not: basically, the concept is that several delayed copies of the signal are summed together, with each delay length changing at a random rate that is rechosen now and again.
+
+Parameters:
+
+	voices: Number of voices.
+	min delay, delay range: Every voice will be delayed by some amount between minimum and minimum + range.
+	stereo mode: Interdependence between each voice's delay on the left and its delay on the right.
+			- Free: Completely independent.
+			- Slave: Both are delayed by the same amount.
+			- Antislave: The right channel is delayed by the "opposite" of the left.
+			- Half: On even-numbered voices, the right channel is delayed by an amount half as far across the range as the left, and vice versa on odd-numbered voices.
+
+	min rate, rate range: The delay of each voice will change at a rate in the range specified by these parameters.
+	rate update: How often the rate is changed. If set to maximum, the rate will only be updated when the user triggers an update.
+	unit: The unit in which the rate update interval is given.
+	[update] quantize: Quantizes the rate update interval to whole units.
+	on collision: If this is off, a voice's rate of change only changes direction when it reaches minimum or maximum delay; if it is enabled, the rate is set to a new random value when this happens.
+
+	lowpass, highpass, res: Cutoff frequency and resonance of a lowpass and highpass filter applied to the output. These filters are in the feedback loop, so be careful with them.
+
+	feedback: How much of the output is sent back to the input.
+	rotation: Each output sample is interpreted as a two-dimensional vector (its components being the left and right values) and rotated by this angle before being fed back.
+
+	follow level: When the feedback is high, Charsiesis can get into an eternal feedback loop; this may be useful when you want it, but when you don't, you can enable this to tie the output volume to the input's current level.
+
+	mix: Crossfades between input (without feedback) and output.
+	pre: Pregain.
+	post: Postgain.
+
+	env > lp: The input level modulates the lowpass filter's cutoff frequency by this amount.
+	env > hp: The input level modulates the highpass filter's cutoff frequency by this amount.
+	env > delay: The input level modulates the delay by this amount.
+	
+	step: Interval of the step sequencer. The toggle switch to its right quantizes it.
+	unit: The unit in which the step interval is given.
+	slider forest: The values at each step.
+	> lp/hp/delay: The step sequencer's influence on things.
+
+	shape: LFO shape.
+	rate: Period of the LFO.
+	unit: The unit in which said period is given.
+	quantize: Guess.
+	LFO > lp/hp/delay: I wonder...
+
+The controls work basically the same way as in Oatmeal:
+
+	Knobs (and, here, sliders) respond to linear movement, more slowly if you move horizontally and/or hold Ctrl and/or shift, and can be reset to their default values by right-clicking and to their middle positions by middle-clicking.
+	Switches change on left click, and a right click causes a context menu to pop up. Middle click sets them to the first value in the list.
+	Buttons are activated by left clicks, surprisingly enough, and do the same things as their counterparts in Oatmeal.
+	The status bar displays the value of the current parameter more precisely than what eyeballing the knob's position can tell you.
+	The display on the right shows the current delay of each voice (the left edge is the minimum delay and the right is the maximum). This is useful not only because it hopefully helps the "stereo mode" parameter make more sense, but also because this way you notice relatively easily if your current settings encourage more or less static voice relationships, which can be bad.
+	Below the display is a gain distribution control - it's used to set the gain applied to voices at that particular point of the range. Draw by holding the left mouse button, add/subtract a soft bit of curve by holding Shift and dragging up/down, smooth it by holding Control and dragging. Right click to stretch the curve to the top, hold shift and right click to stretch it to top and bottom; middle click to reset it to all zero.
+	To the right of the LFO things, there's the LFO shape editor; it works the same way as the gain distribution thing, except it wraps since it's a loop.
+
+- f
