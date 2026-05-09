@@ -85,6 +85,11 @@ jobs:
           cp config.h iPlug2/Examples/IPlugEffect/config.h
           cp resources/* iPlug2/Examples/IPlugEffect/resources/ 2>/dev/null || true
           cp Freeze95DOS.ttf iPlug2/Examples/IPlugEffect/Freeze95DOS.ttf 2>/dev/null || true
+          # Rename plist files from IPlugEffect-* to Freeze95-* for prepare_resources-mac.py
+          cd iPlug2/Examples/IPlugEffect/resources
+          for f in IPlugEffect-*.plist; do
+            [ -f "$f" ] && cp "$f" "Freeze95${f#IPlugEffect}" || true
+          done
 
       - name: Write Freeze95 xcconfig
         run: |
