@@ -26,22 +26,22 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Checkout iPlug2 framework
-        run: git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2
+        run: git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git iPlug2
 
       - name: Download SDKs (VST3 + CLAP)
         shell: bash
-        working-directory: Freeze95/iPlug2/Dependencies/IPlug
+        working-directory: iPlug2/Dependencies/IPlug
         run: bash download-iplug-sdks.sh
 
       - name: Setup Freeze95 resources
         working-directory: Freeze95
         run: |
-          Copy-Item Freeze95.cpp iPlug2/Examples/IPlugEffect/IPlugEffect.cpp -Force
-          Copy-Item Freeze95.h iPlug2/Examples/IPlugEffect/IPlugEffect.h -Force
-          Copy-Item config.h iPlug2/Examples/IPlugEffect/config.h -Force
-          Copy-Item resources/* iPlug2/Examples/IPlugEffect/resources/ -Force
-          Copy-Item Freeze95DOS.ttf iPlug2/Examples/IPlugEffect/Freeze95DOS.ttf -Force
-          Copy-Item Freeze95DOS.ttf iPlug2/Examples/IPlugEffect/resources/Freeze95DOS.ttf -Force
+          Copy-Item Freeze95.cpp ../iPlug2/Examples/IPlugEffect/IPlugEffect.cpp -Force
+          Copy-Item Freeze95.h ../iPlug2/Examples/IPlugEffect/IPlugEffect.h -Force
+          Copy-Item config.h ../iPlug2/Examples/IPlugEffect/config.h -Force
+          Copy-Item Freeze95DSP.h ../iPlug2/Examples/IPlugEffect/Freeze95DSP.h -Force
+          Copy-Item resources/* ../iPlug2/Examples/IPlugEffect/resources/ -Force
+          Copy-Item Freeze95DOS.ttf ../iPlug2/Examples/IPlugEffect/Freeze95DOS.ttf -Force
 
       - name: Build VST3
         working-directory: Freeze95
@@ -51,7 +51,7 @@ jobs:
             $msbuild = Resolve-Path "${env:ProgramFiles}\Microsoft Visual Studio\*\MSBuild\Current\Bin\MSBuild.exe" | Select-Object -First 1
           }
           $solutionDir = (Resolve-Path ".").Path + "\"
-          & $msbuild "iPlug2/Examples/IPlugEffect/projects/IPlugEffect-vst3.vcxproj" "/p:Configuration=Release" "/p:Platform=x64" "/p:SolutionDir=$solutionDir" /v:m
+          & $msbuild "../iPlug2/Examples/IPlugEffect/projects/IPlugEffect-vst3.vcxproj" "/p:Configuration=Release" "/p:Platform=x64" "/p:SolutionDir=$solutionDir" /v:m
 
       - name: Build CLAP
         working-directory: Freeze95
@@ -61,7 +61,7 @@ jobs:
             $msbuild = Resolve-Path "${env:ProgramFiles}\Microsoft Visual Studio\*\MSBuild\Current\Bin\MSBuild.exe" | Select-Object -First 1
           }
           $solutionDir = (Resolve-Path ".").Path + "\"
-          & $msbuild "iPlug2/Examples/IPlugEffect/projects/IPlugEffect-clap.vcxproj" "/p:Configuration=Release" "/p:Platform=x64" "/p:SolutionDir=$solutionDir" /v:m
+          & $msbuild "../iPlug2/Examples/IPlugEffect/projects/IPlugEffect-clap.vcxproj" "/p:Configuration=Release" "/p:Platform=x64" "/p:SolutionDir=$solutionDir" /v:m
 
       - name: Upload VST3 artifact
         uses: actions/upload-artifact@v4
@@ -82,57 +82,58 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Checkout iPlug2 framework
-        run: git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2
+        run: git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git iPlug2
 
       - name: Download SDKs (VST3 + CLAP)
-        working-directory: Freeze95/iPlug2/Dependencies/IPlug
+        working-directory: iPlug2/Dependencies/IPlug
         run: bash download-iplug-sdks.sh
 
       - name: Setup Freeze95 resources
         run: |
           cd Freeze95
-          cp Freeze95.cpp iPlug2/Examples/IPlugEffect/IPlugEffect.cpp
-          cp Freeze95.h iPlug2/Examples/IPlugEffect/IPlugEffect.h
-          cp config.h iPlug2/Examples/IPlugEffect/config.h
-          cp resources/* iPlug2/Examples/IPlugEffect/resources/ 2>/dev/null || true
-          cp Freeze95DOS.ttf iPlug2/Examples/IPlugEffect/Freeze95DOS.ttf 2>/dev/null || true
-          cd iPlug2/Examples/IPlugEffect/resources
+          cp Freeze95.cpp ../iPlug2/Examples/IPlugEffect/IPlugEffect.cpp
+          cp Freeze95.h ../iPlug2/Examples/IPlugEffect/IPlugEffect.h
+          cp config.h ../iPlug2/Examples/IPlugEffect/config.h
+          cp Freeze95DSP.h ../iPlug2/Examples/IPlugEffect/Freeze95DSP.h
+          cp resources/* ../iPlug2/Examples/IPlugEffect/resources/ 2>/dev/null || true
+          cp Freeze95DOS.ttf ../iPlug2/Examples/IPlugEffect/Freeze95DOS.ttf 2>/dev/null || true
+          cd ../iPlug2/Examples/IPlugEffect/resources
           for f in IPlugEffect-*.plist; do
             [ -f "$f" ] && cp "$f" "Freeze95${f#IPlugEffect}" || true
           done
 
       - name: Write Freeze95 xcconfig
         run: |
-          cat > Freeze95/iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig << 'XCCONFIG'
+          cat > iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig << 'XCCONFIG'
           IPLUG2_ROOT = ../../..
           #include "../../../common-mac.xcconfig"
           BINARY_NAME = Freeze95
           EXTRA_INC_PATHS = $(IGRAPHICS_INC_PATHS) $(SRCROOT)/../../../..
           EXTRA_ALL_DEFS = IGRAPHICS_NANOVG IGRAPHICS_METAL
           EXTRA_LNK_FLAGS = -framework Metal -framework MetalKit
-          ARCHS = $(ARCHS_STANDARD_64_BIT)
+          ARCHS = x86_64 arm64
           RELEASE_OPTIMIZE = 3
-          MACOSX_DEPLOYMENT_TARGET = 10.15
+          MACOSX_DEPLOYMENT_TARGET = 11.0
           CODE_SIGN_IDENTITY = -
           CODE_SIGNING_REQUIRED = NO
           XCCONFIG
 
       - name: Build VST3
         run: |
-          cd Freeze95/iPlug2/Examples/IPlugEffect
+          cd iPlug2/Examples/IPlugEffect
           xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
             -scheme "macOS-VST3" \
             -configuration Release \
-            -arch x86_64 \
+            -arch x86_64 -arch arm64 \
             BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac"
 
       - name: Build CLAP
         run: |
-          cd Freeze95/iPlug2/Examples/IPlugEffect
+          cd iPlug2/Examples/IPlugEffect
           xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
             -scheme "macOS-CLAP" \
             -configuration Release \
-            -arch x86_64 \
+            -arch x86_64 -arch arm64 \
             BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac"
 
       - name: Upload VST3 artifact
