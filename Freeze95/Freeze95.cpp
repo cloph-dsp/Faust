@@ -134,6 +134,25 @@ void DrawBevel(IGraphics& g, const IRECT& bounds, const IColor& tl, const IColor
   g.DrawLine(br, bounds.L, bounds.B, bounds.R, bounds.B, nullptr, thickness);
 }
 
+void DrawRaisedButton(IGraphics& g, const IRECT& bounds, const IColor& faceColor, float cornerRadius = 4.f) {
+  // Shadow underneath
+  const IRECT shadow = bounds.GetTranslated(2.f, 2.f);
+  g.FillRoundRect(WithAlpha(kShellDeep, 35), shadow, cornerRadius);
+  // Face
+  FillClassicPanel(g, bounds, faceColor, true, 1.5f, cornerRadius);
+  // Bevel highlight (top/left)
+  g.DrawLine(WithAlpha(kShellLight, 90), bounds.L + 2.f, bounds.T + 1.f, bounds.R - 2.f, bounds.T + 1.f, nullptr, 1.f);
+  g.DrawLine(WithAlpha(kShellLight, 70), bounds.L + 1.f, bounds.T + 2.f, bounds.L + 1.f, bounds.B - 2.f, nullptr, 1.f);
+  // Bevel shadow (bottom/right)
+  g.DrawLine(WithAlpha(kShellDeep, 60), bounds.L + 2.f, bounds.B - 1.f, bounds.R - 2.f, bounds.B - 1.f, nullptr, 1.f);
+  g.DrawLine(WithAlpha(kShellDeep, 50), bounds.R - 1.f, bounds.T + 2.f, bounds.R - 1.f, bounds.B - 2.f, nullptr, 1.f);
+  // Inner gradient depth
+  const IRECT inner = bounds.GetPadded(-2.f);
+  FillPatternEllipse(g, inner.MW(), inner.MH(), inner.W() * 0.5f, inner.H() * 0.5f,
+    IPattern::CreateLinearGradient(inner.L, inner.T, inner.L, inner.B,
+      {{WithAlpha(kShellLight, 20), 0.f}, {WithAlpha(kShellMid, 15), 1.f}}));
+}
+
 void FillPatternCircle(IGraphics& g, float cx, float cy, float radius, const IPattern& pattern,
                        const IBlend* blend = nullptr) {
   g.PathCircle(cx, cy, radius);
@@ -141,9 +160,33 @@ void FillPatternCircle(IGraphics& g, float cx, float cy, float radius, const IPa
 }
 
 void FillPatternEllipse(IGraphics& g, float cx, float cy, float rx, float ry, const IPattern& pattern,
-                        const IBlend* blend = nullptr) {
+                         const IBlend* blend = nullptr) {
   g.PathEllipse(cx, cy, rx, ry);
   g.PathFill(pattern, IFillOptions(), blend);
+}
+
+void DrawScrewHead(IGraphics& g, float cx, float cy, float radius) {
+  // Screw shadow
+  g.FillCircle(WithAlpha(kShellDeep, 65), cx + 0.8f, cy + 1.2f, radius + 1.2f);
+
+  // Screw head base
+  g.FillCircle(BlendColor(kShellDark, kShellMid, 0.25f), cx, cy, radius);
+
+  // Screw head highlight (metallic gradient effect)
+  FillPatternCircle(g, cx, cy, radius - 1.f,
+                   IPattern::CreateLinearGradient(cx - radius, cy - radius, cx + radius, cy + radius,
+                                                   {{kShellLight, 0.f},
+                                                    {BlendColor(kShellMid, kShellDark, 0.3f), 0.6f},
+                                                    {kShellDark, 1.f}}));
+
+  // Screw slot (cross indentation)
+  const float slotLen = radius * 0.55f;
+  const float slotThick = 1.4f;
+  g.DrawLine(WithAlpha(kShellDeep, 110), cx - slotLen, cy, cx + slotLen, cy, nullptr, slotThick);
+  g.DrawLine(WithAlpha(kShellDeep, 110), cx, cy - slotLen, cx, cy + slotLen, nullptr, slotThick);
+
+  // Screw head highlight ring
+  g.DrawCircle(WithAlpha(kShellLight, 60), cx - 0.3f, cy - 0.3f, radius - 0.8f, nullptr, 0.6f);
 }
 
 const char* GetActiveFontID() {
@@ -1011,6 +1054,20 @@ public:
       if (!g.CheckLayer(targetLayer)) {
         g.StartLayer(this, mRECT);
         g.DrawSVG(activeBg, mRECT);
+
+        // Corner screws for SVG path
+        const float screwR = 6.5f;
+        const float margin = 14.f;
+        const IRECT shell = mRECT.GetPadded(-8.f);
+        const IRECT face = shell.GetPadded(-4.f);
+        const float screwOffsets[] = { margin, face.W() - margin };
+        const float screwY[] = { face.T + margin, face.B - margin };
+        for (int row = 0; row < 2; ++row) {
+          for (int col = 0; col < 2; ++col) {
+            DrawScrewHead(g, face.L + screwOffsets[col], screwY[row], screwR);
+          }
+        }
+
         DrawMonitorGlassOverlay(g, mRECT, powerOn);
         // Overlay dust/patina on top of SVG so it's visible in production
         DrawCornerPatina(g, mRECT);
@@ -1047,6 +1104,18 @@ public:
                lowerLip.R - 8.f, lowerLip.T + 1.f, nullptr, 1.f);
     g.DrawLine(WithAlpha(kShellDark, 110), lowerLip.L + 8.f, lowerLip.B - 1.f,
                lowerLip.R - 8.f, lowerLip.B - 1.f, nullptr, 1.2f);
+
+    // [P1] Enhanced: Corner screws in the four corners of the panel
+    const float screwR = 6.5f;
+    const float margin = 14.f;
+    const float screwOffsets[] = { margin, face.W() - margin };
+    const float screwY[] = { face.T + margin, face.B - margin };
+
+    for (int row = 0; row < 2; ++row) {
+      for (int col = 0; col < 2; ++col) {
+        DrawScrewHead(g, screwOffsets[col], screwY[row], screwR);
+      }
+    }
 
     DrawCornerPatina(g, face);
     DrawDustTexture(g, face);
@@ -1314,7 +1383,17 @@ public:
 
     g.FillCircle(WithAlpha(kShellDeep, 24), cx + 0.7f, knobCy + 1.6f, outerR + 1.6f);
 
+    // Shadow ring behind teeth for machined metal depth
+    g.DrawCircle(WithAlpha(kShellDeep, 45), cx + 0.5f, knobCy + 0.5f, innerR + 2.5f, nullptr, 2.5f);
+
     g.FillCircle(knobFill, cx, knobCy, innerR);
+
+    // [P1] Enhanced: Machined metal chamfer ring between outerR and innerR
+    // Creates depth with a dark shadow ring behind the teeth
+    const float chamferR = (outerR + innerR) * 0.5f;
+    const float chamferThickness = (outerR - innerR) * 0.18f;
+    g.FillCircle(WithAlpha(kShellDeep, 68), cx + 0.3f, knobCy + 0.8f, chamferR + chamferThickness);
+    g.FillCircle(BlendColor(kShellDark, kShellDeep, 0.35f), cx, knobCy, chamferR + chamferThickness * 0.7f);
 
     // 2 trig calls to set up rotation transform; precomputed unit-circle coords handle the rest
     const float cosR = std::cos(rotationRad);
@@ -1333,6 +1412,36 @@ public:
         knobCy + (t.cx3 * sinR + t.cy3 * cosR) * innerR
       };
       g.FillConvexPolygon(knobFill, toothX, toothY, 3);
+
+      // [P1] Enhanced: Add highlight on leading edge and shadow on trailing edge of each tooth
+      // Calculate tooth center for highlight/shadow positioning
+      const float toothCenterAngle = DegToRad(135.f + tooth * (270.f / numTeeth));
+      const float toothCenterR = (innerR + outerR) * 0.5f;
+      const float hx = cx + std::cos(toothCenterAngle + rotationRad) * toothCenterR;
+      const float hy = knobCy + std::sin(toothCenterAngle + rotationRad) * toothCenterR;
+
+      // Leading edge highlight (top-left of tooth rotation direction)
+      const float leadAngle = toothCenterAngle + rotationRad - 0.12f;
+      const float leadX = cx + std::cos(leadAngle) * (innerR + 1.5f);
+      const float leadY = knobCy + std::sin(leadAngle) * (innerR + 1.5f);
+      g.FillCircle(WithAlpha(kShellLight, 48), leadX, leadY, 1.8f);
+
+      // Trailing edge shadow (bottom-right of tooth rotation direction)
+      const float trailAngle = toothCenterAngle + rotationRad + 0.12f;
+      const float trailX = cx + std::cos(trailAngle) * (innerR + 1.5f);
+      const float trailY = knobCy + std::sin(trailAngle) * (innerR + 1.5f);
+      g.FillCircle(WithAlpha(kShellDeep, 42), trailX, trailY, 1.5f);
+
+      // Chamfer shadow on trailing edge (2 -> 1)
+      const IColor toothShadow = BlendColor(kKnobPointerDark, kShellDeep, 0.5f);
+      g.DrawLine(WithAlpha(toothShadow, 70),
+                 toothX[1], toothY[1], toothX[0], toothY[0],
+                 nullptr, 1.2f);
+      // Chamfer highlight on leading edge (2 -> 3)
+      const IColor toothHighlight = BlendColor(kShellLight, kKnobTop, 0.4f);
+      g.DrawLine(WithAlpha(toothHighlight, 80),
+                 toothX[1], toothY[1], toothX[2], toothY[2],
+                 nullptr, 0.8f);
     }
 
     g.FillCircle(BlendColor(knobFill, kShellLight, active ? 0.12f : 0.06f), cx, knobCy, bodyR);
@@ -1608,7 +1717,7 @@ public:
     const float cx = mButtonBounds.MW() + shiftX;
     const float cy = mButtonBounds.MH() + (mMouseDown ? 1.8f : 0.f) + mPulse * 0.35f + shiftY;
     const float ringR = mButtonBounds.W() * 0.52f;
-    
+
     // Add hover state modifier logic
     const bool isHovered = GetMouseIsOver();
     const float hoverGlow = isHovered ? 0.15f : 0.f;
@@ -1618,15 +1727,35 @@ public:
       g.FillCircle(WithAlpha(kCoolGlow, static_cast<int>(118.f * glow)), cx, cy, ringR + 2.f);
     }
 
-    // [P1] Delight: Shadow shift for "tilting" mechanical feel
+    // [P1] Enhanced: Raised circular button with beveled rim (like power button but smaller)
+    // Shadow underneath
     const float shadowOffX = mMouseDown ? -0.8f : 0.f;
     const float shadowOffY = mMouseDown ? 0.9f : 1.8f;
     g.FillCircle(WithAlpha(kShellDeep, 56), cx + shadowOffX, cy + shadowOffY, ringR + 2.2f);
-    g.FillCircle(BlendColor(kShellDark, kKnobRim, 0.28f), cx, cy + 0.8f, ringR + 1.8f);
-    g.FillCircle(BlendColor(kFieldInset, kCoolOn, 0.20f + 0.55f * mVisualManual), cx - 0.6f, cy - 0.7f, ringR - 1.2f);
-    g.FillCircle(WithAlpha(kShellLight, 28), cx - 1.2f, cy - 1.4f, ringR * 0.62f);
-    g.DrawCircle(WithAlpha(kShellLight, 140), cx - 0.3f, cy - 0.3f, ringR + 0.8f, nullptr, 1.0f);
-    g.DrawCircle(WithAlpha(kShellDeep, 140), cx, cy, ringR + 1.4f, nullptr, 1.0f);
+
+    // Outer bezel ring - metallic gradient
+    FillPatternCircle(g, cx, cy, ringR + 1.8f,
+                      IPattern::CreateLinearGradient(cx - ringR, cy - ringR, cx + ringR, cy + ringR,
+                                                     {{kShellLight, 0.f},
+                                                      {BlendColor(kShellMid, kShellDark, 0.35f), 0.5f},
+                                                      {kShellDark, 1.f}}));
+
+    // Inner bezel ring
+    FillPatternCircle(g, cx, cy, ringR + 0.8f,
+                      IPattern::CreateLinearGradient(cx, cy - ringR, cx, cy + ringR,
+                                                     {{BlendColor(kShellDark, kShellMid, 0.25f), 0.f},
+                                                      {kShellLight, 1.f}}));
+
+    // Button face with diagonal 3D gradient (highlight top-left, shadow bottom-right)
+    FillPatternCircle(g, cx, cy, ringR - 0.8f,
+                      IPattern::CreateLinearGradient(cx - ringR, cy - ringR, cx + ringR, cy + ringR,
+                                                     {{kShellLight, 0.f},
+                                                      {BlendColor(kShellLight, kShellMid, 0.4f), 0.45f},
+                                                      {kShellMid, 1.f}}));
+
+    // Strong bevel ring around the edge (highlight top-left, shadow bottom-right)
+    g.DrawCircle(WithAlpha(kShellLight, 100), cx - 0.3f, cy - 0.3f, ringR + 0.9f, nullptr, 0.8f);
+    g.DrawCircle(WithAlpha(kShellDeep, 120), cx + 0.3f, cy + 0.3f, ringR + 0.7f, nullptr, 1.0f);
 
     // Ring outline when manual mode is active (visual emphasis)
     if (mVisualManual >= 0.5f) {
@@ -1639,6 +1768,26 @@ public:
       : BlendColor(kFieldText, kShellMid, 0.45f);
     DrawUtilityText(g, 16.5f, modeColor, EAlign::Center, EVAlign::Middle,
                     modeGlyph, mButtonBounds.GetPadded(-2.f));
+
+    // LED above button
+    const float ledY = cy - ringR - 10.f;
+    const float ledR2 = 3.5f;
+    const bool hostMode = mVisualManual < 0.5f;
+    const IColor ledColor = hostMode ? BlendColor(kCoolOn, kShellLight, 0.25f) : BlendColor(kShellDeep, kKnobRim, 0.6f);
+    const IColor ledGlow = hostMode ? WithAlpha(kCoolGlow, 120) : WithAlpha(kLedGlowOff, 40);
+    // Housing
+    g.FillCircle(WithAlpha(kShellDeep, 80), cx + 0.5f, ledY + 0.5f, ledR2 + 1.5f);
+    // Glow
+    FillPatternCircle(g, cx, ledY, ledR2 + 3.f,
+                      IPattern::CreateRadialGradient(cx, ledY, ledR2 * 3.f,
+                                                    {{WithAlpha(ledGlow, static_cast<int>(ledGlow.A * 0.5f)), 0.f},
+                                                     {WithAlpha(ledGlow, 0), 1.f}}));
+    // Bulb
+    FillPatternCircle(g, cx, ledY, ledR2,
+                      IPattern::CreateRadialGradient(cx - ledR2 * 0.3f, ledY - ledR2 * 0.3f, ledR2 * 2.f,
+                                                    {{IColor{255, 255, 240, 200}, 0.f},
+                                                     {ledColor, 0.5f},
+                                                     {BlendColor(ledColor, kShellDeep, 0.4f), 1.f}}));
   }
 
 private:
@@ -1744,34 +1893,30 @@ public:
     }
   }
 
-  void Draw(IGraphics& g) override {
+void Draw(IGraphics& g) override {
     const bool manual = IsManualEnabled();
     const bool isHovered = GetMouseIsOver();
-    const IRECT fieldShadow = mFieldBounds.GetTranslated(0.f, 3.f);
 
-    g.FillRoundRect(WithAlpha(kShellDeep, 42), fieldShadow, 8.f);
-    
     if (!manual) {
       const IRECT syncedBounds = mFieldBounds;
-      FillClassicPanel(g, syncedBounds, BlendColor(kShellFace, kFieldFace, 0.35f), true, 1.5f, 4.f);
-      
-      g.FillRoundRect(WithAlpha(kShellDeep, 45), syncedBounds.GetPadded(-1.f), 4.f);
+
+      // [P1] Enhanced: Raised button with 3D beveled edges
+      DrawRaisedButton(g, syncedBounds, kShellFace, 6.f);
 
       const IColor hostColor = BlendColor(kCoolOn, kShellLight, 0.18f);
 
+      // Text emboss: shadow first, then actual text
+      DrawRetroText(g, 18.f, WithAlpha(kShellDeep, 55),
+                    EAlign::Center, EVAlign::Middle, "HOST", syncedBounds.GetTranslated(1.f, 1.f));
       // Centered "HOST" text taking up the full bounds evenly
       DrawRetroText(g, 18.f, BlendColor(kFieldText, kCoolOn, 0.40f),
                     EAlign::Center, EVAlign::Middle, "HOST", syncedBounds);
     } else {
-      FillClassicPanel(g,
-                     mFieldBounds,
-                     kFieldFace,
-                     true,
-                     1.5f,
-                     4.f);
+      // [P1] Enhanced: Raised button with 3D beveled edges
+      DrawRaisedButton(g, mFieldBounds, kFieldFace, 6.f);
 
       g.FillRoundRect(WithAlpha(kCoolOn, 12), mFieldBounds.GetPadded(-1.f), 4.f);
-      
+
       if (isHovered) {
         g.DrawRoundRect(WithAlpha(kShellLight, 160), mFieldBounds.GetPadded(-1.f), 8.f, nullptr, 1.0f);
       }
@@ -1792,6 +1937,9 @@ public:
 
       WDL_String display;
       FormatBpmDisplay(GetParam(), GetValue(), display);
+      // Text emboss: shadow first, then actual text
+      DrawRetroText(g, 18.f, WithAlpha(kShellDeep, 55),
+                    EAlign::Center, EVAlign::Middle, display.Get(), mFieldBounds.GetTranslated(1.f, 1.f));
       DrawRetroText(g,
                     18.f,
                     kFieldText,
@@ -2093,6 +2241,22 @@ public:
     if (hoverGlow > 0.01f) {
       g.FillCircle(WithAlpha(kCoolGlow, static_cast<int>(105.f * hoverGlow)), cx, cy, outerR + 5.0f);
     }
+
+    // [P1] Enhanced: Outer bezel ring around the entire button assembly
+    // Slightly larger circle with metallic gradient (light top-left, dark bottom-right)
+    const float bezelR = outerR + 8.f;
+    g.FillCircle(WithAlpha(kShellDeep, 68), cx, cy + 5.2f, bezelR + 3.5f);
+    FillPatternCircle(g, cx, cy, bezelR,
+                      IPattern::CreateLinearGradient(cx - bezelR, cy - bezelR, cx + bezelR, cy + bezelR,
+                                                     {{kShellLight, 0.f},
+                                                      {BlendColor(kShellMid, kShellDark, 0.4f), 0.45f},
+                                                      {BlendColor(kShellDark, kShellDeep, 0.35f), 1.f}}));
+
+    // Inner edge of outer bezel
+    FillPatternCircle(g, cx, cy, bezelR - 1.8f,
+                      IPattern::CreateLinearGradient(cx, cy - bezelR, cx, cy + bezelR,
+                                                     {{BlendColor(kShellDark, kShellMid, 0.3f), 0.f},
+                                                      {kShellLight, 1.f}}));
 
     g.FillCircle(WithAlpha(kShellDeep, 74), cx, cy + 4.6f, outerR + 4.0f);
     g.FillCircle(outerShell, cx, cy, outerR);
