@@ -64,7 +64,7 @@ const IColor kLedGlowOn       {180, 255,  50,  50};
 
 // Cool blue-gray overlay to neutralize yellow hardware aesthetic
 void ApplyCoolFilter(IGraphics& g, const IRECT& bounds) {
-  g.FillRect(IColor(35, 200, 205, 215), bounds);
+  g.FillRect(IColor(55, 200, 205, 215), bounds);
 }
 
 float Clamp01(float value) {
@@ -1299,6 +1299,10 @@ public:
     }, 80);
   }
 
+  void OnMouseUp(float x, float y, const IMouseMod& mod) override {
+    IKnobControlBase::OnMouseUp(x, y, mod);
+  }
+
   void OnEndAnimation() override {
     mHoverAmt = mHoverTarget;
     IKnobControlBase::OnEndAnimation();
@@ -1340,46 +1344,15 @@ public:
       s = 1664525u * s + 1013904223u;
       return (s & 0x00FFFFFFu) / 16777216.0f;
     };
-    // large faint dust/grime smudges (positions rotate with knob)
+    // very subtle aging — barely visible socket shading
     {
       float dx = -outerR * 0.4f + (dirtRand(1) - 0.5f) * outerR * 0.12f;
       float dy = outerR * 0.5f + (dirtRand(2) - 0.5f) * outerR * 0.12f;
       const float x = cx + (dx * cosD - dy * sinD);
       const float y = cy + (dx * sinD + dy * cosD);
       const float r = outerR * (0.45f * (0.85f + 0.3f * dirtRand(3)));
-      const int a = static_cast<int>(9 * (0.7f + 0.6f * dirtRand(4)));
+      const int a = static_cast<int>(4 * (0.5f + 0.5f * dirtRand(4)));
       g.FillCircle(WithAlpha(kShellDeep, a), x, y, r);
-    }
-    {
-      float dx = outerR * 0.6f + (dirtRand(5) - 0.5f) * outerR * 0.12f;
-      float dy = outerR * 0.6f + (dirtRand(6) - 0.5f) * outerR * 0.12f;
-      const float x = cx + (dx * cosD - dy * sinD);
-      const float y = cy + (dx * sinD + dy * cosD);
-      const float r = outerR * (0.35f * (0.85f + 0.3f * dirtRand(7)));
-      const int a = static_cast<int>(7 * (0.7f + 0.6f * dirtRand(8)));
-      g.FillCircle(WithAlpha(kShellDeep, a), x, y, r);
-    }
-    // speckled oxidation/pitting near the socket
-    {
-      float dx = -outerR * 0.7f + (dirtRand(9)-0.5f) * outerR * 0.15f;
-      float dy = -outerR * 0.3f + (dirtRand(10)-0.5f) * outerR * 0.15f;
-      const float x = cx + (dx * cosD - dy * sinD);
-      const float y = cy + (dx * sinD + dy * cosD);
-      g.FillCircle(WithAlpha(kShellDeep, static_cast<int>(16 * (0.6f + 0.8f*dirtRand(11)))), x, y, 1.6f + 1.6f * dirtRand(12));
-    }
-    {
-      float dx = outerR * 0.8f + (dirtRand(13)-0.5f) * outerR * 0.15f;
-      float dy = outerR * 0.15f + (dirtRand(14)-0.5f) * outerR * 0.15f;
-      const float x = cx + (dx * cosD - dy * sinD);
-      const float y = cy + (dx * sinD + dy * cosD);
-      g.FillCircle(WithAlpha(kShellDeep, static_cast<int>(12 * (0.6f + 0.8f*dirtRand(15)))), x, y, 1.4f + 1.6f * dirtRand(16));
-    }
-    {
-      float dx = -outerR * 0.85f + (dirtRand(17)-0.5f) * outerR * 0.15f;
-      float dy = outerR * 0.4f + (dirtRand(18)-0.5f) * outerR * 0.15f;
-      const float x = cx + (dx * cosD - dy * sinD);
-      const float y = cy + (dx * sinD + dy * cosD);
-      g.FillCircle(WithAlpha(kShellDeep, static_cast<int>(14 * (0.6f + 0.8f*dirtRand(19)))), x, y, 0.9f + 1.2f * dirtRand(20));
     }
 
     // Travel arc — shows consumed range at a glance without decoding numbers
@@ -1408,13 +1381,13 @@ public:
     }
 
     // Drop shadow under the knob for depth
-    g.FillCircle(WithAlpha(kShellDeep, 22), cx + 3.0f, cy + 4.0f, socketR + 5.f);
-    g.FillCircle(WithAlpha(kShellDeep, 12), cx + 2.0f, cy + 3.0f, socketR + 8.f);
+    g.FillCircle(WithAlpha(kShellDeep, 14), cx + 2.0f, cy + 3.0f, socketR + 5.f);
+    g.FillCircle(WithAlpha(kShellDeep, 8), cx + 1.0f, cy + 2.0f, socketR + 8.f);
 
-    g.FillCircle(WithAlpha(kShellDeep, 24), cx + 0.7f, knobCy + 1.6f, outerR + 1.6f);
+    g.FillCircle(WithAlpha(kShellDeep, 16), cx + 0.5f, knobCy + 1.0f, outerR + 1.6f);
 
     // Shadow ring behind teeth for machined metal depth
-    g.DrawCircle(WithAlpha(kShellDeep, 45), cx + 0.5f, knobCy + 0.5f, innerR + 2.5f, nullptr, 2.5f);
+    g.DrawCircle(WithAlpha(kShellDeep, 30), cx + 0.3f, knobCy + 0.3f, innerR + 2.5f, nullptr, 2.0f);
 
     g.FillCircle(knobFill, cx, knobCy, innerR);
 
@@ -1549,7 +1522,7 @@ public:
 
     WDL_String valueTextStr;
     FormatKnobReadout(GetParamIdx(), value, valueTextStr);
-        const float readoutSize = 18.5f + mReadoutPulse * 0.9f;
+        const float readoutSize = 21.f + mReadoutPulse * 1.1f;
         const IColor readoutBase = active ? kFieldText : BlendColor(kShellText, kFieldText, 0.28f);
         const IColor readoutColor = BlendColor(readoutBase, kCoolOn, 0.24f * Clamp01(mReadoutPulse));
     DrawTertiaryText(g,
@@ -2155,7 +2128,17 @@ public:
 
   void OnMouseDown(float x, float y, const IMouseMod& mod) override {
     ISwitchControlBase::OnMouseDown(x, y, mod);
-    StartToggleAnimation(GetValue() > 0.5 ? 1.f : 0.f);
+    mVisualOn = GetValue() > 0.5 ? 1.f : 0.f;
+    mAnimFromOn = mVisualOn;
+    mTargetOn = mVisualOn;
+    mPressAmount = 1.f;
+    SetDirty(false);
+  }
+
+  void OnMouseUp(float x, float y, const IMouseMod& mod) override {
+    ISwitchControlBase::OnMouseUp(x, y, mod);
+    mPressAmount = 0.f;
+    SetDirty(false);
   }
 
   void OnMouseOver(float x, float y, const IMouseMod& mod) override {
@@ -2196,7 +2179,12 @@ public:
     if (key.VK == kVK_SPACE || key.VK == kVK_RETURN) {
       const double toggledValue = (GetValue() > 0.5) ? 0.0 : 1.0;
       SetValueFromUserInput(toggledValue);
-      StartToggleAnimation(toggledValue > 0.5 ? 1.f : 0.f);
+      const float target = toggledValue > 0.5 ? 1.f : 0.f;
+      mVisualOn = target;
+      mAnimFromOn = target;
+      mTargetOn = target;
+      mPressAmount = 1.f;
+      SetDirty(false);
       return true;
     }
 
@@ -2343,15 +2331,19 @@ public:
     g.FillCircle(BlendColor(symbolColor, kShellDeep, 0.20f), ledCx + 0.45f, ledCy + 0.65f, ledHousingR + 0.75f);
     g.FillCircle(symbolColor, ledCx, ledCy, ledHousingR);
     
-    // LED Inner Glow and bulb
+    // LED Inner Glow and bulb — clearly visible on/off states
+    const float ledOpacity = mVisualOn > 0.5f ? 1.f : 0.12f;
+    const IColor ledBulbCenter = mVisualOn > 0.5f
+      ? IColor{255, 255, 236, 182}
+      : BlendColor(IColor{255, 255, 236, 182}, symbolColor, 0.7f);
     FillPatternCircle(g, ledCx, ledCy, ledR + 2.0f,
                       IPattern::CreateRadialGradient(ledCx - ledR * 0.35f, ledCy - ledR * 0.42f, ledR * 2.8f,
-                                                     {{WithAlpha(ledGlow, static_cast<int>(ledGlow.A * std::max(0.18f, mVisualOn))), 0.f},
-                                                      {WithAlpha(ledGlow, static_cast<int>(ledGlow.A * 0.65f)), 0.46f},
-                                                      {WithAlpha(ledGlow, 0), 1.f}}));
+                                                     {{WithAlpha(ledGlow, static_cast<int>(ledGlow.A * ledOpacity)), 0.f},
+                                                      {WithAlpha(ledGlow, static_cast<int>(ledGlow.A * std::max(0.08f, ledOpacity * 0.65f))), 0.46f},
+                                                      {WithAlpha(ledGlow, 8), 1.f}}));
     FillPatternCircle(g, ledCx, ledCy, ledR,
                       IPattern::CreateRadialGradient(ledCx - ledR * 0.34f, ledCy - ledR * 0.40f, ledR * 1.6f,
-                                                     {{IColor{255, 255, 236, 182}, 0.f},
+                                                     {{ledBulbCenter, 0.f},
                                                       {ledColor, 0.32f},
                                                       {BlendColor(ledColor, symbolColor, 0.46f), 1.f}}));
 
