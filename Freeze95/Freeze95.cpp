@@ -74,7 +74,6 @@ static void ApplyCoolFilter(IGraphics& g, const IRECT& bounds) {
   // Using IBlend weight for cleaner control over opacity
   g.FillRect(IColor(255, 90, 115, 160), bounds, &BLEND_05);
 }
-
 float Clamp01(float value) {
   return std::max(0.f, std::min(1.f, value));
 }
@@ -2393,7 +2392,6 @@ public:
   CoolFilterOverlayControl(const IRECT& bounds) : IControl(bounds) { mIgnoreMouse = true; }
   void Draw(IGraphics& g) override { ApplyCoolFilter(g, mRECT); }
 };
-
 void Freeze95::LayoutUI(IGraphics* g) {
   // Use live dimensions so this function works for both initial layout and
   // any future re-layout calls.  In Scale mode Width()/Height() equal the
