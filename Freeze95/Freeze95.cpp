@@ -573,9 +573,7 @@ void DrawTertiaryText(IGraphics& g, float size, const IColor& color,
 
   const char* fontID = ShouldUseTertiaryFont() ? kTertiaryFontID : kFallbackFontID;
   const float fitted = FitTextSizeToBounds(g, fontID, text, size, bounds, 8.f);
-  IText textStyle{fitted, color, fontID, align, valign};
-  textStyle.mStyle = ETextStyle::Bold;
-  g.DrawText(textStyle, text, bounds);
+  g.DrawText(IText{fitted, color, fontID, align, valign}, text, bounds);
 }
 
 IColor GetValidationAlertColor() {
@@ -1398,7 +1396,7 @@ public:
       g.DrawArc(arcColor, cx, knobCy, arcR, arcStart, arcEnd, nullptr, 1.8f);
     }
     // Faint full-range track so the arc has a reference groove
-    g.DrawArc(WithAlpha(BlendColor(kShellLight, IColor(255, 245, 240, 220)), 65), cx, knobCy, outerR + 4.5f, 225.f, 495.f, nullptr, 3.0f);
+    g.DrawArc(WithAlpha(IColor(65, 250, 245, 230), 65), cx, knobCy, outerR + 4.5f, 225.f, 495.f, nullptr, 3.0f);
 
     if (mReadoutPulse > 0.01f && value > 0.002f) {
       const float arcEndRad = DegToRad(Lerp(135.f, 405.f, value));
@@ -2471,6 +2469,8 @@ Freeze95::Freeze95(const InstanceInfo& info)
 }
 
 #if IPLUG_EDITOR
+class CoolFilterOverlayControl;
+
 void Freeze95::LayoutUI(IGraphics* g) {
   // Use live dimensions so this function works for both initial layout and
   // any future re-layout calls.  In Scale mode Width()/Height() equal the
