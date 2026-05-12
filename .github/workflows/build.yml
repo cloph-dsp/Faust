@@ -127,7 +127,8 @@ jobs:
             -scheme "macOS-VST3" \
             -configuration Release \
             -arch x86_64 -arch arm64 \
-            BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac"
+            BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac" \
+            VST3_PATH="${{ github.workspace }}/Freeze95/build-mac/Products"
 
       - name: Build CLAP
         run: |
@@ -136,16 +137,55 @@ jobs:
             -scheme "macOS-CLAP" \
             -configuration Release \
             -arch x86_64 -arch arm64 \
-            BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac"
+            BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac" \
+            CLAP_PATH="${{ github.workspace }}/Freeze95/build-mac/Products"
+
+      - name: Verify macOS VST3 bundle
+        run: |
+          VST3_BUNDLE="${{ github.workspace }}/Freeze95/build-mac/Products/Freeze95.vst3"
+          if [ ! -d "$VST3_BUNDLE" ]; then
+            echo "ERROR: VST3 bundle not found at $VST3_BUNDLE"
+            exit 1
+          fi
+          echo "VST3 bundle found at: $VST3_BUNDLE"
+          ls -la "$VST3_BUNDLE/Contents/"
+          if [ ! -f "$VST3_BUNDLE/Contents/MacOS/Freeze95" ]; then
+            echo "ERROR: Binary not found in VST3 bundle Contents/MacOS/"
+            echo "Contents of MacOS dir:"
+            ls -la "$VST3_BUNDLE/Contents/MacOS/" || echo "MacOS dir missing"
+            exit 1
+          fi
+          echo "Binary verified: $VST3_BUNDLE/Contents/MacOS/Freeze95"
+          file "$VST3_BUNDLE/Contents/MacOS/Freeze95"
+          lipo -info "$VST3_BUNDLE/Contents/MacOS/Freeze95"
+
+      - name: Verify macOS CLAP bundle
+        run: |
+          CLAP_BUNDLE="${{ github.workspace }}/Freeze95/build-mac/Products/Freeze95.clap"
+          if [ ! -d "$CLAP_BUNDLE" ]; then
+            echo "ERROR: CLAP bundle not found at $CLAP_BUNDLE"
+            exit 1
+          fi
+          echo "CLAP bundle found at: $CLAP_BUNDLE"
+          ls -la "$CLAP_BUNDLE/Contents/"
+          if [ ! -f "$CLAP_BUNDLE/Contents/MacOS/Freeze95" ]; then
+            echo "ERROR: Binary not found in CLAP bundle Contents/MacOS/"
+            echo "Contents of MacOS dir:"
+            ls -la "$CLAP_BUNDLE/Contents/MacOS/" || echo "MacOS dir missing"
+            exit 1
+          fi
+          echo "Binary verified: $CLAP_BUNDLE/Contents/MacOS/Freeze95"
+          file "$CLAP_BUNDLE/Contents/MacOS/Freeze95"
+          lipo -info "$CLAP_BUNDLE/Contents/MacOS/Freeze95"
 
       - name: Upload VST3 artifact
         uses: actions/upload-artifact@v4
         with:
           name: Freeze95-macOS-VST3
-          path: Freeze95/build-mac/Release/Freeze95.vst3
+          path: Freeze95/build-mac/Products/Freeze95.vst3
 
       - name: Upload CLAP artifact
         uses: actions/upload-artifact@v4
         with:
           name: Freeze95-macOS-CLAP
-          path: Freeze95/build-mac/Release/Freeze95.clap
+          path: Freeze95/build-mac/Products/Freeze95.clap
