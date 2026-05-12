@@ -46,6 +46,8 @@ private:
   std::unique_ptr<Freeze95DSP> mDSP;
   std::unordered_map<std::string, FAUSTFLOAT*> mFaustZones;
 
+  static constexpr int kMaxBlockFrames = 65536;
+
   std::vector<float> mInL;
   std::vector<float> mInR;
   std::vector<float> mOutL;
@@ -53,6 +55,12 @@ private:
 
   FAUSTFLOAT* mInPtrs[2] = {nullptr, nullptr};
   FAUSTFLOAT* mOutPtrs[2] = {nullptr, nullptr};
+
+  int mBufferSize = 0;
+
+  // Smoothed power gain for click-free bypass toggling (ramped per-sample)
+  float mPowerGain = 1.0f;
+  float mTargetPowerGain = 1.0f;
 
   bool mHasTransportState = false;
   bool mLastTransportRunning = false;

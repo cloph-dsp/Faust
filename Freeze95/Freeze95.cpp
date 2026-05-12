@@ -14,6 +14,8 @@
 #ifdef OS_WIN
 #include <windows.h>
 #include <intrin.h>
+#elif defined(__APPLE__) && defined(__x86_64__)
+#include <xmmintrin.h>
 #endif
 
 #include "IPlug_include_in_plug_src.h"
@@ -62,9 +64,27 @@ const IColor kLedOn           {255, 255,  60,  60}; // Brighter red
 const IColor kLedGlowOff      { 40, 255,  40,  40};
 const IColor kLedGlowOn       {180, 255,  50,  50};
 
-// Cool blue-gray overlay to neutralize yellow hardware aesthetic
-void ApplyCoolFilter(IGraphics& g, const IRECT& bounds) {
-  g.FillRect(IColor(55, 200, 205, 215), bounds);
+// Forward declarations for helper functions used below
+void FillPatternCircle(IGraphics& g, float cx, float cy, float radius, const IPattern& pattern,
+                       const IBlend* blend = nullptr);
+
+// Cool blue-gray overlay that slightly boosts contrast
+// Adds a subtle radial vignette to focus the center.
+static void ApplyCoolFilter(IGraphics& g, const IRECT& bounds) {
+  // Slightly darker, cooler overlay for better perceived contrast
+  g.FillRect(IColor(75, 200, 205, 220), bounds);
+
+  // Very mild radial vignette — barely perceptible
+  const float cx = bounds.MW();
+  const float cy = bounds.MH();
+  const float vignetteR = std::max(bounds.W(), bounds.H()) * 0.65f;
+  FillPatternCircle(g, cx, cy, vignetteR,
+    IPattern::CreateRadialGradient(cx, cy, vignetteR, {
+      {IColor(0, 0, 0, 0), 0.f},
+      {IColor(0, 0, 0, 0), 0.45f},
+      {IColor(25, 0, 0, 0), 0.8f},
+      {IColor(35, 0, 0, 0), 1.f}
+    }));
 }
 
 float Clamp01(float value) {
@@ -140,7 +160,7 @@ void DrawBevel(IGraphics& g, const IRECT& bounds, const IColor& tl, const IColor
 }
 
 void FillPatternCircle(IGraphics& g, float cx, float cy, float radius, const IPattern& pattern,
-                       const IBlend* blend = nullptr) {
+                       const IBlend* blend) {
   g.PathCircle(cx, cy, radius);
   g.PathFill(pattern, IFillOptions(), blend);
 }
@@ -1075,22 +1095,6 @@ public:
         g.StartLayer(this, mRECT);
         g.DrawSVG(activeBg, mRECT);
 
-        // Corner screws for SVG path
-        const float screwR = 5.5f;
-        const float margin = 10.f;
-        const IRECT shell = mRECT.GetPadded(-8.f);
-        const IRECT face = shell.GetPadded(-4.f);
-        const float screwX[] = { face.L + margin, face.R - margin };
-        const float screwY[] = { face.T + margin, face.B - margin };
-        for (int row = 0; row < 2; ++row) {
-          for (int col = 0; col < 2; ++col) {
-            unsigned int seed = static_cast<unsigned int>((row * 7 + col * 13 + 42) * 1664525u + 1013904223u);
-            seed = 1664525u * seed + 1013904223u;
-            float rotDeg = (seed % 180u);
-            DrawScrewHead(g, screwX[col], screwY[row], screwR, rotDeg);
-          }
-        }
-
         DrawMonitorGlassOverlay(g, mRECT, powerOn);
         // Overlay dust/patina on top of SVG so it's visible in production
         DrawCornerPatina(g, mRECT);
@@ -1105,46 +1109,8 @@ public:
 
     g.FillRect(kShellBg, mRECT);
 
-    const IRECT shell = mRECT.GetPadded(-8.f);
-    g.FillRoundRect(kShellBg, shell, 16.f);
-    g.DrawRoundRect(WithAlpha(kShellLight, 170), shell.GetTranslated(-0.3f, -0.3f), 16.f, nullptr, 1.4f);
-    g.DrawRoundRect(WithAlpha(kShellDeep, 145), shell, 16.f, nullptr, 1.5f);
-
-    const IRECT face = shell.GetPadded(-4.f);
-    g.FillRoundRect(kShellFace, face, 8.f);
-    g.DrawRoundRect(WithAlpha(kShellLight, 150), face.GetTranslated(-0.2f, -0.2f), 8.f, nullptr, 1.0f);
-    g.DrawRoundRect(WithAlpha(kShellDark, 140), face, 8.f, nullptr, 1.0f);
-
-    const IRECT topSeam(face.L + face.W() * 0.34f, face.T + 16.f,
-                        face.R - face.W() * 0.34f, face.T + 24.f);
-    g.FillRoundRect(WithAlpha(kShellDeep, 86), topSeam, 4.f);
-    g.DrawLine(WithAlpha(kShellLight, 110), topSeam.L + 4.f, topSeam.T - 1.f,
-               topSeam.R - 4.f, topSeam.T - 1.f, nullptr, 1.f);
-
-    const IRECT lowerLip(face.L + 16.f, face.B - 64.f, face.R - 16.f, face.B - 8.f);
-    g.FillRoundRect(BlendColor(kShellFace, kShellMid, 0.16f), lowerLip, 8.f);
-    g.DrawLine(WithAlpha(kShellLight, 108), lowerLip.L + 8.f, lowerLip.T + 1.f,
-               lowerLip.R - 8.f, lowerLip.T + 1.f, nullptr, 1.f);
-    g.DrawLine(WithAlpha(kShellDark, 110), lowerLip.L + 8.f, lowerLip.B - 1.f,
-               lowerLip.R - 8.f, lowerLip.B - 1.f, nullptr, 1.2f);
-
-    // [P1] Enhanced: Corner screws in the four corners of the panel
-    const float screwR = 5.5f;
-    const float margin = 10.f;
-    const float screwX[] = { face.L + margin, face.R - margin };
-    const float screwY[] = { face.T + margin, face.B - margin };
-
-    for (int row = 0; row < 2; ++row) {
-      for (int col = 0; col < 2; ++col) {
-        unsigned int seed = static_cast<unsigned int>((row * 7 + col * 13 + 42) * 1664525u + 1013904223u);
-        seed = 1664525u * seed + 1013904223u;
-        float rotDeg = (seed % 180u);
-        DrawScrewHead(g, screwX[col], screwY[row], screwR, rotDeg);
-      }
-    }
-
-    DrawCornerPatina(g, face);
-    DrawDustTexture(g, face);
+    DrawCornerPatina(g, mRECT);
+    DrawDustTexture(g, mRECT);
     DrawMonitorGlassOverlay(g, mRECT, powerOn);
     DrawPowerPulseOverlay(g);
   }
@@ -1245,7 +1211,7 @@ public:
     : IKnobControlBase(bounds, paramIdx)
     , mLabel((label && label[0]) ? label : "CTRL") {
     mDblAsSingleClick = true;
-    mDirtSeed = static_cast<unsigned int>((paramIdx + 1) * 1664525u + 1013904223u);
+    mDirtSeed = static_cast<unsigned int>((paramIdx * 7919 + 12345) ^ 0x9E3779B9);
   }
 
   void SetValueFromDelegate(double value, int valIdx = 0) override {
@@ -1264,8 +1230,8 @@ public:
     const float socketSize = std::min(knobArea.W(), knobArea.H());
     mSocketBounds = knobArea.GetCentredInside(socketSize, socketSize);
     // Label sits in a taller band above value; value gets generous room at bottom
-    mLabelBounds = IRECT(mRECT.L, mRECT.B - footerH + 2.f, mRECT.R, mRECT.B - footerH + 20.f);
-    mValueBounds = IRECT(mRECT.L, mRECT.B - 22.f, mRECT.R, mRECT.B - 2.f);
+    mLabelBounds = IRECT(mRECT.L, mRECT.B - footerH + 4.f, mRECT.R, mRECT.B - footerH + 26.f);
+    mValueBounds = IRECT(mRECT.L, mRECT.B - 28.f, mRECT.R, mRECT.B - 2.f);
     SetTargetRECT(mSocketBounds.GetPadded(6.f));
   }
 
@@ -1297,10 +1263,6 @@ public:
       self->mHoverAmt = self->mHoverFrom * (1.f - t);
       self->SetDirty(false);
     }, 80);
-  }
-
-  void OnMouseUp(float x, float y, const IMouseMod& mod) override {
-    IKnobControlBase::OnMouseUp(x, y, mod);
   }
 
   void OnEndAnimation() override {
@@ -1336,7 +1298,7 @@ public:
       g.FillCircle(WithAlpha(kCoolGlow, static_cast<int>(70.f * glowAmt)), cx, knobCy, outerR + 2.8f);
     }
 
-    // Apply "dirty old hardware" weathering to the socket area — rotating & varied per-knob
+    // Apply "dirty old hardware" weathering to the socket area — varied per-knob
     const float cosD = std::cos(rotationRad);
     const float sinD = std::sin(rotationRad);
     auto dirtRand = [&](unsigned int n)->float {
@@ -1344,14 +1306,15 @@ public:
       s = 1664525u * s + 1013904223u;
       return (s & 0x00FFFFFFu) / 16777216.0f;
     };
-    // very subtle aging — barely visible socket shading
-    {
-      float dx = -outerR * 0.4f + (dirtRand(1) - 0.5f) * outerR * 0.12f;
-      float dy = outerR * 0.5f + (dirtRand(2) - 0.5f) * outerR * 0.12f;
+    // Socket aging — number of spots varies per knob for unique character
+    const int socketSpots = 1 + static_cast<int>(dirtRand(0) * 2.5f); // 1 or 2 spots
+    for (int spot = 0; spot < socketSpots; ++spot) {
+      float dx = -outerR * 0.4f + (dirtRand(1 + spot * 4) - 0.5f) * outerR * 0.35f;
+      float dy = outerR * 0.5f + (dirtRand(2 + spot * 4) - 0.5f) * outerR * 0.35f;
       const float x = cx + (dx * cosD - dy * sinD);
       const float y = cy + (dx * sinD + dy * cosD);
-      const float r = outerR * (0.45f * (0.85f + 0.3f * dirtRand(3)));
-      const int a = static_cast<int>(4 * (0.5f + 0.5f * dirtRand(4)));
+      const float r = outerR * (0.3f + 0.25f * dirtRand(3 + spot * 4));
+      const int a = static_cast<int>(3 + 5 * dirtRand(4 + spot * 4));
       g.FillCircle(WithAlpha(kShellDeep, a), x, y, r);
     }
 
@@ -1384,19 +1347,10 @@ public:
     g.FillCircle(WithAlpha(kShellDeep, 14), cx + 2.0f, cy + 3.0f, socketR + 5.f);
     g.FillCircle(WithAlpha(kShellDeep, 8), cx + 1.0f, cy + 2.0f, socketR + 8.f);
 
-    g.FillCircle(WithAlpha(kShellDeep, 16), cx + 0.5f, knobCy + 1.0f, outerR + 1.6f);
-
-    // Shadow ring behind teeth for machined metal depth
-    g.DrawCircle(WithAlpha(kShellDeep, 30), cx + 0.3f, knobCy + 0.3f, innerR + 2.5f, nullptr, 2.0f);
+    // Subtle shadow disc behind the teeth — hides any anti-aliasing gaps
+    g.FillCircle(BlendColor(knobFill, kShellDark, 0.35f), cx + 0.5f, knobCy + 1.0f, outerR + 1.2f);
 
     g.FillCircle(knobFill, cx, knobCy, innerR);
-
-    // [P1] Enhanced: Machined metal chamfer ring between outerR and innerR
-    // Creates depth with a dark shadow ring behind the teeth
-    const float chamferR = (outerR + innerR) * 0.5f;
-    const float chamferThickness = (outerR - innerR) * 0.18f;
-    g.FillCircle(WithAlpha(kShellDeep, 68), cx + 0.3f, knobCy + 0.8f, chamferR + chamferThickness);
-    g.FillCircle(BlendColor(kShellDark, kShellDeep, 0.35f), cx, knobCy, chamferR + chamferThickness * 0.7f);
 
     // 2 trig calls to set up rotation transform; precomputed unit-circle coords handle the rest
     const float cosR = std::cos(rotationRad);
@@ -2259,13 +2213,12 @@ public:
 
     const float hoverGlow = mMouseDown ? 0.75f : mHoverAmt * 0.45f;
     if (hoverGlow > 0.01f) {
-      g.FillCircle(WithAlpha(kCoolGlow, static_cast<int>(105.f * hoverGlow)), cx, cy, outerR + 5.0f);
+      g.FillCircle(WithAlpha(kCoolGlow, static_cast<int>(105.f * hoverGlow)), cx, cy, outerR + 1.6f);
     }
 
-    // [P1] Enhanced: Outer bezel ring around the entire button assembly
-    // Slightly larger circle with metallic gradient (light top-left, dark bottom-right)
-    const float bezelR = outerR + 4.f;
-    g.FillCircle(WithAlpha(kShellDeep, 68), cx, cy + 5.2f, bezelR + 3.5f);
+    // Subtle bezel ring — kept within bounds to avoid capping
+    const float bezelR = outerR + 1.6f;
+    g.FillCircle(WithAlpha(kShellDeep, 68), cx, cy + 3.2f, bezelR + 1.2f);
     FillPatternCircle(g, cx, cy, bezelR,
                       IPattern::CreateLinearGradient(cx - bezelR, cy - bezelR, cx + bezelR, cy + bezelR,
                                                      {{kShellLight, 0.f},
@@ -2273,12 +2226,12 @@ public:
                                                       {BlendColor(kShellDark, kShellDeep, 0.35f), 1.f}}));
 
     // Inner edge of outer bezel
-    FillPatternCircle(g, cx, cy, bezelR - 1.8f,
+    FillPatternCircle(g, cx, cy, bezelR - 1.0f,
                       IPattern::CreateLinearGradient(cx, cy - bezelR, cx, cy + bezelR,
                                                      {{BlendColor(kShellDark, kShellMid, 0.3f), 0.f},
                                                       {kShellLight, 1.f}}));
 
-    g.FillCircle(WithAlpha(kShellDeep, 74), cx, cy + 4.6f, outerR + 4.0f);
+    g.FillCircle(WithAlpha(kShellDeep, 74), cx, cy + 2.6f, outerR + 0.8f);
     g.FillCircle(outerShell, cx, cy, outerR);
     FillPatternCircle(g, cx, cy, rimR,
                       IPattern::CreateLinearGradient(cx - rimR, cy - rimR, cx + rimR, cy + rimR,
@@ -2450,6 +2403,13 @@ Freeze95::Freeze95(const InstanceInfo& info)
   mDSP->buildUserInterface(&captureUI);
   SyncParamsToDSP();
 
+  // Pre-allocate processing buffers to the maximum expected block size.
+  // This avoids real-time unsafe std::vector::resize() calls in OnReset().
+  mInL.resize(kMaxBlockFrames);
+  mInR.resize(kMaxBlockFrames);
+  mOutL.resize(kMaxBlockFrames);
+  mOutR.resize(kMaxBlockFrames);
+
 #if IPLUG_EDITOR
   mMakeGraphicsFunc = [&]() {
     auto* graphics = MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
@@ -2580,7 +2540,7 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const IRECT loFiBounds(chaosBounds.R + knobGap,
                          majorTop + macroTopInset + loFiTopOffset,
                          chaosBounds.R + knobGap + loFiWidth,
-                         majorBottom - macroBottomInset - Snap8(4.f));
+                         majorBottom - macroBottomInset);
 
   const float transportPanelL = loFiBounds.R + transportGap;
   const IRECT transportPanelBounds(transportPanelL,
@@ -2712,11 +2672,9 @@ void Freeze95::OnReset() {
 
   mDSP->init(static_cast<int>(GetSampleRate()));
 
-  const int preallocFrames = std::max(16384, GetBlockSize());
-  mInL.resize(preallocFrames);
-  mInR.resize(preallocFrames);
-  mOutL.resize(preallocFrames);
-  mOutR.resize(preallocFrames);
+  // Track the host-reported block size for bounds checking in ProcessBlock().
+  // Buffers were pre-allocated in the constructor to avoid real-time allocation.
+  mBufferSize = std::max(16384, GetBlockSize());
 
   SyncParamsToDSP();
 }
@@ -2725,61 +2683,55 @@ void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
 #ifdef _WIN32
   // FTZ (Flush To Zero) and DAZ (Denormals Are Zero) to prevent CPU spikes
   _mm_setcsr(_mm_getcsr() | 0x8040);
+#elif defined(__APPLE__) && defined(__x86_64__)
+  _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+  _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
 #endif
 
   const int nIn = NInChansConnected();
   const int nOut = NOutChansConnected();
+  const int originalNFrames = nFrames;
 
-  auto outputDry = [&]() {
+  auto outputDry = [&](int startFrame, int frameCount) {
     const int nChans = std::min(nIn, nOut);
-    for (int s = 0; s < nFrames; ++s) {
+    for (int s = 0; s < frameCount; ++s) {
       for (int c = 0; c < nChans; ++c) {
-        outputs[c][s] = inputs[c][s];
+        outputs[c][startFrame + s] = inputs[c][startFrame + s];
       }
       for (int c = nChans; c < nOut; ++c) {
-        outputs[c][s] = 0.0;
+        outputs[c][startFrame + s] = 0.0;
       }
     }
   };
 
   if (!mDSP || nFrames <= 0) {
-    outputDry();
+    outputDry(0, originalNFrames);
     return;
   }
 
   // Respect host VST3 bypass — output dry when bypassed so the power button
   // and host bypass stay functionally equivalent (both pass dry signal).
   if (GetBypassed()) {
-    outputDry();
+    outputDry(0, originalNFrames);
     return;
   }
 
   const bool syncToHost = GetParam(kParamSync)->Value() > 0.5;
   const bool transportRunning = mTimeInfo.mTransportIsRunning;
   const bool shouldGateForPause = syncToHost && !GetRenderingOffline();
-  const bool transportJustStopped = shouldGateForPause
-    && mHasTransportState
-    && mLastTransportRunning
-    && !transportRunning;
 
   mHasTransportState = true;
   mLastTransportRunning = transportRunning;
 
-  if (transportJustStopped) {
-    mDSP->instanceClear();
-  }
-
   if (shouldGateForPause && !transportRunning) {
-    outputDry();
+    outputDry(0, originalNFrames);
     return;
   }
 
-  if (static_cast<int>(mInL.size()) < nFrames) {
-    // Failsafe. Should not happen if preallocated adequately in OnReset(),
-    // but prevents buffer overflow if host violates expected block sizes.
-    // However, this violates the real-time safety constraint as it allocates 
-    // on the audio thread. So we clamp processing to our available buffers instead
-    nFrames = static_cast<int>(mInL.size());
+  if (mBufferSize < nFrames) {
+    // Host sent a larger block than expected. Clamp to our pre-allocated buffer
+    // size and output dry for the remaining tail so the host doesn't read garbage.
+    nFrames = mBufferSize;
   }
 
   // Hoist channel-count branches out of the hot sample loop
@@ -2806,18 +2758,35 @@ void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
   mDSP->control();
   mDSP->compute(nFrames, mInPtrs, mOutPtrs);
 
+  // Ramp power gain to target for click-free on/off toggling.
+  // The Faust DSP already has an 8 ms internal smooth, but a longer C++ ramp
+  // prevents discontinuities when the host bypasses or the user toggles rapidly.
+  mTargetPowerGain = GetParam(kParamPower)->Value() > 0.5f ? 1.0f : 0.0f;
+  const float gainRamp = 0.04f; // ~25 samples to converge
+
   if (nOut >= 2) {
     for (int s = 0; s < nFrames; ++s) {
-      outputs[0][s] = static_cast<sample>(mOutL[s]);
-      outputs[1][s] = static_cast<sample>(mOutR[s]);
+      mPowerGain += (mTargetPowerGain - mPowerGain) * gainRamp;
+      outputs[0][s] = static_cast<sample>(mOutL[s] * mPowerGain + inputs[0][s] * (1.0f - mPowerGain));
+      outputs[1][s] = static_cast<sample>(mOutR[s] * mPowerGain + inputs[1][s] * (1.0f - mPowerGain));
     }
   } else if (nOut == 1) {
     for (int s = 0; s < nFrames; ++s) {
-      outputs[0][s] = static_cast<sample>(mOutL[s]);
+      mPowerGain += (mTargetPowerGain - mPowerGain) * gainRamp;
+      outputs[0][s] = static_cast<sample>(mOutL[s] * mPowerGain + inputs[0][s] * (1.0f - mPowerGain));
     }
   }
-  for (int c = 2; c < nOut; ++c) {
+
+  // Zero-fill any extra output channels beyond what we processed
+  const int firstExtraChan = (nOut >= 2) ? 2 : 1;
+  for (int c = firstExtraChan; c < nOut; ++c) {
     std::fill(outputs[c], outputs[c] + nFrames, static_cast<sample>(0.0));
+  }
+
+  // If we had to clamp nFrames, output dry for the remaining tail frames
+  // so the host doesn't read uninitialized memory.
+  if (nFrames < originalNFrames) {
+    outputDry(nFrames, originalNFrames - nFrames);
   }
 }
 
