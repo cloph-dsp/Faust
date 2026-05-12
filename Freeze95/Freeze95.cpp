@@ -573,7 +573,9 @@ void DrawTertiaryText(IGraphics& g, float size, const IColor& color,
 
   const char* fontID = ShouldUseTertiaryFont() ? kTertiaryFontID : kFallbackFontID;
   const float fitted = FitTextSizeToBounds(g, fontID, text, size, bounds, 8.f);
-  g.DrawText(IText{fitted, color, fontID, align, valign}, text, bounds);
+  IText textStyle{fitted, color, fontID, align, valign};
+  textStyle.mStyle = ETextStyle::Bold;
+  g.DrawText(textStyle, text, bounds);
 }
 
 IColor GetValidationAlertColor() {
@@ -1095,7 +1097,6 @@ public:
         // Overlay dust/patina on top of SVG so it's visible in production
         DrawCornerPatina(g, mRECT);
         DrawDustTexture(g, mRECT);
-        ApplyCoolFilter(g, mRECT);
         targetLayer = g.EndLayer();
       }
 
@@ -1148,7 +1149,6 @@ public:
     DrawDustTexture(g, face);
     DrawMonitorGlassOverlay(g, mRECT, powerOn);
     DrawPowerPulseOverlay(g);
-    ApplyCoolFilter(g, mRECT);
   }
 
   void OnEndAnimation() override {
@@ -1266,8 +1266,8 @@ public:
     const float socketSize = std::min(knobArea.W(), knobArea.H());
     mSocketBounds = knobArea.GetCentredInside(socketSize, socketSize);
     // Label sits in a taller band above value; value gets generous room at bottom
-    mLabelBounds = IRECT(mRECT.L, mRECT.B - footerH + 2.f, mRECT.R, mRECT.B - footerH + 22.f);
-    mValueBounds = IRECT(mRECT.L, mRECT.B - 24.f, mRECT.R, mRECT.B - 2.f);
+    mLabelBounds = IRECT(mRECT.L, mRECT.B - footerH + 2.f, mRECT.R, mRECT.B - footerH + 20.f);
+    mValueBounds = IRECT(mRECT.L, mRECT.B - 22.f, mRECT.R, mRECT.B - 2.f);
     SetTargetRECT(mSocketBounds.GetPadded(6.f));
   }
 
@@ -1398,7 +1398,7 @@ public:
       g.DrawArc(arcColor, cx, knobCy, arcR, arcStart, arcEnd, nullptr, 1.8f);
     }
     // Faint full-range track so the arc has a reference groove
-    g.DrawArc(WithAlpha(kShellLight, 55), cx, knobCy, outerR + 4.5f, 225.f, 495.f, nullptr, 2.5f);
+    g.DrawArc(WithAlpha(BlendColor(kShellLight, IColor(255, 245, 240, 220)), 65), cx, knobCy, outerR + 4.5f, 225.f, 495.f, nullptr, 3.0f);
 
     if (mReadoutPulse > 0.01f && value > 0.002f) {
       const float arcEndRad = DegToRad(Lerp(135.f, 405.f, value));
@@ -1410,8 +1410,8 @@ public:
     }
 
     // Drop shadow under the knob for depth
-    g.FillCircle(WithAlpha(kShellDeep, 40), cx + 2.5f, cy + 3.5f, socketR + 3.f);
-    g.FillCircle(WithAlpha(kShellDeep, 22), cx + 1.5f, cy + 2.5f, socketR + 5.f);
+    g.FillCircle(WithAlpha(kShellDeep, 22), cx + 3.0f, cy + 4.0f, socketR + 5.f);
+    g.FillCircle(WithAlpha(kShellDeep, 12), cx + 2.0f, cy + 3.0f, socketR + 8.f);
 
     g.FillCircle(WithAlpha(kShellDeep, 24), cx + 0.7f, knobCy + 1.6f, outerR + 1.6f);
 
@@ -1798,8 +1798,10 @@ public:
     const IColor modeColor = (mVisualManual >= 0.5f)
       ? BlendColor(kFieldText, kCoolOn, 0.45f)
       : BlendColor(kFieldText, kShellMid, 0.45f);
+    IRECT textBounds = mButtonBounds.GetPadded(-2.f);
+    textBounds.T += 1.f;
     DrawUtilityText(g, 16.5f, modeColor, EAlign::Center, EVAlign::Middle,
-                    modeGlyph, mButtonBounds.GetPadded(-2.f));
+                    modeGlyph, textBounds);
 
     // LED above button
     const float ledY = cy - ringR - 10.f;
@@ -2276,7 +2278,7 @@ public:
 
     // [P1] Enhanced: Outer bezel ring around the entire button assembly
     // Slightly larger circle with metallic gradient (light top-left, dark bottom-right)
-    const float bezelR = outerR + 8.f;
+    const float bezelR = outerR + 4.f;
     g.FillCircle(WithAlpha(kShellDeep, 68), cx, cy + 5.2f, bezelR + 3.5f);
     FillPatternCircle(g, cx, cy, bezelR,
                       IPattern::CreateLinearGradient(cx - bezelR, cy - bezelR, cx + bezelR, cy + bezelR,
@@ -2646,6 +2648,7 @@ void Freeze95::LayoutUI(IGraphics* g) {
   // Bypass wash — covers the full panel so power-off reads like the monitor went dark
   const IRECT bypassCoverBounds(0.f, 0.f, w, h);
   g->AttachControl(new BypassOverlayControl(bypassCoverBounds, kParamPower));
+  g->AttachControl(new CoolFilterOverlayControl(IRECT(0.f, 0.f, w, h)));
 
   // Corner resizer - Scale mode zooms the entire vector scene without
   // changing logical coordinates. layoutOnResize MUST be false.
@@ -2655,6 +2658,12 @@ void Freeze95::LayoutUI(IGraphics* g) {
                          WithAlpha(kShellText, 210),     // solid while dragging
                          24.f);
 }
+
+class CoolFilterOverlayControl final : public IControl {
+public:
+  CoolFilterOverlayControl(const IRECT& bounds) : IControl(bounds) { mIgnoreMouse = true; }
+  void Draw(IGraphics& g) override { ApplyCoolFilter(g, mRECT); }
+};
 
 void Freeze95::OnParentWindowResize(int width, int height) {
   if (!GetUI()) {
