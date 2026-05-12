@@ -68,23 +68,11 @@ const IColor kLedGlowOn       {180, 255,  50,  50};
 void FillPatternCircle(IGraphics& g, float cx, float cy, float radius, const IPattern& pattern,
                        const IBlend* blend = nullptr);
 
-// Cool blue-gray overlay that slightly boosts contrast
-// Adds a subtle radial vignette to focus the center.
+// Subtle cool tint overlay — shifts white balance without washing out
 static void ApplyCoolFilter(IGraphics& g, const IRECT& bounds) {
-  // Slightly darker, cooler overlay for better perceived contrast
-  g.FillRect(IColor(75, 200, 205, 220), bounds);
-
-  // Very mild radial vignette — barely perceptible
-  const float cx = bounds.MW();
-  const float cy = bounds.MH();
-  const float vignetteR = std::max(bounds.W(), bounds.H()) * 0.65f;
-  FillPatternCircle(g, cx, cy, vignetteR,
-    IPattern::CreateRadialGradient(cx, cy, vignetteR, {
-      {IColor(0, 0, 0, 0), 0.f},
-      {IColor(0, 0, 0, 0), 0.45f},
-      {IColor(25, 0, 0, 0), 0.8f},
-      {IColor(35, 0, 0, 0), 1.f}
-    }));
+  // Dark cool blue-gray: same brightness as background (~140), shifted cool
+  // Using IBlend weight for cleaner control over opacity
+  g.FillRect(IColor(255, 90, 115, 160), bounds, &BLEND_05);
 }
 
 float Clamp01(float value) {
@@ -1347,9 +1335,6 @@ public:
     g.FillCircle(WithAlpha(kShellDeep, 14), cx + 2.0f, cy + 3.0f, socketR + 5.f);
     g.FillCircle(WithAlpha(kShellDeep, 8), cx + 1.0f, cy + 2.0f, socketR + 8.f);
 
-    // Subtle shadow disc behind the teeth — hides any anti-aliasing gaps
-    g.FillCircle(BlendColor(knobFill, kShellDark, 0.35f), cx + 0.5f, knobCy + 1.0f, outerR + 1.2f);
-
     g.FillCircle(knobFill, cx, knobCy, innerR);
 
     // 2 trig calls to set up rotation transform; precomputed unit-circle coords handle the rest
@@ -1370,35 +1355,16 @@ public:
       };
       g.FillConvexPolygon(knobFill, toothX, toothY, 3);
 
-      // [P1] Enhanced: Add highlight on leading edge and shadow on trailing edge of each tooth
-      // Calculate tooth center for highlight/shadow positioning
-      const float toothCenterAngle = DegToRad(135.f + tooth * (270.f / numTeeth));
-      const float toothCenterR = (innerR + outerR) * 0.5f;
-      const float hx = cx + std::cos(toothCenterAngle + rotationRad) * toothCenterR;
-      const float hy = knobCy + std::sin(toothCenterAngle + rotationRad) * toothCenterR;
-
-      // Leading edge highlight (top-left of tooth rotation direction)
-      const float leadAngle = toothCenterAngle + rotationRad - 0.12f;
-      const float leadX = cx + std::cos(leadAngle) * (innerR + 1.5f);
-      const float leadY = knobCy + std::sin(leadAngle) * (innerR + 1.5f);
-      g.FillCircle(WithAlpha(kShellLight, 48), leadX, leadY, 1.8f);
-
-      // Trailing edge shadow (bottom-right of tooth rotation direction)
-      const float trailAngle = toothCenterAngle + rotationRad + 0.12f;
-      const float trailX = cx + std::cos(trailAngle) * (innerR + 1.5f);
-      const float trailY = knobCy + std::sin(trailAngle) * (innerR + 1.5f);
-      g.FillCircle(WithAlpha(kShellDeep, 42), trailX, trailY, 1.5f);
-
       // Chamfer shadow on trailing edge (2 -> 1)
       const IColor toothShadow = BlendColor(kKnobPointerDark, kShellDeep, 0.5f);
-      g.DrawLine(WithAlpha(toothShadow, 70),
+      g.DrawLine(WithAlpha(toothShadow, 50),
                  toothX[1], toothY[1], toothX[0], toothY[0],
-                 nullptr, 1.2f);
+                 nullptr, 0.9f);
       // Chamfer highlight on leading edge (2 -> 3)
       const IColor toothHighlight = BlendColor(kShellLight, kKnobTop, 0.4f);
-      g.DrawLine(WithAlpha(toothHighlight, 80),
+      g.DrawLine(WithAlpha(toothHighlight, 55),
                  toothX[1], toothY[1], toothX[2], toothY[2],
-                 nullptr, 0.8f);
+                 nullptr, 0.6f);
     }
 
     g.FillCircle(BlendColor(knobFill, kShellLight, active ? 0.12f : 0.06f), cx, knobCy, bodyR);
@@ -2421,6 +2387,7 @@ Freeze95::Freeze95(const InstanceInfo& info)
 }
 
 #if IPLUG_EDITOR
+
 class CoolFilterOverlayControl final : public IControl {
 public:
   CoolFilterOverlayControl(const IRECT& bounds) : IControl(bounds) { mIgnoreMouse = true; }
@@ -2605,7 +2572,6 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const IRECT bypassCoverBounds(0.f, 0.f, w, h);
   g->AttachControl(new BypassOverlayControl(bypassCoverBounds, kParamPower));
   g->AttachControl(new CoolFilterOverlayControl(IRECT(0.f, 0.f, w, h)));
-
   // Corner resizer - Scale mode zooms the entire vector scene without
   // changing logical coordinates. layoutOnResize MUST be false.
   g->AttachCornerResizer(EUIResizerMode::Scale, false,
