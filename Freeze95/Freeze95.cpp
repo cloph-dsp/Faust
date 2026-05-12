@@ -62,6 +62,11 @@ const IColor kLedOn           {255, 255,  60,  60}; // Brighter red
 const IColor kLedGlowOff      { 40, 255,  40,  40};
 const IColor kLedGlowOn       {180, 255,  50,  50};
 
+// Cool blue-gray overlay to neutralize yellow hardware aesthetic
+void ApplyCoolFilter(IGraphics& g, const IRECT& bounds) {
+  g.FillRect(IColor(35, 200, 205, 215), bounds);
+}
+
 float Clamp01(float value) {
   return std::max(0.f, std::min(1.f, value));
 }
@@ -146,7 +151,7 @@ void FillPatternEllipse(IGraphics& g, float cx, float cy, float rx, float ry, co
   g.PathFill(pattern, IFillOptions(), blend);
 }
 
-void DrawScrewHead(IGraphics& g, float cx, float cy, float radius) {
+void DrawScrewHead(IGraphics& g, float cx, float cy, float radius, float rotationDeg) {
   // Screw shadow
   g.FillCircle(WithAlpha(kShellDeep, 65), cx + 0.8f, cy + 1.2f, radius + 1.2f);
 
@@ -163,8 +168,23 @@ void DrawScrewHead(IGraphics& g, float cx, float cy, float radius) {
   // Screw slot (cross indentation)
   const float slotLen = radius * 0.55f;
   const float slotThick = 1.4f;
-  g.DrawLine(WithAlpha(kShellDeep, 110), cx - slotLen, cy, cx + slotLen, cy, nullptr, slotThick);
-  g.DrawLine(WithAlpha(kShellDeep, 110), cx, cy - slotLen, cx, cy + slotLen, nullptr, slotThick);
+  const float rad = DegToRad(rotationDeg);
+  const float c = std::cos(rad);
+  const float s = std::sin(rad);
+
+  // Horizontal slot (rotated)
+  float h1x = cx - slotLen * c;
+  float h1y = cy - slotLen * s;
+  float h2x = cx + slotLen * c;
+  float h2y = cy + slotLen * s;
+  g.DrawLine(WithAlpha(kShellDeep, 110), h1x, h1y, h2x, h2y, nullptr, slotThick);
+
+  // Vertical slot (rotated 90° from horizontal)
+  float v1x = cx - slotLen * (-s);
+  float v1y = cy - slotLen * c;
+  float v2x = cx + slotLen * (-s);
+  float v2y = cy + slotLen * c;
+  g.DrawLine(WithAlpha(kShellDeep, 110), v1x, v1y, v2x, v2y, nullptr, slotThick);
 
   // Screw head highlight ring
   g.DrawCircle(WithAlpha(kShellLight, 60), cx - 0.3f, cy - 0.3f, radius - 0.8f, nullptr, 0.6f);
@@ -1056,15 +1076,18 @@ public:
         g.DrawSVG(activeBg, mRECT);
 
         // Corner screws for SVG path
-        const float screwR = 6.5f;
-        const float margin = 14.f;
+        const float screwR = 5.5f;
+        const float margin = 10.f;
         const IRECT shell = mRECT.GetPadded(-8.f);
         const IRECT face = shell.GetPadded(-4.f);
-        const float screwOffsets[] = { margin, face.W() - margin };
+        const float screwX[] = { face.L + margin, face.R - margin };
         const float screwY[] = { face.T + margin, face.B - margin };
         for (int row = 0; row < 2; ++row) {
           for (int col = 0; col < 2; ++col) {
-            DrawScrewHead(g, face.L + screwOffsets[col], screwY[row], screwR);
+            unsigned int seed = static_cast<unsigned int>((row * 7 + col * 13 + 42) * 1664525u + 1013904223u);
+            seed = 1664525u * seed + 1013904223u;
+            float rotDeg = (seed % 180u);
+            DrawScrewHead(g, screwX[col], screwY[row], screwR, rotDeg);
           }
         }
 
@@ -1072,6 +1095,7 @@ public:
         // Overlay dust/patina on top of SVG so it's visible in production
         DrawCornerPatina(g, mRECT);
         DrawDustTexture(g, mRECT);
+        ApplyCoolFilter(g, mRECT);
         targetLayer = g.EndLayer();
       }
 
@@ -1106,14 +1130,17 @@ public:
                lowerLip.R - 8.f, lowerLip.B - 1.f, nullptr, 1.2f);
 
     // [P1] Enhanced: Corner screws in the four corners of the panel
-    const float screwR = 6.5f;
-    const float margin = 14.f;
-    const float screwOffsets[] = { margin, face.W() - margin };
+    const float screwR = 5.5f;
+    const float margin = 10.f;
+    const float screwX[] = { face.L + margin, face.R - margin };
     const float screwY[] = { face.T + margin, face.B - margin };
 
     for (int row = 0; row < 2; ++row) {
       for (int col = 0; col < 2; ++col) {
-        DrawScrewHead(g, screwOffsets[col], screwY[row], screwR);
+        unsigned int seed = static_cast<unsigned int>((row * 7 + col * 13 + 42) * 1664525u + 1013904223u);
+        seed = 1664525u * seed + 1013904223u;
+        float rotDeg = (seed % 180u);
+        DrawScrewHead(g, screwX[col], screwY[row], screwR, rotDeg);
       }
     }
 
@@ -1121,6 +1148,7 @@ public:
     DrawDustTexture(g, face);
     DrawMonitorGlassOverlay(g, mRECT, powerOn);
     DrawPowerPulseOverlay(g);
+    ApplyCoolFilter(g, mRECT);
   }
 
   void OnEndAnimation() override {
@@ -1238,8 +1266,8 @@ public:
     const float socketSize = std::min(knobArea.W(), knobArea.H());
     mSocketBounds = knobArea.GetCentredInside(socketSize, socketSize);
     // Label sits in a taller band above value; value gets generous room at bottom
-    mLabelBounds = IRECT(mRECT.L, mRECT.B - footerH + 4.f, mRECT.R, mRECT.B - footerH + 26.f);
-    mValueBounds = IRECT(mRECT.L, mRECT.B - 28.f, mRECT.R, mRECT.B - 2.f);
+    mLabelBounds = IRECT(mRECT.L, mRECT.B - footerH + 2.f, mRECT.R, mRECT.B - footerH + 22.f);
+    mValueBounds = IRECT(mRECT.L, mRECT.B - 24.f, mRECT.R, mRECT.B - 2.f);
     SetTargetRECT(mSocketBounds.GetPadded(6.f));
   }
 
@@ -1370,7 +1398,7 @@ public:
       g.DrawArc(arcColor, cx, knobCy, arcR, arcStart, arcEnd, nullptr, 1.8f);
     }
     // Faint full-range track so the arc has a reference groove
-    g.DrawArc(WithAlpha(kShellDark, 44), cx, knobCy, outerR + 4.5f, 225.f, 495.f, nullptr, 1.0f);
+    g.DrawArc(WithAlpha(kShellLight, 55), cx, knobCy, outerR + 4.5f, 225.f, 495.f, nullptr, 2.5f);
 
     if (mReadoutPulse > 0.01f && value > 0.002f) {
       const float arcEndRad = DegToRad(Lerp(135.f, 405.f, value));
@@ -1380,6 +1408,10 @@ public:
       const int sparkAlpha = static_cast<int>(std::lround(98.f * Clamp01(mReadoutPulse)));
       g.FillCircle(WithAlpha(kCoolOn, sparkAlpha), sparkX, sparkY, 1.3f + 1.0f * mReadoutPulse);
     }
+
+    // Drop shadow under the knob for depth
+    g.FillCircle(WithAlpha(kShellDeep, 40), cx + 2.5f, cy + 3.5f, socketR + 3.f);
+    g.FillCircle(WithAlpha(kShellDeep, 22), cx + 1.5f, cy + 2.5f, socketR + 5.f);
 
     g.FillCircle(WithAlpha(kShellDeep, 24), cx + 0.7f, knobCy + 1.6f, outerR + 1.6f);
 
