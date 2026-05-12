@@ -2469,7 +2469,11 @@ Freeze95::Freeze95(const InstanceInfo& info)
 }
 
 #if IPLUG_EDITOR
-class CoolFilterOverlayControl;
+class CoolFilterOverlayControl final : public IControl {
+public:
+  CoolFilterOverlayControl(const IRECT& bounds) : IControl(bounds) { mIgnoreMouse = true; }
+  void Draw(IGraphics& g) override { ApplyCoolFilter(g, mRECT); }
+};
 
 void Freeze95::LayoutUI(IGraphics* g) {
   // Use live dimensions so this function works for both initial layout and
@@ -2658,12 +2662,6 @@ void Freeze95::LayoutUI(IGraphics* g) {
                          WithAlpha(kShellText, 210),     // solid while dragging
                          24.f);
 }
-
-class CoolFilterOverlayControl final : public IControl {
-public:
-  CoolFilterOverlayControl(const IRECT& bounds) : IControl(bounds) { mIgnoreMouse = true; }
-  void Draw(IGraphics& g) override { ApplyCoolFilter(g, mRECT); }
-};
 
 void Freeze95::OnParentWindowResize(int width, int height) {
   if (!GetUI()) {
