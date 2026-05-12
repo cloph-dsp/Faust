@@ -134,25 +134,6 @@ void DrawBevel(IGraphics& g, const IRECT& bounds, const IColor& tl, const IColor
   g.DrawLine(br, bounds.L, bounds.B, bounds.R, bounds.B, nullptr, thickness);
 }
 
-void DrawRaisedButton(IGraphics& g, const IRECT& bounds, const IColor& faceColor, float cornerRadius = 4.f) {
-  // Shadow underneath
-  const IRECT shadow = bounds.GetTranslated(2.f, 2.f);
-  g.FillRoundRect(WithAlpha(kShellDeep, 35), shadow, cornerRadius);
-  // Face
-  FillClassicPanel(g, bounds, faceColor, true, 1.5f, cornerRadius);
-  // Bevel highlight (top/left)
-  g.DrawLine(WithAlpha(kShellLight, 90), bounds.L + 2.f, bounds.T + 1.f, bounds.R - 2.f, bounds.T + 1.f, nullptr, 1.f);
-  g.DrawLine(WithAlpha(kShellLight, 70), bounds.L + 1.f, bounds.T + 2.f, bounds.L + 1.f, bounds.B - 2.f, nullptr, 1.f);
-  // Bevel shadow (bottom/right)
-  g.DrawLine(WithAlpha(kShellDeep, 60), bounds.L + 2.f, bounds.B - 1.f, bounds.R - 2.f, bounds.B - 1.f, nullptr, 1.f);
-  g.DrawLine(WithAlpha(kShellDeep, 50), bounds.R - 1.f, bounds.T + 2.f, bounds.R - 1.f, bounds.B - 2.f, nullptr, 1.f);
-  // Inner gradient depth
-  const IRECT inner = bounds.GetPadded(-2.f);
-  FillPatternEllipse(g, inner.MW(), inner.MH(), inner.W() * 0.5f, inner.H() * 0.5f,
-    IPattern::CreateLinearGradient(inner.L, inner.T, inner.L, inner.B,
-      {{WithAlpha(kShellLight, 20), 0.f}, {WithAlpha(kShellMid, 15), 1.f}}));
-}
-
 void FillPatternCircle(IGraphics& g, float cx, float cy, float radius, const IPattern& pattern,
                        const IBlend* blend = nullptr) {
   g.PathCircle(cx, cy, radius);
@@ -914,6 +895,25 @@ void DrawDustTexture(IGraphics& g, const IRECT& bounds) {
   g.FillRoundRect(WithAlpha(kShellDeep, 14), smudgeB, smudgeB.H() * 0.5f);
   g.FillRoundRect(WithAlpha(kShellDeep, 12), smudgeC, smudgeC.H() * 0.5f);
   g.FillRoundRect(WithAlpha(kShellDeep, 16), smudgeD, smudgeD.H() * 0.5f);
+}
+
+void DrawRaisedButton(IGraphics& g, const IRECT& bounds, const IColor& faceColor, float cornerRadius = 4.f) {
+  // Shadow underneath
+  const IRECT shadow = bounds.GetTranslated(2.f, 2.f);
+  g.FillRoundRect(WithAlpha(kShellDeep, 35), shadow, cornerRadius);
+  // Face
+  FillClassicPanel(g, bounds, faceColor, true, 1.5f, cornerRadius);
+  // Bevel highlight (top/left)
+  g.DrawLine(WithAlpha(kShellLight, 90), bounds.L + 2.f, bounds.T + 1.f, bounds.R - 2.f, bounds.T + 1.f, nullptr, 1.f);
+  g.DrawLine(WithAlpha(kShellLight, 70), bounds.L + 1.f, bounds.T + 2.f, bounds.L + 1.f, bounds.B - 2.f, nullptr, 1.f);
+  // Bevel shadow (bottom/right)
+  g.DrawLine(WithAlpha(kShellDeep, 60), bounds.L + 2.f, bounds.B - 1.f, bounds.R - 2.f, bounds.B - 1.f, nullptr, 1.f);
+  g.DrawLine(WithAlpha(kShellDeep, 50), bounds.R - 1.f, bounds.T + 2.f, bounds.R - 1.f, bounds.B - 2.f, nullptr, 1.f);
+  // Inner gradient depth
+  const IRECT inner = bounds.GetPadded(-2.f);
+  FillPatternEllipse(g, inner.MW(), inner.MH(), inner.W() * 0.5f, inner.H() * 0.5f,
+    IPattern::CreateLinearGradient(inner.L, inner.T, inner.L, inner.B,
+      {{WithAlpha(kShellLight, 20), 0.f}, {WithAlpha(kShellMid, 15), 1.f}}));
 }
 
 void DrawCornerPatina(IGraphics& g, const IRECT& bounds) {
