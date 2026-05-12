@@ -2,8 +2,8 @@
 
 #define PLUG_NAME "Freeze95"
 #define PLUG_MFR "cloph"
-#define PLUG_VERSION_HEX 0x00010100
-#define PLUG_VERSION_STR "1.1.0"
+#define PLUG_VERSION_HEX 0x00010200
+#define PLUG_VERSION_STR "1.2.0"
 #define PLUG_UNIQUE_ID 'F95G'
 #define PLUG_MFR_ID 'Clph'
 #define PLUG_URL_STR "https://cloph.gumroad.com"
