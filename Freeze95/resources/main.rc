@@ -25,4 +25,10 @@ TERTIARY_UI_FN  TTF  TERTIARY_UI_FN
 // DOS / pixel font — sits one level up from resources/
 GOOD_OLD_DOS_RES  TTF  "..\Freeze95DOS.ttf"
 
+// ── Windows DPI awareness manifest ───────────────────────────────────────────
+// Declares PerMonitorV2 DPI awareness so the plugin renders correctly in hosts
+// on high-DPI displays without automatic OS scaling.
+// PLAINTEXT here refers to the XML data resource type.
+Freeze95_DPI_MANIFEST  RT_MANIFEST  "Freeze95.manifest"
+
 #endif    // not APSTUDIO_INVOKED

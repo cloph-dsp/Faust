@@ -2377,7 +2377,14 @@ Freeze95::Freeze95(const InstanceInfo& info)
 
 #if IPLUG_EDITOR
   mMakeGraphicsFunc = [&]() {
+#ifdef OS_WIN
+    // On Windows, force initial scale to 1.0 — the host manages DPI awareness.
+    // GetScaleForScreen() can cause rendering issues in DAWs like Cakewalk Sonar
+    // and VirtualDAW that handle DPI differently.
+    auto* graphics = MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, 1.f);
+#else
     auto* graphics = MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
+#endif
     return graphics;
   };
 
@@ -2630,6 +2637,12 @@ void Freeze95::OnParamChange(int paramIdx) {
 }
 
 void Freeze95::OnReset() {
+#ifdef _WIN32
+  // Ensure FTZ/DAZ is active during DSP reinit so denormals don't accumulate
+  // in delay-line state while the host is reconfiguring.
+  _mm_setcsr(_mm_getcsr() | 0x8040);
+#endif
+
   if (!mDSP) {
     return;
   }
@@ -2644,8 +2657,11 @@ void Freeze95::OnReset() {
 }
 
 void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
+  // FTZ/DAZ MUST be set BEFORE any early-return paths (host bypass, transport
+  // gate, null DSP) so denormals are flushed even when the DSP path is skipped.
+  // Otherwise the large delay-line state (~48 MB) can accumulate denormals
+  // during paused/bypassed periods, causing CPU spikes on resume.
 #ifdef _WIN32
-  // FTZ (Flush To Zero) and DAZ (Denormals Are Zero) to prevent CPU spikes
   _mm_setcsr(_mm_getcsr() | 0x8040);
 #elif defined(__APPLE__) && defined(__x86_64__)
   _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
