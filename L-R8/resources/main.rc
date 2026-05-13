@@ -1,0 +1,15 @@
+// Resource file for L-R8 VST3
+//
+#include "winres.h"
+
+#ifndef APSTUDIO_INVOKED
+
+#include "..\config.h"
+
+// ── Windows DPI awareness manifest ───────────────────────────────────────────
+// Declares PerMonitorV2 DPI awareness so the plugin renders correctly in hosts
+// on high-DPI displays without automatic OS scaling.
+// PLAINTEXT here refers to the XML data resource type.
+LR8_DPI_MANIFEST  RT_MANIFEST  "LR8.manifest"
+
+#endif    // not APSTUDIO_INVOKED
