@@ -296,10 +296,14 @@ public:
     float cx=mRECT.MW(),cy=mRECT.MH(),R=std::min(mRECT.W(),mRECT.H())*0.5f-1.f;
     bool on=GetValue()>0.5f,hover=GetMouseIsOver();
     g.FillCircle(WA(colBG,80),cx+1.f,cy+1.5f,R+1.f);
-    g.FillCircle(on?BC(colGY,colPN,0.3f):colPN,cx,cy,R);
-    if(on) g.FillCircle(WA(colGY,40),cx,cy,R+3.f);
-    g.DrawText(MakeTxt(9.f,on?colGY:colTD),"SYNC",mRECT);
-    g.DrawCircle(on?colGY:WA(colTD,80),cx,cy,R-2.f,nullptr,1.5f);
+    g.FillCircle(on?BC(colBL,colPN,0.5f):colPN,cx,cy,R);
+    if(on) {
+      g.FillCircle(WA(colBL,30),cx,cy,R+4.f);
+      g.DrawText(MakeTxt(10.f,colGY,kFontID_UI,EAlign::Center,EVAlign::Middle),"S",mRECT);
+    } else {
+      g.DrawText(MakeTxt(10.f,colTD,kFontID_UI,EAlign::Center,EVAlign::Middle),"S",mRECT);
+    }
+    g.DrawCircle(on?colBL:WA(colTD,80),cx,cy,R-2.f,nullptr,1.5f);
     if(hover) g.DrawCircle(WA(colTX,40),cx,cy,R+1.f,nullptr,1.f);
   }
 };
@@ -309,8 +313,8 @@ public:
 // ════════════════════════════════════════════════════════════════════
 class BpmDisplayControl final : public IControl {
 public:
-  BpmDisplayControl(const IRECT& b,int bpmIdx,int rateIdx,int syncIdx)
-    : IControl(b,bpmIdx), mRateIdx(rateIdx), mSyncIdx(syncIdx) { mDblAsSingleClick=true; }
+  BpmDisplayControl(const IRECT& b,int bpmIdx,int rateIdx,int syncIdx,LR8& p)
+    : IControl(b,bpmIdx), mRateIdx(rateIdx), mSyncIdx(syncIdx), mPlugin(p) { mDblAsSingleClick=true; }
   void OnResize() override { mField=mRECT.GetPadded(-4.f); SetTargetRECT(mField); }
   void SetValueFromDelegate(double v,int i=0) override { IControl::SetValueFromDelegate(v,i); SetDirty(false); }
   void OnMouseDown(float x,float y,const IMouseMod&) override {
@@ -329,10 +333,18 @@ public:
     IRECT r=mRECT;
     g.FillRoundRect(WA(colFB,200),r,6.f); g.DrawRoundRect(WA(colPN,120),r,6.f,nullptr,1.f);
     g.DrawText(MakeTxt(9.f,colTM,kFontID_UI,EAlign::Near,EVAlign::Top),"BPM",IRECT(r.L+8.f,r.T+5.f,r.R,r.T+18.f));
-    const IParam* bp=d->GetParam(GetParamIdx());
-    double bpm=bp?bp->Value():120.0;
-    char buf[32]; std::snprintf(buf,sizeof(buf),"%.1f",CV(bpm,1.0,300.0));
-    g.DrawText(MakeTxt(28.f,colBL,kFontID_Val),buf,IRECT(r.L,r.MH()-18.f,r.R,r.MH()+18.f));
+    const IParam* sp=d->GetParam(mSyncIdx);
+    bool sync=sp&&sp->Value()>0.5;
+    bool hostRunning=mPlugin.GetTransportIsRunning();
+    double bpm;
+    if(sync&&hostRunning) {
+      bpm=CV(mPlugin.GetTempo(),1.0,300.0);
+    } else {
+      const IParam* bp=d->GetParam(GetParamIdx());
+      bpm=bp?CV(bp->Value(),1.0,300.0):120.0;
+    }
+    char buf[32]; std::snprintf(buf,sizeof(buf),"%.1f",bpm);
+    g.DrawText(MakeTxt(28.f,sync&&hostRunning?colGY:colBL,kFontID_Val),buf,IRECT(r.L,r.MH()-18.f,r.R,r.MH()+18.f));
     const IParam* rp=d->GetParam(mRateIdx);
     double rv=rp?rp->Value():7.0;
     int ri=int(rv+0.5);
@@ -344,7 +356,7 @@ public:
   }
 private:
   void Nudge(double d){if(!GetParam())return;double c=GetParam()->FromNormalized(GetValue());SetValueFromUserInput(GetParam()->ToNormalized(CV(c+d,GetParam()->GetMin(),GetParam()->GetMax())));}
-  int mRateIdx,mSyncIdx; IRECT mField;
+  int mRateIdx,mSyncIdx; IRECT mField; LR8& mPlugin;
 };
 
 } // anon namespace
@@ -357,15 +369,15 @@ LR8::LR8(const InstanceInfo& info)
   , mVisBufferL(kVisBufferSize,0.f), mVisBufferR(kVisBufferSize,0.f) {
 
   GetParam(kParamBypass)->InitBool("Bypass",false);
-  GetParam(kParamSync)->InitBool("Host Sync",true);
-  GetParam(kParamRate)->InitInt("Rate",7,0,14,"");
-  GetParam(kParamBpm)->InitDouble("BPM",120.0,1.0,300.0,1.0,"");
-  GetParam(kParamFreeRate)->InitDouble("Free Rate",2.0,0.1,10.0,0.1,"");
+  GetParam(kParamSync)->InitBool("Sync",true);
+  GetParam(kParamRate)->InitInt("Rate",7,0,14,"step");
+  GetParam(kParamBpm)->InitDouble("BPM",120.0,1.0,300.0,1.0,"bpm");
+  GetParam(kParamFreeRate)->InitDouble("Free Rate",2.0,0.1,10.0,0.1,"Hz");
   GetParam(kParamCrossfade)->InitDouble("Crossfade",0.0,0.0,1.0,0.01,"");
-  GetParam(kParamHighPass)->InitDouble("High Pass",1000.0,20.0,1000.0,1.0,"");
-  GetParam(kParamLowPass)->InitDouble("Low Pass",8000.0,1000.0,20000.0,1.0,"");
+  GetParam(kParamHighPass)->InitDouble("High Pass",1000.0,20.0,1000.0,1.0,"Hz");
+  GetParam(kParamLowPass)->InitDouble("Low Pass",8000.0,1000.0,20000.0,1.0,"Hz");
 
-  // Factory preset
+  // Factory presets
   MakePreset("Default", 
     GetParam(kParamBypass)->ToNormalized(false),
     GetParam(kParamSync)->ToNormalized(true),
@@ -375,6 +387,42 @@ LR8::LR8(const InstanceInfo& info)
     GetParam(kParamCrossfade)->ToNormalized(0.0),
     GetParam(kParamHighPass)->ToNormalized(1000.0),
     GetParam(kParamLowPass)->ToNormalized(8000.0));
+  MakePreset("Wide Swirl",
+    GetParam(kParamBypass)->ToNormalized(false),
+    GetParam(kParamSync)->ToNormalized(true),
+    GetParam(kParamRate)->ToNormalized(5.0),
+    GetParam(kParamBpm)->ToNormalized(120.0),
+    GetParam(kParamFreeRate)->ToNormalized(2.0),
+    GetParam(kParamCrossfade)->ToNormalized(0.7),
+    GetParam(kParamHighPass)->ToNormalized(500.0),
+    GetParam(kParamLowPass)->ToNormalized(12000.0));
+  MakePreset("Slow Motion",
+    GetParam(kParamBypass)->ToNormalized(false),
+    GetParam(kParamSync)->ToNormalized(false),
+    GetParam(kParamRate)->ToNormalized(7.0),
+    GetParam(kParamBpm)->ToNormalized(120.0),
+    GetParam(kParamFreeRate)->ToNormalized(0.5),
+    GetParam(kParamCrossfade)->ToNormalized(0.3),
+    GetParam(kParamHighPass)->ToNormalized(200.0),
+    GetParam(kParamLowPass)->ToNormalized(6000.0));
+  MakePreset("Rhythmic Pulse",
+    GetParam(kParamBypass)->ToNormalized(false),
+    GetParam(kParamSync)->ToNormalized(true),
+    GetParam(kParamRate)->ToNormalized(10.0),
+    GetParam(kParamBpm)->ToNormalized(140.0),
+    GetParam(kParamFreeRate)->ToNormalized(2.0),
+    GetParam(kParamCrossfade)->ToNormalized(0.5),
+    GetParam(kParamHighPass)->ToNormalized(800.0),
+    GetParam(kParamLowPass)->ToNormalized(15000.0));
+  MakePreset("Airy Shift",
+    GetParam(kParamBypass)->ToNormalized(false),
+    GetParam(kParamSync)->ToNormalized(false),
+    GetParam(kParamRate)->ToNormalized(7.0),
+    GetParam(kParamBpm)->ToNormalized(120.0),
+    GetParam(kParamFreeRate)->ToNormalized(3.5),
+    GetParam(kParamCrossfade)->ToNormalized(0.2),
+    GetParam(kParamHighPass)->ToNormalized(1000.0),
+    GetParam(kParamLowPass)->ToNormalized(20000.0));
 
   mDSP=std::make_unique<L8FaustDSP>();
   ZoneCaptureUI cap(mFaustZones); mDSP->buildUserInterface(&cap);
@@ -448,7 +496,7 @@ void LR8::LayoutUI(IGraphics* g) {
   // BOTTOM BAR
   float bY=H-62.f,bH=54.f;
   g->AttachControl(new SyncControl(IRECT(M+6.f,bY+4.f,M+50.f,bY+48.f),kParamSync));
-  g->AttachControl(new BpmDisplayControl(IRECT(M+58.f,bY+2.f,W-M-4.f,bY+bH),kParamBpm,kParamRate,kParamSync));
+  g->AttachControl(new BpmDisplayControl(IRECT(M+58.f,bY+2.f,W-M-4.f,bY+bH),kParamBpm,kParamRate,kParamSync,*this));
 
   g->AttachCornerResizer(EUIResizerMode::Scale,false,
     IColor(60,255,255,255),WA(colTD,120),WA(colTX,210),24.f);
@@ -473,6 +521,15 @@ void LR8::SyncParamsToDSP() {
   bool sync=GetParam(kParamSync)->Value()>0.5;
   SetFaustParam("Sync",sync?1.f:0.f);
 
+  // Host transport sync: read tempo from DAW when synced and running
+  double hostTempo = GetTempo();
+  bool transportRunning = GetTransportIsRunning();
+  if(sync && transportRunning && hostTempo > 0.0) {
+    SetFaustParam("BPM", float(hostTempo));
+  } else {
+    SetFaustParam("BPM", float(GetParam(kParamBpm)->Value()));
+  }
+
   // Dual-function Rate knob
   float fv=float(GetParam(kParamFreeRate)->Value());
   if(sync) {
@@ -488,7 +545,6 @@ void LR8::SyncParamsToDSP() {
   SetFaustParam("Cross",float(GetParam(kParamCrossfade)->Value()));
   SetFaustParam("High Pass",float(GetParam(kParamHighPass)->Value()));
   SetFaustParam("Low Pass",float(GetParam(kParamLowPass)->Value()));
-  SetFaustParam("BPM",float(GetParam(kParamBpm)->Value()));
 }
 
 void LR8::OnParamChange(int idx) {
@@ -587,11 +643,9 @@ bool LR8::SerializeState(IByteChunk& c) const {
 int LR8::UnserializeState(const IByteChunk& c,int s) {
   int version=0;
   c.Get(&version,s);
+  s+=sizeof(int);
   if(version!=kStateVersion) {
-    // Unknown version — skip to params (best effort)
-    s+=sizeof(int);
-  } else {
-    s+=sizeof(int);
+    return -1; // Unknown version — can't safely deserialize
   }
   if(GetUI()) GetUI()->SetAllControlsDirty();
   int r=UnserializeParams(c,s); SyncParamsToDSP(); return r;

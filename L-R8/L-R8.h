@@ -48,8 +48,6 @@ public:
   const float* GetVisualizerDataL() const { return mVisBufferL.data(); }
   const float* GetVisualizerDataR() const { return mVisBufferR.data(); }
   int GetVisualizerDataSize() const { return static_cast<int>(mVisBufferL.size()); }
-  float GetCurrentShiftAmount() const { return mCurrentShift; }
-  float GetCurrentLFOValue() const { return mCurrentLFO; }
 
 private:
   void LayoutUI(iplug::igraphics::IGraphics* pGraphics);
@@ -59,7 +57,7 @@ private:
   std::unique_ptr<L8FaustDSP> mDSP;
   std::unordered_map<std::string, FAUSTFLOAT*> mFaustZones;
 
-  static constexpr int kMaxBlockFrames = 65536;
+  static constexpr int kMaxBlockFrames = 16384;
   static constexpr int kVisBufferSize = 1024;
 
   std::vector<float> mInL;
@@ -78,8 +76,6 @@ private:
   int mVisWritePos = 0;
 
   // Track modulation state for haptic feedback
-  float mCurrentShift = 0.f;
-  float mCurrentLFO = 0.f;
 
   // Smoothed bypass gain for click-free toggling
   float mBypassGain = 1.0f;
