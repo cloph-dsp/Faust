@@ -116,9 +116,10 @@ jobs:
           ARCHS = x86_64 arm64
           RELEASE_OPTIMIZE = 3
           MACOSX_DEPLOYMENT_TARGET = 11.0
-          CODE_SIGN_IDENTITY = -
-          CODE_SIGNING_REQUIRED = NO
-          XCCONFIG
+           CODE_SIGN_IDENTITY = -
+           CODE_SIGNING_REQUIRED = YES
+           OTHER_CODE_SIGN_FLAGS = --timestamp
+           XCCONFIG
 
       - name: Build VST3
         run: |
@@ -139,6 +140,17 @@ jobs:
             -arch x86_64 -arch arm64 \
             BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac" \
             CLAP_PATH="${{ github.workspace }}/Freeze95/build-mac/Products"
+
+      - name: Fix Info.plist — CFBundleExecutable must match binary name
+        run: |
+          for BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do
+            PLIST="$BUNDLE/Contents/Info.plist"
+            if [ -f "$PLIST" ]; then
+              /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Freeze95" "$PLIST" || true
+              /usr/libexec/PlistBuddy -c "Set :CFBundleName Freeze95" "$PLIST" || true
+              /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cloph.Freeze95" "$PLIST" || true
+            fi
+          done
 
       - name: Verify macOS VST3 bundle
         run: |
