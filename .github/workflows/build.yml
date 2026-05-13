@@ -140,6 +140,35 @@ jobs:
             BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac" \
             CLAP_PATH="${{ github.workspace }}/Freeze95/build-mac/Products"
 
+      - name: Build AU (Audio Unit)
+        run: |
+          cd Freeze95/iPlug2/Examples/IPlugEffect
+          xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
+            -scheme "macOS-AU" \
+            -configuration Release \
+            -arch x86_64 -arch arm64 \
+            BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac" \
+            AU_PATH="${{ github.workspace }}/Freeze95/build-mac/Products"
+
+      - name: Verify macOS AU bundle
+        run: |
+          AU_BUNDLE="${{ github.workspace }}/Freeze95/build-mac/Products/Freeze95.component"
+          if [ ! -d "$AU_BUNDLE" ]; then
+            echo "ERROR: AU bundle not found at $AU_BUNDLE"
+            exit 1
+          fi
+          echo "AU bundle found at: $AU_BUNDLE"
+          ls -la "$AU_BUNDLE/Contents/"
+          if [ ! -f "$AU_BUNDLE/Contents/MacOS/Freeze95" ]; then
+            echo "ERROR: Binary not found in AU bundle Contents/MacOS/"
+            echo "Contents of MacOS dir:"
+            ls -la "$AU_BUNDLE/Contents/MacOS/" || echo "MacOS dir missing"
+            exit 1
+          fi
+          echo "Binary verified: $AU_BUNDLE/Contents/MacOS/Freeze95"
+          file "$AU_BUNDLE/Contents/MacOS/Freeze95"
+          lipo -info "$AU_BUNDLE/Contents/MacOS/Freeze95"
+
       - name: Verify macOS VST3 bundle
         run: |
           VST3_BUNDLE="${{ github.workspace }}/Freeze95/build-mac/Products/Freeze95.vst3"
@@ -199,3 +228,14 @@ jobs:
         with:
           name: Freeze95-macOS-CLAP
           path: Freeze95/build-mac/stage-clap/
+
+      - name: Stage AU artifact
+        run: |
+          mkdir -p Freeze95/build-mac/stage-au
+          cp -R Freeze95/build-mac/Products/Freeze95.component Freeze95/build-mac/stage-au/
+
+      - name: Upload AU artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Freeze95-macOS-AU
+          path: Freeze95/build-mac/stage-au/
