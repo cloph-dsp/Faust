@@ -178,14 +178,22 @@ jobs:
           file "$CLAP_BUNDLE/Contents/MacOS/Freeze95"
           lipo -info "$CLAP_BUNDLE/Contents/MacOS/Freeze95"
 
+      - name: Zip VST3 bundle
+        run: |
+          cd Freeze95/build-mac/Products && zip -r Freeze95-vst3.zip Freeze95.vst3
+
       - name: Upload VST3 artifact
         uses: actions/upload-artifact@v4
         with:
           name: Freeze95-macOS-VST3
-          path: Freeze95/build-mac/Products/Freeze95.vst3
+          path: Freeze95/build-mac/Products/Freeze95-vst3.zip
+
+      - name: Zip CLAP bundle
+        run: |
+          cd Freeze95/build-mac/Products && zip -r Freeze95-clap.zip Freeze95.clap
 
       - name: Upload CLAP artifact
         uses: actions/upload-artifact@v4
         with:
           name: Freeze95-macOS-CLAP
-          path: Freeze95/build-mac/Products/Freeze95.clap
+          path: Freeze95/build-mac/Products/Freeze95-clap.zip
