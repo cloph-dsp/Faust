@@ -106,7 +106,7 @@ jobs:
 
       - name: Write Freeze95 xcconfig
         run: |
-          cat > Freeze95/iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig << 'XCCONFIG'
+          cat > Freeze95/iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig << 'EOF'
           IPLUG2_ROOT = ../../..
           #include "../../../common-mac.xcconfig"
           BINARY_NAME = Freeze95
@@ -116,10 +116,10 @@ jobs:
           ARCHS = x86_64 arm64
           RELEASE_OPTIMIZE = 3
           MACOSX_DEPLOYMENT_TARGET = 11.0
-           CODE_SIGN_IDENTITY = -
-           CODE_SIGNING_REQUIRED = YES
-           OTHER_CODE_SIGN_FLAGS = --timestamp
-           XCCONFIG
+          CODE_SIGN_IDENTITY = -
+          CODE_SIGNING_REQUIRED = YES
+          OTHER_CODE_SIGN_FLAGS = --timestamp
+          EOF
 
       - name: Build VST3
         run: |
