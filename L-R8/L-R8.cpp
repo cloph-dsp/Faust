@@ -309,42 +309,90 @@ public:
 };
 
 // ════════════════════════════════════════════════════════════════════
-// BPM DISPLAY — click to edit via PromptUserInput (iPlug2 built-in)
+// BPM DISPLAY — click to edit via CreateTextEntry (Freeze95 pattern)
 // ════════════════════════════════════════════════════════════════════
 class BpmDisplayControl final : public IControl {
 public:
   BpmDisplayControl(const IRECT& b,int bpmIdx,int rateIdx,int syncIdx,LR8& p)
     : IControl(b,bpmIdx), mRateIdx(rateIdx), mSyncIdx(syncIdx), mPlugin(p) { mDblAsSingleClick=true; }
-  void OnResize() override { mField=mRECT.GetPadded(-4.f); SetTargetRECT(mField); }
-  void SetValueFromDelegate(double v,int i=0) override { IControl::SetValueFromDelegate(v,i); SetDirty(false); }
-  void OnMouseDown(float x,float y,const IMouseMod&) override {
-    PromptUserInput(mField); // iPlug2's built-in parameter text entry
+
+  void OnInit() override { SetTextEntryLength(16); }
+
+  void OnResize() override {
+    mField=mRECT.GetPadded(-4.f);
+    SetTargetRECT(mField);
+  }
+
+  void SetValueFromDelegate(double v,int i=0) override {
+    IControl::SetValueFromDelegate(v,i); SetDirty(false);
+  }
+
+  bool IsManualEnabled() {
+    auto* d=GetDelegate(); if(!d) return true;
+    const IParam* sp=d->GetParam(mSyncIdx);
+    return !sp||sp->Value()<0.5||!mPlugin.GetTransportIsRunning();
+  }
+
+  void OnMouseOver(float x,float y,const IMouseMod&) override {
+    if(IsManualEnabled()&&GetUI()) GetUI()->SetMouseCursor(ECursor::HAND);
     SetDirty(false);
   }
+
+  void OnMouseOut() override {
+    if(GetUI()) GetUI()->SetMouseCursor();
+    SetDirty(false);
+  }
+
+  void OnMouseDown(float x,float y,const IMouseMod&) override {
+    if(!IsManualEnabled()) { SetDirty(false); return; }
+    OpenTextEntry();
+    SetDirty(false);
+  }
+
   void OnMouseDblClick(float x,float y,const IMouseMod&) override { OnMouseDown(x,y,IMouseMod()); }
+
   bool OnKeyDown(float x,float y,const IKeyPress& key) override {
-    if(key.C||key.A) return false;
+    if(key.C||key.A||!IsManualEnabled()) return false;
+    if(key.VK==kVK_RETURN||key.VK==kVK_SPACE){OpenTextEntry();return true;}
     if(key.VK==kVK_UP){Nudge(1.0);return true;}
     if(key.VK==kVK_DOWN){Nudge(-1.0);return true;}
     return false;
   }
+
+  void OnTextEntryCompletion(const char* str,int) override {
+    if(!GetParam()||!IsManualEnabled()) return;
+    char* end=nullptr; double v=std::strtod(str,&end);
+    if(end==str||(end&&*end&&!std::isspace(static_cast<unsigned char>(*end)))) {
+      mFlashV=1.f; mFlashI=1.f;
+      SetAnimation([](IControl* c){auto*s=c->As<BpmDisplayControl>();s->mFlashI=1.f-EC(float(c->GetAnimationProgress()));s->SetDirty(false);},220);
+      return;
+    }
+    mFlashV=1.f;
+    SetAnimation([](IControl* c){auto*s=c->As<BpmDisplayControl>();s->mFlashV=1.f-EQ(float(c->GetAnimationProgress()));s->SetDirty(false);},180);
+    SetValueFromUserInput(GetParam()->ToNormalized(CV(v,GetParam()->GetMin(),GetParam()->GetMax())));
+  }
+
   void Draw(IGraphics& g) override {
     auto* d=GetDelegate(); if(!d) return;
     IRECT r=mRECT;
     g.FillRoundRect(WA(colFB,200),r,6.f); g.DrawRoundRect(WA(colPN,120),r,6.f,nullptr,1.f);
+    if(mFlashI>0.01f) g.DrawRoundRect(WA(colRD,180),r.GetPadded(-1.f),6.f,nullptr,2.f);
+    else if(mFlashV>0.01f) g.DrawRoundRect(WA(colBL,150),r.GetPadded(-1.f),6.f,nullptr,1.5f);
     g.DrawText(MakeTxt(9.f,colTM,kFontID_UI,EAlign::Near,EVAlign::Top),"BPM",IRECT(r.L+8.f,r.T+5.f,r.R,r.T+18.f));
     const IParam* sp=d->GetParam(mSyncIdx);
     bool sync=sp&&sp->Value()>0.5;
     bool hostRunning=mPlugin.GetTransportIsRunning();
+    bool manual=!sync||!hostRunning;
     double bpm;
-    if(sync&&hostRunning) {
+    if(!manual) {
       bpm=CV(mPlugin.GetTempo(),1.0,300.0);
     } else {
       const IParam* bp=d->GetParam(GetParamIdx());
       bpm=bp?CV(bp->Value(),1.0,300.0):120.0;
     }
+    IColor bpmCol=manual?colBL:colGY;
     char buf[32]; std::snprintf(buf,sizeof(buf),"%.1f",bpm);
-    g.DrawText(MakeTxt(28.f,sync&&hostRunning?colGY:colBL,kFontID_Val),buf,IRECT(r.L,r.MH()-18.f,r.R,r.MH()+18.f));
+    g.DrawText(MakeTxt(28.f,bpmCol,kFontID_Val),buf,IRECT(r.L,r.MH()-18.f,r.R,r.MH()+18.f));
     const IParam* rp=d->GetParam(mRateIdx);
     double rv=rp?rp->Value():7.0;
     int ri=int(rv+0.5);
@@ -354,9 +402,25 @@ public:
     else std::snprintf(buf,sizeof(buf),"1/%d",1<<(-shift));
     g.DrawText(MakeTxt(10.f,colTM),buf,IRECT(r.L,r.B-20.f,r.R,r.B-4.f));
   }
+
 private:
-  void Nudge(double d){if(!GetParam())return;double c=GetParam()->FromNormalized(GetValue());SetValueFromUserInput(GetParam()->ToNormalized(CV(c+d,GetParam()->GetMin(),GetParam()->GetMax())));}
+  void Nudge(double d){
+    if(!GetParam())return;
+    double c=GetParam()->FromNormalized(GetValue());
+    SetValueFromUserInput(GetParam()->ToNormalized(CV(c+d,GetParam()->GetMin(),GetParam()->GetMax())));
+  }
+
+  void OpenTextEntry() {
+    auto* ui=GetUI(); if(!ui||!GetParam()) return;
+    char buf[32]; std::snprintf(buf,sizeof(buf),"%.1f",CV(GetParam()->FromNormalized(GetValue()),GetParam()->GetMin(),GetParam()->GetMax()));
+    IRECT eb=mField.GetPadded(-2.f);
+    float fs=std::min(24.f,std::max(10.f,eb.H()*0.6f));
+    IText txt{fs,colTX,kFontID_Val,EAlign::Center,EVAlign::Middle};
+    ui->CreateTextEntry(*this,txt,eb,buf);
+  }
+
   int mRateIdx,mSyncIdx; IRECT mField; LR8& mPlugin;
+  float mFlashV=0.f,mFlashI=0.f;
 };
 
 } // anon namespace
