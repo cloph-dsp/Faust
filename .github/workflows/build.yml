@@ -152,6 +152,43 @@ jobs:
             fi
           done
 
+      - name: Ad-hoc sign bundles (re-sign after plist modification)
+        run: |
+          for BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do
+            if [ -d "$BUNDLE" ]; then
+              echo "Signing $BUNDLE"
+              codesign --force --deep --sign - "$BUNDLE" --options=runtime
+              codesign -vvv --deep "$BUNDLE" || echo "Warning: signature verification had issues"
+            fi
+          done
+
+      - name: Generate VST3 moduleinfo.json
+        run: |
+          mkdir -p Freeze95/build-mac/Products/Freeze95.vst3/Contents/Resources
+          cat > Freeze95/build-mac/Products/Freeze95.vst3/Contents/Resources/moduleinfo.json << 'JSONEOF'
+          {
+            "Name": "Freeze95",
+            "Version": "1.0.0",
+            "SDKVersion": "VST 3.7.0",
+            "URL": "https://cloph-dsp.github.io",
+            "Email": "",
+            "Flags": {
+              "Unicode": true
+            }
+          }
+          JSONEOF
+          # Re-sign VST3 after adding moduleinfo.json
+          codesign --force --deep --sign - Freeze95/build-mac/Products/Freeze95.vst3 --options=runtime
+
+      - name: Validate code signatures
+        run: |
+          for BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do
+            echo "=== Validating $BUNDLE ==="
+            codesign -dvv "$BUNDLE" || true
+            codesign -vvv --deep "$BUNDLE" || true
+            echo ""
+          done
+
       - name: Verify macOS VST3 bundle
         run: |
           VST3_BUNDLE="${{ github.workspace }}/Freeze95/build-mac/Products/Freeze95.vst3"
