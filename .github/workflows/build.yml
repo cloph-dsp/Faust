@@ -163,11 +163,9 @@ jobs:
           for BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do
             if [ -d "$BUNDLE" ]; then
               echo "Signing $BUNDLE"
-              # Sign the main binary first with entitlements
-              codesign --force --sign - "$BUNDLE/Contents/MacOS/Freeze95" --options=runtime --entitlements Freeze95/Freeze95.entitlements
-              # Then sign the bundle wrapper
-              codesign --force --sign - "$BUNDLE" --options=runtime
-              codesign -vvv "$BUNDLE" || echo "Warning: signature verification had issues"
+              # Sign bundle with --deep and entitlements so nested binary keeps them
+              codesign --force --deep --sign - "$BUNDLE" --options=runtime --entitlements Freeze95/Freeze95.entitlements
+              codesign -vvv --deep "$BUNDLE" || echo "Warning: signature verification had issues"
             fi
           done
 
@@ -186,9 +184,8 @@ jobs:
             }
           }
           JSONEOF
-          # Re-sign VST3 after adding moduleinfo.json
-          codesign --force --sign - Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95 --options=runtime --entitlements Freeze95/Freeze95.entitlements
-          codesign --force --sign - Freeze95/build-mac/Products/Freeze95.vst3 --options=runtime
+          # Re-sign VST3 after adding moduleinfo.json (deep + entitlements to preserve them)
+          codesign --force --deep --sign - Freeze95/build-mac/Products/Freeze95.vst3 --options=runtime --entitlements Freeze95/Freeze95.entitlements
 
       - name: Validate code signatures
         run: |
@@ -361,19 +358,19 @@ jobs:
           echo "[5/10] Entitlements Check"
           echo "-------------------------"
 
-          # Dump entitlements and verify (check binary directly)
-          ENTITLEMENTS=$(codesign -d --entitlements - "$VST3/Contents/MacOS/Freeze95" 2>/dev/null || echo "")
+          # Dump entitlements and verify (check bundle with --deep)
+          ENTITLEMENTS=$(codesign -d --entitlements - "$VST3" 2>/dev/null || echo "")
           if [ -z "$ENTITLEMENTS" ]; then
-            error "No entitlements found in VST3 binary"
+            error "No entitlements found in VST3"
           else
             echo "$ENTITLEMENTS"
             echo "$ENTITLEMENTS" | grep -q "com.apple.security.cs.disable-library-validation" || error "Missing disable-library-validation entitlement in VST3"
           fi
 
           # Also check CLAP
-          CLAP_ENTITLEMENTS=$(codesign -d --entitlements - "$CLAP/Contents/MacOS/Freeze95" 2>/dev/null || echo "")
+          CLAP_ENTITLEMENTS=$(codesign -d --entitlements - "$CLAP" 2>/dev/null || echo "")
           if [ -z "$CLAP_ENTITLEMENTS" ]; then
-            error "No entitlements found in CLAP binary"
+            error "No entitlements found in CLAP"
           else
             echo "$CLAP_ENTITLEMENTS"
             echo "$CLAP_ENTITLEMENTS" | grep -q "com.apple.security.cs.disable-library-validation" || error "Missing disable-library-validation entitlement in CLAP"
