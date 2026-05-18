@@ -571,28 +571,30 @@ jobs:
           file "$CLAP_BUNDLE/Contents/MacOS/Freeze95"
           lipo -info "$CLAP_BUNDLE/Contents/MacOS/Freeze95"
 
-      - name: Stage VST3 artifact
+      - name: Package VST3 artifact
         if: always()
         run: |
-          mkdir -p Freeze95/build-mac/stage-vst3
-          cp -R Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/stage-vst3/
+          mkdir -p Freeze95/build-mac/stage
+          cd Freeze95/build-mac/Products
+          zip -r ${{ github.workspace }}/Freeze95/build-mac/stage/Freeze95-macOS-VST3.zip Freeze95.vst3/
 
       - name: Upload VST3 artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Freeze95-macOS-VST3
-          path: Freeze95/build-mac/stage-vst3/Freeze95.vst3
+          path: Freeze95/build-mac/stage/Freeze95-macOS-VST3.zip
 
-      - name: Stage CLAP artifact
+      - name: Package CLAP artifact
         if: always()
         run: |
-          mkdir -p Freeze95/build-mac/stage-clap
-          cp -R Freeze95/build-mac/Products/Freeze95.clap Freeze95/build-mac/stage-clap/
+          mkdir -p Freeze95/build-mac/stage
+          cd Freeze95/build-mac/Products
+          zip -r ${{ github.workspace }}/Freeze95/build-mac/stage/Freeze95-macOS-CLAP.zip Freeze95.clap/
 
       - name: Upload CLAP artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Freeze95-macOS-CLAP
-          path: Freeze95/build-mac/stage-clap/Freeze95.clap
+          path: Freeze95/build-mac/stage/Freeze95-macOS-CLAP.zip
