@@ -117,9 +117,10 @@ jobs:
           ARCHS = x86_64 arm64
           RELEASE_OPTIMIZE = 3
           MACOSX_DEPLOYMENT_TARGET = 11.0
-          CODE_SIGN_IDENTITY = -
           CODE_SIGNING_REQUIRED = YES
-          CODE_SIGN_ENTITLEMENTS = Freeze95.entitlements
+          CODE_SIGN_IDENTITY = -
+          // macOS 15+ ad-hoc cannot embed entitlements — skip CODE_SIGN_ENTITLEMENTS
+          // Hardened runtime without entitlements blocks dlopen in DAWs, so no --options=runtime
           EOF
 
       - name: Build VST3
@@ -164,12 +165,11 @@ jobs:
             if [ -d "$BUNDLE" ]; then
               BINARY="$BUNDLE/Contents/MacOS/Freeze95"
               echo "Signing binary: $BINARY"
-              # Sign inner binary with entitlements first (--deep does NOT propagate entitlements)
-              # NOTE: path must be LAST argument — options after path are silently ignored by codesign
-              codesign --force --sign - --options=runtime --entitlements Freeze95/Freeze95.entitlements "$BINARY"
+              # Ad-hoc sign WITHOUT hardened runtime — macOS 15+ ad-hoc cannot embed entitlements
+              # Hardened runtime + zero entitlements would break dlopen in DAWs, so skip --options=runtime
+              codesign --force --sign - "$BINARY"
               echo "Signing bundle wrapper: $BUNDLE"
-              # Then sign the bundle wrapper to seal resources (no --deep, keep binary's own signature)
-              codesign --force --sign - "$BUNDLE" --options=runtime
+              codesign --force --sign - "$BUNDLE"
               codesign -vvv --deep "$BUNDLE" || echo "Warning: signature verification had issues"
             fi
           done
@@ -189,12 +189,13 @@ jobs:
             }
           }
           JSONEOF
-          # Re-sign VST3 binary with entitlements (moduleinfo.json addition invalidated the bundle)
-          # NOTE: path must be LAST — options after path are silently ignored by codesign
+          # Re-sign VST3 binary (moduleinfo.json addition invalidated the bundle)
+          # WARNING: macOS 15+ ad-hoc CANNOT embed entitlements. Don't use --options=runtime
+          # or --entitlements — hardened runtime without entitlements blocks dlopen in DAWs.
           VST3_BIN="Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95"
-          codesign --force --sign - --options=runtime --entitlements Freeze95/Freeze95.entitlements "$VST3_BIN"
+          codesign --force --sign - "$VST3_BIN"
           # Then re-sign bundle wrapper
-          codesign --force --sign - Freeze95/build-mac/Products/Freeze95.vst3 --options=runtime
+          codesign --force --sign - Freeze95/build-mac/Products/Freeze95.vst3
 
       - name: Validate code signatures
         run: |
@@ -347,7 +348,12 @@ jobs:
             CS_INFO=$(codesign -dvv "$BUNDLE" 2>&1)
             echo "$CS_INFO"
             echo "$CS_INFO" | grep -q "Signature=adhoc" || error "Not ad-hoc signed: $(basename $BUNDLE)"
-            echo "$CS_INFO" | grep -q "adhoc,runtime" || error "Hardened runtime not enabled: $(basename $BUNDLE)"
+              # Allow either adhoc,runtime or just adhoc (macOS 15+ can't embed entitlements ad-hoc)
+              if echo "$CS_INFO" | grep -q "adhoc,runtime"; then
+                echo "  Hardened runtime: enabled"
+              else
+                echo "  Hardened runtime: disabled (expected — ad-hoc on macOS 15+ can't embed entitlements)"
+              fi
 
             # Verify CodeDirectory exists and is sealed
             echo "$CS_INFO" | grep -q "Sealed Resources" || error "Sealed Resources missing: $(basename $BUNDLE)"
@@ -361,29 +367,32 @@ jobs:
           echo "Code signature: OK"
 
           # ============================================================
-          # 5. ENTITLEMENTS
+          # 5. ENTITLEMENTS (skip if no hardened runtime — ad-hoc on macOS 15+ can't embed)
           # ============================================================
           echo ""
           echo "[5/10] Entitlements Check"
           echo "-------------------------"
 
-          # Dump entitlements and verify (check binary directly — we sign it with --entitlements)
-          ENTITLEMENTS=$(codesign -d --entitlements - "$VST3_BIN" 2>/dev/null || echo "")
-          if [ -z "$ENTITLEMENTS" ]; then
-            error "No entitlements found in VST3"
-          else
-            echo "$ENTITLEMENTS"
-            echo "$ENTITLEMENTS" | grep -q "com.apple.security.cs.disable-library-validation" || error "Missing disable-library-validation entitlement in VST3"
-          fi
+          check_entitlements() {
+            local BIN="$1"
+            local NAME="$2"
+            local CS_INFO=$(codesign -dvv "$BIN" 2>&1 || echo "")
+            if echo "$CS_INFO" | grep -q "runtime"; then
+              # Hardened runtime is enabled — check entitlements
+              local ENTITLEMENTS=$(codesign -d --entitlements - "$BIN" 2>/dev/null || echo "")
+              if [ -z "$ENTITLEMENTS" ]; then
+                error "No entitlements found in $NAME (has hardened runtime)"
+              else
+                echo "$ENTITLEMENTS" | grep -q "com.apple.security.cs.disable-library-validation" || \
+                  error "Missing disable-library-validation entitlement in $NAME"
+              fi
+            else
+              echo "SKIP: $NAME has no hardened runtime — entitlements not applicable"
+            fi
+          }
 
-          # Also check CLAP
-          CLAP_ENTITLEMENTS=$(codesign -d --entitlements - "$CLAP_BIN" 2>/dev/null || echo "")
-          if [ -z "$CLAP_ENTITLEMENTS" ]; then
-            error "No entitlements found in CLAP"
-          else
-            echo "$CLAP_ENTITLEMENTS"
-            echo "$CLAP_ENTITLEMENTS" | grep -q "com.apple.security.cs.disable-library-validation" || error "Missing disable-library-validation entitlement in CLAP"
-          fi
+          check_entitlements "$VST3_BIN" "VST3"
+          check_entitlements "$CLAP_BIN" "CLAP"
 
           echo "Entitlements: OK"
 
