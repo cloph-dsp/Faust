@@ -162,9 +162,13 @@ jobs:
         run: |
           for BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do
             if [ -d "$BUNDLE" ]; then
-              echo "Signing $BUNDLE"
-              # Sign bundle with --deep and entitlements so nested binary keeps them
-              codesign --force --deep --sign - "$BUNDLE" --options=runtime --entitlements Freeze95/Freeze95.entitlements
+              BINARY="$BUNDLE/Contents/MacOS/Freeze95"
+              echo "Signing binary: $BINARY"
+              # Sign inner binary with entitlements first (--deep does NOT propagate entitlements)
+              codesign --force --sign - "$BINARY" --options=runtime --entitlements Freeze95/Freeze95.entitlements
+              echo "Signing bundle wrapper: $BUNDLE"
+              # Then sign the bundle wrapper to seal resources (no --deep, keep binary's own signature)
+              codesign --force --sign - "$BUNDLE" --options=runtime
               codesign -vvv --deep "$BUNDLE" || echo "Warning: signature verification had issues"
             fi
           done
@@ -184,8 +188,11 @@ jobs:
             }
           }
           JSONEOF
-          # Re-sign VST3 after adding moduleinfo.json (deep + entitlements to preserve them)
-          codesign --force --deep --sign - Freeze95/build-mac/Products/Freeze95.vst3 --options=runtime --entitlements Freeze95/Freeze95.entitlements
+          # Re-sign VST3 binary with entitlements (moduleinfo.json addition invalidated the bundle)
+          VST3_BIN="Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95"
+          codesign --force --sign - "$VST3_BIN" --options=runtime --entitlements Freeze95/Freeze95.entitlements
+          # Then re-sign bundle wrapper
+          codesign --force --sign - Freeze95/build-mac/Products/Freeze95.vst3 --options=runtime
 
       - name: Validate code signatures
         run: |
@@ -358,8 +365,8 @@ jobs:
           echo "[5/10] Entitlements Check"
           echo "-------------------------"
 
-          # Dump entitlements and verify (check bundle wrapper — --deep embeds entitlements here)
-          ENTITLEMENTS=$(codesign -d --entitlements - "$VST3" 2>/dev/null || echo "")
+          # Dump entitlements and verify (check binary directly — we sign it with --entitlements)
+          ENTITLEMENTS=$(codesign -d --entitlements - "$VST3_BIN" 2>/dev/null || echo "")
           if [ -z "$ENTITLEMENTS" ]; then
             error "No entitlements found in VST3"
           else
@@ -368,7 +375,7 @@ jobs:
           fi
 
           # Also check CLAP
-          CLAP_ENTITLEMENTS=$(codesign -d --entitlements - "$CLAP" 2>/dev/null || echo "")
+          CLAP_ENTITLEMENTS=$(codesign -d --entitlements - "$CLAP_BIN" 2>/dev/null || echo "")
           if [ -z "$CLAP_ENTITLEMENTS" ]; then
             error "No entitlements found in CLAP"
           else
