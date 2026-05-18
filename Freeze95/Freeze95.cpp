@@ -2377,14 +2377,13 @@ Freeze95::Freeze95(const InstanceInfo& info)
 
 #if IPLUG_EDITOR
   mMakeGraphicsFunc = [&]() {
-#ifdef OS_WIN
-    // On Windows, force initial scale to 1.0 — the host manages DPI awareness.
-    // GetScaleForScreen() can cause rendering issues in DAWs like Cakewalk Sonar
-    // and VirtualDAW that handle DPI differently.
-    auto* graphics = MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, 1.f);
-#else
-    auto* graphics = MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
-#endif
+    // Use GetScaleForScreen() to compute the initial scale from the screen DPI.
+    // The DPI awareness manifest (Freeze95.manifest) declares PerMonitorV2 so
+    // Windows passes the correct DPI; GetScaleForScreen() translates that to
+    // the proper initial scale. OnParentWindowResize() then adjusts if the
+    // host provides a different window size.
+    auto* graphics = MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS,
+                                  GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
     return graphics;
   };
 
