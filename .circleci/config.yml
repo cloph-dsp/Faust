@@ -43,20 +43,20 @@ jobs:
       - run:
           name: Write xcconfig override
           command: |
-            cat > Freeze95/iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig << 'XCCONFIG'
-            IPLUG2_ROOT = ../../..
-            #include "../../../common-mac.xcconfig"
-            BINARY_NAME = Freeze95
-            EXTRA_INC_PATHS = $(IGRAPHICS_INC_PATHS) $(SRCROOT)/../../../..
-            EXTRA_ALL_DEFS = IGRAPHICS_NANOVG IGRAPHICS_METAL
-            EXTRA_LNK_FLAGS = -framework Metal -framework MetalKit
-            ARCHS = x86_64 arm64
-            RELEASE_OPTIMIZE = 3
-            MACOSX_DEPLOYMENT_TARGET = 11.0
-            CODE_SIGNING_REQUIRED = YES
-            CODE_SIGN_IDENTITY = -
-            // macOS 15+ ad-hoc cannot embed entitlements - skip hardened runtime
-            XCCONFIG
+            printf '%s\n' \
+              'IPLUG2_ROOT = ../../..' \
+              '#include "../../../common-mac.xcconfig"' \
+              'BINARY_NAME = Freeze95' \
+              'EXTRA_INC_PATHS = $(IGRAPHICS_INC_PATHS) $(SRCROOT)/../../../..' \
+              'EXTRA_ALL_DEFS = IGRAPHICS_NANOVG IGRAPHICS_METAL' \
+              'EXTRA_LNK_FLAGS = -framework Metal -framework MetalKit' \
+              'ARCHS = x86_64 arm64' \
+              'RELEASE_OPTIMIZE = 3' \
+              'MACOSX_DEPLOYMENT_TARGET = 11.0' \
+              'CODE_SIGNING_REQUIRED = YES' \
+              'CODE_SIGN_IDENTITY = -' \
+              '// macOS 15+ ad-hoc cannot embed entitlements - skip hardened runtime' \
+              > Freeze95/iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig
 
       - run:
           name: Build VST3
