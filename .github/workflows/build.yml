@@ -165,8 +165,8 @@ jobs:
               BINARY="$BUNDLE/Contents/MacOS/Freeze95"
               echo "Signing binary: $BINARY"
               # Sign inner binary with entitlements first (--deep does NOT propagate entitlements)
-              # --force-library-entitlements: macOS 15+ skips entitlements in non-main-executables by default
-              codesign --force --sign - "$BINARY" --options=runtime --entitlements Freeze95/Freeze95.entitlements --force-library-entitlements
+              # NOTE: path must be LAST argument — options after path are silently ignored by codesign
+              codesign --force --sign - --options=runtime --entitlements Freeze95/Freeze95.entitlements "$BINARY"
               echo "Signing bundle wrapper: $BUNDLE"
               # Then sign the bundle wrapper to seal resources (no --deep, keep binary's own signature)
               codesign --force --sign - "$BUNDLE" --options=runtime
@@ -190,8 +190,9 @@ jobs:
           }
           JSONEOF
           # Re-sign VST3 binary with entitlements (moduleinfo.json addition invalidated the bundle)
+          # NOTE: path must be LAST — options after path are silently ignored by codesign
           VST3_BIN="Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95"
-          codesign --force --sign - "$VST3_BIN" --options=runtime --entitlements Freeze95/Freeze95.entitlements --force-library-entitlements
+          codesign --force --sign - --options=runtime --entitlements Freeze95/Freeze95.entitlements "$VST3_BIN"
           # Then re-sign bundle wrapper
           codesign --force --sign - Freeze95/build-mac/Products/Freeze95.vst3 --options=runtime
 
@@ -562,22 +563,26 @@ jobs:
           lipo -info "$CLAP_BUNDLE/Contents/MacOS/Freeze95"
 
       - name: Stage VST3 artifact
+        if: always()
         run: |
           mkdir -p Freeze95/build-mac/stage-vst3
           cp -R Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/stage-vst3/
 
       - name: Upload VST3 artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Freeze95-macOS-VST3
           path: Freeze95/build-mac/stage-vst3/Freeze95.vst3
 
       - name: Stage CLAP artifact
+        if: always()
         run: |
           mkdir -p Freeze95/build-mac/stage-clap
           cp -R Freeze95/build-mac/Products/Freeze95.clap Freeze95/build-mac/stage-clap/
 
       - name: Upload CLAP artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Freeze95-macOS-CLAP
