@@ -3,7 +3,9 @@ task:
   alias: macos-vst3
 
   macos_instance:
-    image: ghcr.io/cirruslabs/macos-sequoia-xcode:latest
+    image: ghcr.io/cirruslabs/macos-runner:sequoia
+
+  only_if: changesInclude('Freeze95/**') || changesInclude('.cirrus.yml')
 
   env:
     BINARY_NAME: Freeze95
