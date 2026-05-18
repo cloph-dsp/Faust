@@ -165,7 +165,8 @@ jobs:
               BINARY="$BUNDLE/Contents/MacOS/Freeze95"
               echo "Signing binary: $BINARY"
               # Sign inner binary with entitlements first (--deep does NOT propagate entitlements)
-              codesign --force --sign - "$BINARY" --options=runtime --entitlements Freeze95/Freeze95.entitlements
+              # --force-library-entitlements: macOS 15+ skips entitlements in non-main-executables by default
+              codesign --force --sign - "$BINARY" --options=runtime --entitlements Freeze95/Freeze95.entitlements --force-library-entitlements
               echo "Signing bundle wrapper: $BUNDLE"
               # Then sign the bundle wrapper to seal resources (no --deep, keep binary's own signature)
               codesign --force --sign - "$BUNDLE" --options=runtime
@@ -190,7 +191,7 @@ jobs:
           JSONEOF
           # Re-sign VST3 binary with entitlements (moduleinfo.json addition invalidated the bundle)
           VST3_BIN="Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95"
-          codesign --force --sign - "$VST3_BIN" --options=runtime --entitlements Freeze95/Freeze95.entitlements
+          codesign --force --sign - "$VST3_BIN" --options=runtime --entitlements Freeze95/Freeze95.entitlements --force-library-entitlements
           # Then re-sign bundle wrapper
           codesign --force --sign - Freeze95/build-mac/Products/Freeze95.vst3 --options=runtime
 
