@@ -20,7 +20,7 @@
 #include <pluginterfaces/base/funknown.h>
 #include <pluginterfaces/vst/ivstcomponent.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
-#include <pluginterfaces/vst/ivstspeaker.h>
+#include <pluginterfaces/vst/vstspeaker.h>
 #include <pluginterfaces/vst/vsttypes.h>
 
 using namespace Steinberg;
@@ -203,8 +203,8 @@ static void test_vst3_instance(IPluginFactory* factory, int numCycles)
         printf("    Output busses: %d\n", (int)outBusses);
 
         // 5. setBusArrangements (on IAudioProcessor)
-        SpeakerArrangement inputArr = kStereo;
-        SpeakerArrangement outputArr = kStereo;
+        SpeakerArrangement inputArr = SpeakerArr::kStereo;
+        SpeakerArrangement outputArr = SpeakerArr::kStereo;
         res = processor->setBusArrangements(&inputArr, 1, &outputArr, 1);
         printf("    setBusArrangements: res=%08x\n", res);
 
