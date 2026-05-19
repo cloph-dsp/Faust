@@ -10,6 +10,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
+#include <unistd.h>
+#include <sys/wait.h>
+
 
 // --- VST3 SDK headers (from iPlug2 checkout) ---
 // NOTE: DECLARE_CLASS_IID creates a static const TUID (raw 16-byte array) named
@@ -393,6 +396,24 @@ static void test_clap_entry(void* handle)
 }
 
 // ============================================================================
+// Fork-safe dlopen test — runs dlopen in child process to catch crashes
+// ============================================================================
+static bool try_dlopen(const char* path)
+{
+  pid_t pid = fork();
+  if (pid == 0) {
+    // Child: just dlopen + dlclose, then exit
+    void* h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (h) dlclose(h);
+    _exit(h ? 0 : 1);
+  }
+  if (pid < 0) return false;  // fork failed
+  int status;
+  waitpid(pid, &status, 0);
+  return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 int main(int argc, char** argv)
@@ -412,7 +433,18 @@ int main(int argc, char** argv)
   printf("  Binary: %s\n", binPath);
   printf("============================================\n");
 
-  // --- Load plugin binary ---
+  // --- Pre-flight dlopen in forked child (catches SIGBUS/SIGSEGV gracefully) ---
+  if (!try_dlopen(binPath)) {
+    printf("  CRASH: binary cannot be loaded (dlopen crashes in child process)\n");
+    printf("  This is usually caused by static factory registrations or\n");
+    printf("  C++ static initializers in the plugin binary.\n");
+    gTests++;
+    gErrors++;
+    printf("\nFAILED: 1 error(s) out of 1 test(s)\n");
+    return 1;
+  }
+
+  // --- Load plugin binary (safe now — pre-flight passed) ---
   void* module = dlopen(binPath, RTLD_NOW | RTLD_LOCAL);
   TEST(module != nullptr, "dlopen(RTLD_NOW)");
   if (!module) {
