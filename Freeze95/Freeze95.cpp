@@ -2364,6 +2364,13 @@ Freeze95::Freeze95(const InstanceInfo& info)
   // The preset visibility depends on the DAW's VST3 preset support implementation.
 
   mDSP = std::make_unique<Freeze95DSP>();
+
+  // Initialize DSP early with a plausible default sample rate so the internal
+  // state (~48 MB of delay buffers, filter coeffs) is valid even if the host
+  // calls ProcessBlock() before OnReset().  OnReset() re-initialises with the
+  // real sample rate when it fires.
+  mDSP->init(44100.0f);
+
   ZoneCaptureUI captureUI(mFaustZones);
   mDSP->buildUserInterface(&captureUI);
   SyncParamsToDSP();
