@@ -656,16 +656,19 @@ jobs:
                   return 1;
               }
 
+              // Check for VST3 entry (GetPluginFactory) or CLAP entry (clap_entry)
               void* factory = dlsym(handle, "GetPluginFactory");
-              if (!factory) {
-                  fprintf(stderr, "  GetPluginFactory: NOT FOUND\n");
+              void* clap_entry = dlsym(handle, "clap_entry");
+              if (!factory && !clap_entry) {
+                  fprintf(stderr, "  Entry point: NOT FOUND (checked GetPluginFactory and clap_entry)\n");
                   dlclose(handle);
                   free(resolved);
                   return 1;
               }
 
               printf("  dlopen:       SUCCESS\n");
-              printf("  GetPluginFactory: %p\n", factory);
+              if (factory) printf("  GetPluginFactory: %p\n", factory);
+              if (clap_entry) printf("  clap_entry:      %p\n", clap_entry);
               dlclose(handle);
               free(resolved);
               return 0;
