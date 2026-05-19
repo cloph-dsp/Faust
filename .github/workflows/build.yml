@@ -703,7 +703,7 @@ jobs:
         run: |
           VST3_BUNDLE="Freeze95/build-mac/Products/Freeze95.vst3"
           CLAP_BUNDLE="Freeze95/build-mac/Products/Freeze95.clap"
-          VST3_SDK="-I iPlug2/Dependencies/IPlug/VST3_SDK"
+          VST3_SDK="-I Freeze95/iPlug2/Dependencies/IPlug/VST3_SDK"
           TEST_SRC="Freeze95/tests/lifecycle_test.cpp"
 
           if [ ! -d "$VST3_BUNDLE" ]; then
