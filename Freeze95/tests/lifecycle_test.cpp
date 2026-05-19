@@ -20,6 +20,7 @@
 #include <pluginterfaces/base/funknown.h>
 #include <pluginterfaces/vst/ivstcomponent.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
+#include <pluginterfaces/vst/ivstspeaker.h>
 #include <pluginterfaces/vst/vsttypes.h>
 
 using namespace Steinberg;
