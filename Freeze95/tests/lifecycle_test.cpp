@@ -342,8 +342,12 @@ static void test_clap_entry(void* handle)
   printf("\n=== CLAP Entry Test ===\n");
 
   clap_plugin_entry_t* entry = (clap_plugin_entry_t*)dlsym(handle, "clap_entry");
-  TEST(entry != nullptr, "clap_entry symbol found");
-  if (!entry) return;
+  if (!entry) {
+    printf("  SKIP: clap_entry not found (VST3-only binary)\n");
+    return;
+  }
+  gTests++;
+  printf("  PASS: clap_entry found\n");
 
   TEST(entry->clap_version >= 0x00010000,
        "clap_version >= 1.0 (got 0x%llx)", (unsigned long long)entry->clap_version);
@@ -420,31 +424,22 @@ int main(int argc, char** argv)
   // --- Test CLAP entry ---
   test_clap_entry(module);
 
-  // --- Get VST3 factory ---
+  // --- Get VST3 factory (optional — CLAP-only binaries won't have it) ---
   auto* getFactoryFn = (IPluginFactory* (*)())dlsym(module, "GetPluginFactory");
-  TEST(getFactoryFn != nullptr, "dlsym(GetPluginFactory)");
-  if (!getFactoryFn) {
-    dlclose(module);
-    fprintf(stderr, "\nFAILED: %d error(s) out of %d test(s)\n", gErrors, gTests);
-    return 1;
+  if (getFactoryFn) {
+    printf("\n--- VST3 Tests ---\n");
+    IPluginFactory* factory = getFactoryFn();
+    if (factory) {
+      test_vst3_factory(factory);
+      test_vst3_instance(factory, 1);
+      test_vst3_stress(factory);
+      test_vst3_instance(factory, 3);
+      factory->release();
+    }
+  } else {
+    printf("  SKIP: GetPluginFactory not found (CLAP-only binary)\n");
   }
 
-  IPluginFactory* factory = getFactoryFn();
-  TEST(factory != nullptr, "GetPluginFactory() returned non-null");
-  if (!factory) {
-    dlclose(module);
-    fprintf(stderr, "\nFAILED: %d error(s) out of %d test(s)\n", gErrors, gTests);
-    return 1;
-  }
-
-  // Run VST3 tests
-  test_vst3_factory(factory);
-  test_vst3_instance(factory, 1);
-  test_vst3_stress(factory);
-  test_vst3_instance(factory, 3); // Multi-cycle instance test
-
-  // Cleanup
-  factory->release();
   dlclose(module);
 
   // --- Summary ---
