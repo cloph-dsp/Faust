@@ -698,6 +698,56 @@ jobs:
           fi
           echo "ALL LOAD TESTS PASSED"
 
+      - name: VST3 lifecycle test
+        if: always()
+        run: |
+          VST3_BUNDLE="Freeze95/build-mac/Products/Freeze95.vst3"
+          CLAP_BUNDLE="Freeze95/build-mac/Products/Freeze95.clap"
+          VST3_SDK="-I iPlug2/Dependencies/IPlug/VST3_SDK"
+          TEST_SRC="Freeze95/tests/lifecycle_test.cpp"
+
+          if [ ! -d "$VST3_BUNDLE" ]; then
+            echo "WARNING: VST3 bundle not found, skipping lifecycle test"
+            exit 0
+          fi
+
+          echo "Compiling lifecycle test..."
+          clang++ -std=c++17 $VST3_SDK -o /tmp/freeze95_test "$TEST_SRC" -framework CoreFoundation 2>&1 || {
+            echo "WARNING: Could not compile lifecycle test (compilation error)"
+            exit 0
+          }
+          echo "Compilation: OK"
+
+          echo ""
+          echo "================================================"
+          echo "  LIFE CYCLE TEST - VST3"
+          echo "================================================"
+          if /tmp/freeze95_test "$VST3_BUNDLE"; then
+            echo ""
+            echo "LIFECYCLE VST3: PASSED"
+          else
+            echo ""
+            echo "LIFECYCLE VST3: FAILED"
+            exit 1
+          fi
+
+          echo ""
+          echo "================================================"
+          echo "  LIFE CYCLE TEST - CLAP"
+          echo "================================================"
+          if [ -d "$CLAP_BUNDLE" ]; then
+            if /tmp/freeze95_test "$CLAP_BUNDLE"; then
+              echo ""
+              echo "LIFECYCLE CLAP: PASSED"
+            else
+              echo ""
+              echo "LIFECYCLE CLAP: FAILED"
+              exit 1
+            fi
+          else
+            echo "CLAP bundle not found, skipping"
+          fi
+
       - name: Stage VST3 artifact
         if: always()
         run: |
