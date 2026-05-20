@@ -1,5 +1,5 @@
 // freeze95_lifecycle_test.cpp
-// Compile: clang++ -std=c++17 -I ../../iPlug2/Dependencies/IPlug/VST3_SDK -o lifecycle_test lifecycle_test.cpp -framework CoreFoundation
+// Compile: clang++ -std=c++17 -I ../../iPlug2/Dependencies/IPlug/VST3_SDK -o lifecycle_test lifecycle_test.cpp -framework CoreFoundation -lobjc
 // Run:    ./lifecycle_test /path/to/Freeze95.vst3
 //
 // Tests VST3 and CLAP plugin lifecycle in a simulated host environment.
@@ -14,6 +14,22 @@
 #include <sys/wait.h>
 #include <cmath>
 #include <CoreGraphics/CoreGraphics.h>
+
+// ObjC runtime types (for NSScreen swizzling in headless simulation)
+// Forward-declared to avoid needing -fobjc-objc; these match the macOS ABI.
+extern "C" {
+  typedef struct objc_object* id;
+  typedef struct objc_class* Class;
+  typedef struct objc_selector* SEL;
+  typedef struct objc_method* Method;
+  typedef id (*IMP)(id, SEL, ...);
+  extern Class objc_getClass(const char*);
+  extern SEL sel_registerName(const char*);
+  extern Method class_getClassMethod(Class, SEL);
+  extern IMP method_setImplementation(Method, IMP);
+  extern id class_createInstance(Class, size_t);
+  extern id objc_msgSend(id, SEL, ...);
+}
 
 
 // --- VST3 SDK headers (from iPlug2 checkout) ---
@@ -39,6 +55,7 @@ using namespace Steinberg::Vst;
 // ============================================================================
 static int gErrors = 0;
 static int gTests = 0;
+static bool g_headless_mode = false;  // Set true by NSScreen swizzle in headless simulation
 
 #define TEST(cond, fmt, ...) do { \
   gTests++; \
@@ -547,6 +564,32 @@ static void test_edge_case_processing(IPluginFactory* factory, int32 classIdx)
 }
 
 // ============================================================================
+// Helper: create a minimal NSView using ObjC runtime (no AppKit headers needed)
+// ============================================================================
+static void* create_dummy_nsview() {
+  Class cls = objc_getClass("NSView");
+  if (!cls) {
+    printf("  [WARN] NSView class not available\n");
+    return nullptr;
+  }
+
+  // Allocate memory for an NSView instance
+  id instance = class_createInstance(cls, 0);
+  if (!instance) {
+    printf("  [WARN] Could not allocate NSView instance\n");
+    return nullptr;
+  }
+
+  // Call -[NSView init] via objc_msgSend — safe because NSView's init just
+  // calls [super init] and returns self. Our @try/@catch guards handle any
+  // NSException if something goes wrong.
+  SEL initSel = sel_registerName("init");
+  instance = ((id(*)(id, SEL))objc_msgSend)(instance, initSel);
+
+  return (void*)instance;
+}
+
+// ============================================================================
 // IEditController test — exercises view creation code path
 // ============================================================================
 static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
@@ -620,15 +663,52 @@ static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
   }
 
   // Try creating the editor view — exercises GUI init code path
-  // This typically fails gracefully if no parent window is provided,
-  // but the createView() call itself can trigger lazy GUI setup.
   IPlugView* view = controller->createView("editor");
   if (view) {
     printf("  createView(\"editor\"): OK (GUI view created)\n");
+
     // Check platform support
     if (view->isPlatformTypeSupported(Steinberg::kPlatformTypeNSView) == kResultOk) {
       printf("  kPlatformTypeNSView: supported\n");
     }
+
+    // Call view->attached() with a dummy NSView to trigger OpenWindow.
+    // In the headless CI context NSScreen.mainScreen has been swizzled → nil,
+    // which is the exact crash condition reported by customers.
+    //
+    // Expected: OpenWindow hits @try/@catch, returns gracefully with nullptr,
+    //           attached() returns kResultFalse, and the process survives.
+    void* dummyNSView = nullptr;
+    if (g_headless_mode) {
+      printf("  [headless-simulation] Creating dummy NSView for attached()...\n");
+      dummyNSView = create_dummy_nsview();
+      if (dummyNSView)
+        printf("  [headless-simulation] Dummy NSView: %p\n", dummyNSView);
+      else
+        printf("  [headless-simulation] Could not create NSView; attaching with nullptr\n");
+    }
+
+    printf("  Calling view->attached(parent, kPlatformTypeNSView)\n");
+    printf("  (This triggers IGraphicsMac::OpenWindow which accesses\n");
+    printf("   NSScreen.mainScreen — the known crash site on headless)\n");
+    tresult attachRes = view->attached(dummyNSView ? dummyNSView : nullptr,
+                                       Steinberg::kPlatformTypeNSView);
+    printf("  view->attached() returned: %s (%08x)\n",
+           attachRes == Steinberg::kResultOk ? "kResultOk" : "kResultFalse", attachRes);
+    TEST(attachRes == Steinberg::kResultOk,
+         "view->attached() should return kResultOk even with swizzled NSScreen");
+
+    // Detach to clean up
+    view->removed();
+
+    // Free the dummy NSView if we created one
+    if (dummyNSView) {
+      // Use ObjC runtime to release: call -[NSObject release]
+      // release is declared on NSObject, which NSView inherits
+      SEL releaseSel = sel_registerName("release");
+      ((void(*)(id, SEL))objc_msgSend)((id)dummyNSView, releaseSel);
+    }
+
     view->release();
   } else {
     printf("  createView(\"editor\"): gracefully declined (no parent window)\n");
@@ -636,6 +716,14 @@ static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
 
   controller->release();
   printf("IEditController test: complete\n");
+}
+
+// ============================================================================
+// Headless NSScreen simulation — returns nil for [NSScreen mainScreen]
+// ============================================================================
+static id nil_nsscreen_mainScreen(id self, SEL _cmd, ...) {
+  (void)self; (void)_cmd;
+  return nullptr; // nil in ObjC
 }
 
 // ============================================================================
@@ -672,6 +760,31 @@ static int run_vst3_child_tests(const char* binPath)
   // Reset counters for clean child report
   gErrors = 0;
   gTests = 0;
+
+  // ================================================================
+  // HEADLESS CONTEXT SIMULATION
+  // Swizzle [NSScreen mainScreen] → nil to exactly reproduce the
+  // DAW scanning crash scenario. The plugin MUST survive this.
+  // ================================================================
+  printf("\n--- Headless Context Simulation ---\n");
+  Class nsScreenClass = objc_getClass("NSScreen");
+  if (nsScreenClass) {
+    SEL mainScreenSel = sel_registerName("mainScreen");
+    Method m = class_getClassMethod(nsScreenClass, mainScreenSel);
+    if (m) {
+      method_setImplementation(m, (IMP)nil_nsscreen_mainScreen);
+      printf("  [NSScreen mainScreen] swizzled → returns nil ✓\n");
+      printf("  All subsequent VST3 ops run with nil screen.\n");
+      printf("  If any test below crashes, @try/@catch patches are\n");
+      printf("  INSUFFICIENT for headless DAW scanning!\n");
+      g_headless_mode = true;
+    } else {
+      printf("  WARNING: couldn't find [NSScreen mainScreen] Method\n");
+    }
+  } else {
+    printf("  NSScreen class not loaded (AppKit not linked yet?)\n");
+    printf("  Headless simulation SKIPPED\n");
+  }
 
   test_vst3_factory(factory);
   test_vst3_instance(factory, 1);
