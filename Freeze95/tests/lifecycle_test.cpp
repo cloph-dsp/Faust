@@ -12,6 +12,8 @@
 #include <cassert>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <cmath>
+#include <CoreGraphics/CoreGraphics.h>
 
 
 // --- VST3 SDK headers (from iPlug2 checkout) ---
@@ -25,6 +27,9 @@
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
 #include <pluginterfaces/vst/vstspeaker.h>
 #include <pluginterfaces/vst/vsttypes.h>
+
+#include <pluginterfaces/vst/ivsteditcontroller.h>
+#include <pluginterfaces/gui/iplugview.h>
 
 using namespace Steinberg;
 using namespace Steinberg::Vst;
@@ -414,6 +419,297 @@ static bool try_dlopen(const char* path)
 }
 
 // ============================================================================
+// Graphics context diagnostic — detects headless CI vs display-having runner
+// ============================================================================
+static void check_graphics_context()
+{
+  printf("\n--- Graphics Context Diagnostic ---\n");
+
+  CGDirectDisplayID mainDisplay = CGMainDisplayID();
+  if (mainDisplay != kCGNullDirectDisplay) {
+    printf("  Main display ID: %u (display present)\n", (unsigned int)mainDisplay);
+  } else {
+    printf("  WARNING: No main display detected (HEADLESS context)\n");
+    printf("  [NSScreen mainScreen] will return nil — crash risk during GUI init\n");
+  }
+
+  uint32_t displayCount = 0;
+  CGError err = CGGetActiveDisplayList(0, NULL, &displayCount);
+  if (err == kCGErrorSuccess) {
+    printf("  Active displays: %u\n", (unsigned int)displayCount);
+    if (displayCount == 0) {
+      printf("  WARNING: Zero active displays — headless context!\n");
+    }
+  } else {
+    printf("  CGGetActiveDisplayList error: %d\n", err);
+  }
+}
+
+// ============================================================================
+// Edge-case audio processing — stress tests DSP init with pathological input
+// ============================================================================
+static void test_edge_case_processing(IPluginFactory* factory, int32 classIdx)
+{
+  printf("\n=== Edge-Case Audio Processing ===\n");
+
+  PClassInfo ci;
+  factory->getClassInfo(classIdx, &ci);
+
+  IAudioProcessor* processor = nullptr;
+  IComponent* component = nullptr;
+
+  tresult res = factory->createInstance(ci.cid, INLINE_UID_OF(IAudioProcessor), (void**)&processor);
+  if (res != kResultOk || !processor) {
+    printf("  SKIP: could not create instance (res=%08x)\n", res);
+    return;
+  }
+  res = processor->queryInterface(INLINE_UID_OF(IComponent), (void**)&component);
+  if (!component) { processor->release(); printf("  SKIP: no IComponent\n"); return; }
+
+  MinimalHostContext ctx;
+  component->initialize(&ctx);
+
+  ProcessSetup setup;
+  memset(&setup, 0, sizeof(setup));
+  setup.processMode = kRealtime;
+  setup.symbolicSampleSize = kSample32;
+  setup.maxSamplesPerBlock = 512;
+  setup.sampleRate = 44100.0;
+  processor->setupProcessing(setup);
+  component->setActive(true);
+
+  float inputBuf[2][512], outputBuf[2][512];
+  float* inputPtrs[2] = {inputBuf[0], inputBuf[1]};
+  float* outputPtrs[2] = {outputBuf[0], outputBuf[1]};
+
+  AudioBusBuffers busInputs[1] = {}, busOutputs[1] = {};
+  busInputs[0].numChannels = 2;
+  busInputs[0].channelBuffers32 = inputPtrs;
+  busOutputs[0].numChannels = 2;
+  busOutputs[0].channelBuffers32 = outputPtrs;
+
+  ProcessData data;
+  memset(&data, 0, sizeof(data));
+  data.processMode = kRealtime;
+  data.symbolicSampleSize = kSample32;
+  data.numSamples = 512;
+  data.numInputs = 1;
+  data.numOutputs = 1;
+  data.inputs = busInputs;
+  data.outputs = busOutputs;
+
+  // Test 1: Silence
+  memset(inputBuf, 0, sizeof(inputBuf));
+  memset(outputBuf, 0, sizeof(outputBuf));
+  res = processor->process(data);
+  TEST(res == kResultOk, "process(silence) returned %08x", res);
+  bool noNaN = true;
+  for (int ch = 0; ch < 2 && noNaN; ch++)
+    for (int s = 0; s < 512 && noNaN; s++)
+      if (std::isnan(outputBuf[ch][s])) noNaN = false;
+  TEST(noNaN, "silence output contains no NaN");
+
+  // Test 2: Full-scale DC
+  for (int ch = 0; ch < 2; ch++)
+    for (int s = 0; s < 512; s++) inputBuf[ch][s] = 1.0f;
+  memset(outputBuf, 0, sizeof(outputBuf));
+  res = processor->process(data);
+  TEST(res == kResultOk, "process(full-scale DC) returned %08x", res);
+  noNaN = true;
+  for (int ch = 0; ch < 2 && noNaN; ch++)
+    for (int s = 0; s < 512 && noNaN; s++)
+      if (std::isnan(outputBuf[ch][s])) noNaN = false;
+  TEST(noNaN, "full-scale DC output contains no NaN");
+  bool finite = true;
+  for (int ch = 0; ch < 2 && finite; ch++)
+    for (int s = 0; s < 512 && finite; s++)
+      if (!std::isfinite(outputBuf[ch][s])) finite = false;
+  TEST(finite, "full-scale DC output contains no infinity");
+
+  // Test 3: NaN input — should not crash
+  for (int ch = 0; ch < 2; ch++)
+    for (int s = 0; s < 512; s++) inputBuf[ch][s] = NAN;
+  memset(outputBuf, 0, sizeof(outputBuf));
+  res = processor->process(data);
+  TEST(res == kResultOk, "process(NaN input) returned %08x", res);
+
+  // Test 4: Denormal-level input
+  for (int ch = 0; ch < 2; ch++)
+    for (int s = 0; s < 512; s++) inputBuf[ch][s] = 1.0e-38f;
+  memset(outputBuf, 0, sizeof(outputBuf));
+  res = processor->process(data);
+  TEST(res == kResultOk, "process(denormal input) returned %08x", res);
+
+  component->setActive(false);
+  component->terminate();
+  component->release();
+  printf("Edge-case processing: complete\n");
+}
+
+// ============================================================================
+// IEditController test — exercises view creation code path
+// ============================================================================
+static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
+{
+  printf("\n=== VST3 Edit Controller Test ===\n");
+
+  // iPlug2 typically merges controller and processor into one component,
+  // so createInstance with IEditController IID often works directly.
+  PClassInfo ci;
+  factory->getClassInfo(classIdx, &ci);
+
+  IEditController* controller = nullptr;
+  tresult res = factory->createInstance(ci.cid, INLINE_UID_OF(IEditController), (void**)&controller);
+  if (!controller) {
+    // Try enumerating for a separate controller class
+    int32 classCount = factory->countClasses();
+    for (int32 i = 0; i < classCount; i++) {
+      if (factory->getClassInfo(i, &ci) == kResultOk) {
+        if (strstr(ci.category, "Controller")) {
+          printf("  Found controller class at index %d: '%s'\n", (int)i, ci.name);
+          res = factory->createInstance(ci.cid, INLINE_UID_OF(IEditController), (void**)&controller);
+          if (controller) break;
+        }
+      }
+    }
+  }
+
+  if (!controller) {
+    printf("  IEditController not available via direct IID query.\n");
+    printf("  This is expected — iPlug2 may register the controller\n");
+    printf("  and processor as the same component, accessible only\n");
+    printf("  via IAudioProcessor -> queryInterface(IEditController).\n");
+
+    // Try via the processor we already tested
+    IAudioProcessor* proc = nullptr;
+    factory->createInstance(ci.cid, INLINE_UID_OF(IAudioProcessor), (void**)&proc);
+    if (proc) {
+      IEditController* ctrl2 = nullptr;
+      res = proc->queryInterface(INLINE_UID_OF(IEditController), (void**)&ctrl2);
+      if (ctrl2) {
+        printf("  Got IEditController via IAudioProcessor->queryInterface!\n");
+        controller = ctrl2;
+        proc->release();
+      } else {
+        proc->release();
+      }
+    }
+  }
+
+  if (!controller) {
+    printf("  No IEditController available. Controller tests SKIPPED.\n");
+    printf("  (GUI code path is NOT exercised — this is normal for\n");
+    printf("   VST3 plugins that defer GUI init to editor attach)\n");
+    return;
+  }
+
+  printf("  IEditController: OK\n");
+
+  // Get parameters
+  int32 paramCount = controller->getParameterCount();
+  printf("  Parameters: %d\n", (int)paramCount);
+  TEST(paramCount > 0, "At least 1 parameter registered");
+
+  for (int32 i = 0; i < paramCount && i < 8; i++) {
+    ParameterInfo pinfo;
+    memset(&pinfo, 0, sizeof(pinfo));
+    if (controller->getParameterInfo(i, pinfo) == kResultOk) {
+      printf("    Param[%d]: '%s' (short='%s') default=%.3f\n",
+             (int)i, pinfo.title, pinfo.shortTitle, pinfo.defaultNormalizedValue);
+    }
+  }
+
+  // Try creating the editor view — exercises GUI init code path
+  // This typically fails gracefully if no parent window is provided,
+  // but the createView() call itself can trigger lazy GUI setup.
+  IPlugView* view = controller->createView("editor");
+  if (view) {
+    printf("  createView(\"editor\"): OK (GUI view created)\n");
+    // Check platform support
+    if (view->isPlatformTypeSupported(Steinberg::kPlatformTypeNSView) == kResultOk) {
+      printf("  kPlatformTypeNSView: supported\n");
+    }
+    view->release();
+  } else {
+    printf("  createView(\"editor\"): gracefully declined (no parent window)\n");
+  }
+
+  controller->release();
+  printf("IEditController test: complete\n");
+}
+
+// ============================================================================
+// Run all VST3 lifecycle tests in child process — fork-guarded from crashes
+// ============================================================================
+static int run_vst3_child_tests(const char* binPath)
+{
+  void* module = dlopen(binPath, RTLD_NOW | RTLD_LOCAL);
+  if (!module) {
+    fprintf(stderr, "  FATAL: dlopen failed in child: %s\n", dlerror());
+    return 1;
+  }
+
+  auto* getFactoryFn = (IPluginFactory* (*)())dlsym(module, "GetPluginFactory");
+  if (!getFactoryFn) { dlclose(module); return 2; }
+
+  IPluginFactory* factory = getFactoryFn();
+  if (!factory) { dlclose(module); return 3; }
+
+  int32 classCount = factory->countClasses();
+  int32 audioClassIdx = -1;
+  for (int32 i = 0; i < classCount; i++) {
+    PClassInfo tmp;
+    memset(&tmp, 0, sizeof(tmp));
+    if (factory->getClassInfo(i, &tmp) == kResultOk) {
+      if (strstr(tmp.category, "Audio") || strstr(tmp.category, "Fx")) {
+        audioClassIdx = i;
+        break;
+      }
+    }
+  }
+  if (audioClassIdx < 0 && classCount > 0) audioClassIdx = 0;
+
+  // Reset counters for clean child report
+  gErrors = 0;
+  gTests = 0;
+
+  test_vst3_factory(factory);
+  test_vst3_instance(factory, 1);
+  test_vst3_stress(factory);
+  test_vst3_instance(factory, 3);
+  test_edge_case_processing(factory, audioClassIdx);
+  test_edit_controller(factory, audioClassIdx);
+
+  factory->release();
+  dlclose(module);
+  return gErrors;
+}
+
+// ============================================================================
+// Fork-guard wrapper — runs fn(arg) in child, catches crashes
+// ============================================================================
+static bool fork_guard_run(int (*fn)(const char*), const char* arg)
+{
+  pid_t pid = fork();
+  if (pid == 0) {
+    int result = fn(arg);
+    _exit(result);
+  }
+  if (pid < 0) {
+    fprintf(stderr, "  fork_guard: fork failed\n");
+    return false;
+  }
+  int status;
+  waitpid(pid, &status, 0);
+  if (WIFSIGNALED(status)) {
+    fprintf(stderr, "  CRASHED with signal %d\n", WTERMSIG(status));
+    return false;
+  }
+  if (!WIFEXITED(status)) return false;
+  return WEXITSTATUS(status) == 0;
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 int main(int argc, char** argv)
@@ -456,20 +752,19 @@ int main(int argc, char** argv)
   // --- Test CLAP entry ---
   test_clap_entry(module);
 
-  // --- Get VST3 factory (optional — CLAP-only binaries won't have it) ---
-  auto* getFactoryFn = (IPluginFactory* (*)())dlsym(module, "GetPluginFactory");
-  if (getFactoryFn) {
-    printf("\n--- VST3 Tests ---\n");
-    IPluginFactory* factory = getFactoryFn();
-    if (factory) {
-      test_vst3_factory(factory);
-      test_vst3_instance(factory, 1);
-      test_vst3_stress(factory);
-      test_vst3_instance(factory, 3);
-      factory->release();
-    }
+  // --- Graphics context diagnostic ---
+  check_graphics_context();
+
+  // --- Fork-guarded VST3 lifecycle tests ---
+  // We fork BEFORE loading the factory so that any crash during
+  // GetPluginFactory, component creation, audio processing, or
+  // view creation is caught in the child process.
+  printf("\n--- VST3 Tests (fork-guarded) ---\n");
+  if (fork_guard_run(run_vst3_child_tests, binPath)) {
+    printf("  Fork-guarded VST3 tests: ALL PASSED\n");
   } else {
-    printf("  SKIP: GetPluginFactory not found (CLAP-only binary)\n");
+    printf("  Fork-guarded VST3 tests: FAILED (see child output above)\n");
+    gErrors++;
   }
 
   dlclose(module);

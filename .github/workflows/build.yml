@@ -772,7 +772,7 @@ jobs:
           fi
 
           echo "Compiling lifecycle test..."
-          clang++ -std=c++17 $VST3_SDK -o /tmp/freeze95_test "$TEST_SRC" -framework CoreFoundation 2>&1 || {
+          clang++ -std=c++17 $VST3_SDK -o /tmp/freeze95_test "$TEST_SRC" -framework CoreFoundation -framework CoreGraphics 2>&1 || {
             echo "WARNING: Could not compile lifecycle test (compilation error)"
             exit 0
           }
