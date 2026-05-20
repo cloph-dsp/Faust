@@ -533,7 +533,7 @@ jobs:
           echo "-------------------------------------------------"
           for BIN in "$VST3_BIN" "$CLAP_BIN"; do
             NAME="$(basename $(dirname $(dirname $BIN)))/$(basename $BIN)"
-            BAD=$(strings "$BIN" | grep -ciE "IPlugEffect|AcmeInc|com\.AcmeInc" || echo 0)
+            BAD=$(strings "$BIN" | grep -ciE "IPlugEffect|AcmeInc|com\.AcmeInc" || true)
             if [ "$BAD" -gt 0 ]; then
               error "Found $BAD template string(s) in $NAME (IPlugEffect/AcmeInc residue)"
             else
