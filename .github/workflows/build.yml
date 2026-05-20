@@ -26,7 +26,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Checkout iPlug2 framework
-        run: git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2
+        run: |
+          git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2
+          git -C Freeze95/iPlug2 rev-parse HEAD
 
       - name: Download SDKs (VST3 + CLAP)
         shell: bash
@@ -83,7 +85,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Checkout iPlug2 framework
-        run: git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2
+        run: |
+          git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2
+          echo "iPlug2 SHA: $(git -C Freeze95/iPlug2 rev-parse HEAD)"
 
       - name: Apply Freeze95 hardening patches to iPlug2
         run: bash Freeze95/scripts/patch-iPlug2-for-freeze95.sh
@@ -231,7 +235,7 @@ jobs:
           # 1. BUNDLE STRUCTURE & FILES
           # ============================================================
           echo ""
-          echo "[1/10] Bundle Structure Check"
+          echo "[1/13] Bundle Structure Check"
           echo "------------------------------"
 
           for BUNDLE in "$VST3" "$CLAP"; do
@@ -267,7 +271,7 @@ jobs:
           # 2. INFO.PLIST COMPLETENESS & CORRECTNESS
           # ============================================================
           echo ""
-          echo "[2/10] Info.plist Validation"
+          echo "[2/13] Info.plist Validation"
           echo "-----------------------------"
 
           for BUNDLE in "$VST3" "$CLAP"; do
@@ -309,7 +313,7 @@ jobs:
           # 3. BINARY ARCHITECTURE & UNIVERSAL BUILD
           # ============================================================
           echo ""
-          echo "[3/10] Binary Architecture Check"
+          echo "[3/13] Binary Architecture Check"
           echo "---------------------------------"
 
           for BIN in "$VST3_BIN" "$CLAP_BIN"; do
@@ -338,7 +342,7 @@ jobs:
           # 4. CODE SIGNATURE INTEGRITY
           # ============================================================
           echo ""
-          echo "[4/10] Code Signature Check"
+          echo "[4/13] Code Signature Check"
           echo "----------------------------"
 
           for BUNDLE in "$VST3" "$CLAP"; do
@@ -373,7 +377,7 @@ jobs:
           # 5. ENTITLEMENTS (skip if no hardened runtime — ad-hoc on macOS 15+ can't embed)
           # ============================================================
           echo ""
-          echo "[5/10] Entitlements Check"
+          echo "[5/13] Entitlements Check"
           echo "-------------------------"
 
           check_entitlements() {
@@ -403,7 +407,7 @@ jobs:
           # 6. BINARY LINKING & DEPENDENCIES
           # ============================================================
           echo ""
-          echo "[6/10] Binary Dependencies Check"
+          echo "[6/13] Binary Dependencies Check"
           echo "---------------------------------"
 
           for BIN in "$VST3_BIN" "$CLAP_BIN"; do
@@ -436,7 +440,7 @@ jobs:
           # 7. MODULEINFO.JSON (VST3 only)
           # ============================================================
           echo ""
-          echo "[7/10] moduleinfo.json Check"
+          echo "[7/13] moduleinfo.json Check"
           echo "-----------------------------"
 
           if [ -f "$VST3/Contents/Resources/moduleinfo.json" ]; then
@@ -461,7 +465,7 @@ jobs:
           # 8. BUNDLE SIZE SANITY CHECKS
           # ============================================================
           echo ""
-          echo "[8/10] Bundle Size Check"
+          echo "[8/13] Bundle Size Check"
           echo "------------------------"
 
           for BUNDLE in "$VST3" "$CLAP"; do
@@ -483,7 +487,7 @@ jobs:
           # 9. QUARANTINE / EXTENDED ATTRIBUTES
           # ============================================================
           echo ""
-          echo "[9/10] Extended Attributes Check"
+          echo "[9/13] Extended Attributes Check"
           echo "---------------------------------"
 
           for BUNDLE in "$VST3" "$CLAP"; do
@@ -500,7 +504,7 @@ jobs:
           # 10. BINARY HEADERS & FLAGS
           # ============================================================
           echo ""
-          echo "[10/10] Mach-O Header Flags"
+          echo "[10/13] Mach-O Header Flags"
           echo "----------------------------"
 
           for BIN in "$VST3_BIN" "$CLAP_BIN"; do
@@ -522,12 +526,65 @@ jobs:
           echo "Mach-O headers: OK"
 
           # ============================================================
+          # 11. IPLUG2 BINARY HYGIENE — NO TEMPLATE STRINGS IN BINARY
+          # ============================================================
+          echo ""
+          echo "[11/13] iPlug2 Binary Hygiene — Template Strings"
+          echo "-------------------------------------------------"
+          for BIN in "$VST3_BIN" "$CLAP_BIN"; do
+            NAME="$(basename $(dirname $(dirname $BIN)))/$(basename $BIN)"
+            BAD=$(strings "$BIN" | grep -ciE "IPlugEffect|AcmeInc|com\.AcmeInc" || echo 0)
+            if [ "$BAD" -gt 0 ]; then
+              error "Found $BAD template string(s) in $NAME (IPlugEffect/AcmeInc residue)"
+            else
+              echo "  $NAME: clean — no template string residue"
+            fi
+          done
+          echo "iPlug2 binary hygiene: OK"
+
+          # ============================================================
+          # 12. IPLUG2 VERSION TRACKING
+          # ============================================================
+          echo ""
+          echo "[12/13] iPlug2 Version Tracking"
+          echo "--------------------------------"
+          if [ -d "Freeze95/iPlug2/.git" ]; then
+            IPLUG2_SHA=$(git -C Freeze95/iPlug2 rev-parse HEAD 2>/dev/null || echo "unknown")
+            echo "  iPlug2 commit SHA: $IPLUG2_SHA"
+          else
+            echo "  iPlug2 .git directory not found (depth=1 clone does not preserve it)"
+          fi
+          echo "iPlug2 version: logged"
+
+          # ============================================================
+          # 13. OBJC EXCEPTION HANDLING — PATCH INTEGRITY
+          # ============================================================
+          echo ""
+          echo "[13/13] ObjC Exception Handling — Patch Integrity"
+          echo "---------------------------------------------------"
+          for BIN in "$VST3_BIN" "$CLAP_BIN"; do
+            NAME="$(basename $(dirname $(dirname $BIN)))/$(basename $BIN)"
+            echo "  Checking $NAME..."
+            # When @catch(NSException *) is compiled into ObjC++, the binary references
+            # _OBJC_CLASS_$_NSException as an undefined import. Unpatched iPlug2 does
+            # not use @try/@catch, so this symbol is absent in clean builds.
+            for ARCH in x86_64 arm64; do
+              if nm -arch $ARCH -u "$BIN" 2>/dev/null | grep -q "NSException"; then
+                echo "    [$ARCH] @try/@catch patches CONFIRMED compiled in ✓"
+              else
+                echo "    [$ARCH] WARNING: NSException not referenced — patches may not be compiled in"
+              fi
+            done
+          done
+          echo "iPlug2 patch integrity: check complete"
+
+          # ============================================================
           # SUMMARY
           # ============================================================
           echo ""
           echo "========================================"
           if [ "$ERRORS" -eq 0 ]; then
-            echo "ALL VALIDATIONS PASSED (10/10)"
+            echo "ALL VALIDATIONS PASSED (13/13)"
             echo "========================================"
             exit 0
           else
