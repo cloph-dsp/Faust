@@ -39,7 +39,7 @@ public:
   int UnserializeState(const IByteChunk& chunk, int startPos) override;
 
 private:
-  void LayoutUI(iplug::igraphics::IGraphics* pGraphics);
+  void LayoutUI(iplug::igraphics::IGraphics* pGraphics) override;
   void SyncParamsToDSP();
   void SetFaustParam(const char* label, float value);
 

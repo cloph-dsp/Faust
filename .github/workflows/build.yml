@@ -85,6 +85,9 @@ jobs:
       - name: Checkout iPlug2 framework
         run: git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2
 
+      - name: Apply Freeze95 hardening patches to iPlug2
+        run: bash Freeze95/scripts/patch-iPlug2-for-freeze95.sh
+
       - name: Download SDKs (VST3 + CLAP)
         working-directory: Freeze95/iPlug2/Dependencies/IPlug
         run: bash download-iplug-sdks.sh
