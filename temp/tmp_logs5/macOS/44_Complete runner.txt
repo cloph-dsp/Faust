@@ -1,4 +1,0 @@
-﻿2026-05-19T21:37:31.3717510Z A job completed hook has been configured by the self-hosted runner administrator
-2026-05-19T21:37:31.3856900Z ##[group]Run '/Users/admin/actions-runner/hooks/job-completed.sh'
-2026-05-19T21:37:31.3933260Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
-2026-05-19T21:37:31.3933720Z ##[endgroup]

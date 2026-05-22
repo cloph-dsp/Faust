@@ -1,7 +1,0 @@
-﻿2026-05-19T21:20:20.9756760Z ##[group]Run mkdir -p Freeze95/build-mac/stage-clap
-2026-05-19T21:20:20.9756970Z [36;1mmkdir -p Freeze95/build-mac/stage-clap[0m
-2026-05-19T21:20:20.9757200Z [36;1mcp -R Freeze95/build-mac/Products/Freeze95.clap Freeze95/build-mac/stage-clap/[0m
-2026-05-19T21:20:20.9998330Z shell: /bin/bash -e {0}
-2026-05-19T21:20:20.9998480Z env:
-2026-05-19T21:20:20.9998580Z   BINARY_NAME: Freeze95
-2026-05-19T21:20:20.9998690Z ##[endgroup]

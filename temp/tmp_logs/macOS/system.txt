@@ -1,7 +1,0 @@
-2026-05-19T21:01:36.5540000Z Requested labels: getmac
-2026-05-19T21:01:36.5540000Z Job defined at: cloph-dsp/Faust/.github/workflows/build.yml@refs/heads/main
-2026-05-19T21:01:36.5540000Z Waiting for a runner to pick up this job...
-2026-05-19T21:01:36.5500000Z Evaluating build-macos.if
-2026-05-19T21:01:36.5500000Z Evaluating: success()
-2026-05-19T21:01:36.5500000Z Result: true
-2026-05-19T21:03:58.7010000Z Job is about to start running on the runner: getmac-364b3da4-d390-45ac-b3ce-7f6ff6ce1282

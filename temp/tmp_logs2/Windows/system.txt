@@ -1,8 +1,0 @@
-2026-05-19T21:09:25.0760000Z Evaluating build-windows.if
-2026-05-19T21:09:25.0760000Z Evaluating: success()
-2026-05-19T21:09:25.0760000Z Result: true
-2026-05-19T21:09:25.1290000Z Requested labels: windows-latest
-2026-05-19T21:09:25.1290000Z Job defined at: cloph-dsp/Faust/.github/workflows/build.yml@refs/heads/main
-2026-05-19T21:09:25.1290000Z Waiting for a runner to pick up this job...
-2026-05-19T21:09:25.1490000Z Job is about to start running on the hosted runner: GitHub Actions 1000001499
-2026-05-19T21:09:25.1490000Z Job is waiting for a hosted runner to come online.

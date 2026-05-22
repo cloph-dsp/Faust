@@ -1,4 +1,0 @@
-﻿2026-05-19T21:19:26.9209350Z A job started hook has been configured by the self-hosted runner administrator
-2026-05-19T21:19:26.9331380Z ##[group]Run '/Users/admin/actions-runner/hooks/job-started.sh'
-2026-05-19T21:19:26.9395420Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
-2026-05-19T21:19:26.9395830Z ##[endgroup]
