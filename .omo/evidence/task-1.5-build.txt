@@ -1,0 +1,15 @@
+﻿Task 1.5: Fix pre-existing compilation errors in GrungrIPlug2UI.cpp
+Date: 2026-05-10
+
+Root Cause: Line 305 premature } closed Draw() early; line 307 spurious
+function declaration w/o { orphaned ~90 lines of Draw() body.
+
+Fix Applied:
+- Removed line 305 (erroneous close-brace })
+- Removed line 307 (erroneous function declaration)
+- Renamed second hiColor to hiColor2 to avoid redefinition
+
+Build: SUCCESS - "Build completed successfully"
+VST3 artifact: Grungr/build-win/vst3/x64/Release/Grungr.vst3
+
+Evidence: .sisyphus/evidence/task-1.5-build.txt

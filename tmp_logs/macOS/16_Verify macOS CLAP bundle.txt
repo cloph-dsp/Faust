@@ -1,0 +1,35 @@
+﻿2026-05-19T21:05:28.7078560Z ##[group]Run CLAP_BUNDLE="/Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.clap"
+2026-05-19T21:05:28.7080650Z [36;1mCLAP_BUNDLE="/Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.clap"[0m
+2026-05-19T21:05:28.7081720Z [36;1mif [ ! -d "$CLAP_BUNDLE" ]; then[0m
+2026-05-19T21:05:28.7082450Z [36;1m  echo "ERROR: CLAP bundle not found at $CLAP_BUNDLE"[0m
+2026-05-19T21:05:28.7082960Z [36;1m  exit 1[0m
+2026-05-19T21:05:28.7083240Z [36;1mfi[0m
+2026-05-19T21:05:28.7083620Z [36;1mecho "CLAP bundle found at: $CLAP_BUNDLE"[0m
+2026-05-19T21:05:28.7084300Z [36;1mls -la "$CLAP_BUNDLE/Contents/"[0m
+2026-05-19T21:05:28.7084900Z [36;1mif [ ! -f "$CLAP_BUNDLE/Contents/MacOS/Freeze95" ]; then[0m
+2026-05-19T21:05:28.7085990Z [36;1m  echo "ERROR: Binary not found in CLAP bundle Contents/MacOS/"[0m
+2026-05-19T21:05:28.7086520Z [36;1m  echo "Contents of MacOS dir:"[0m
+2026-05-19T21:05:28.7087140Z [36;1m  ls -la "$CLAP_BUNDLE/Contents/MacOS/" || echo "MacOS dir missing"[0m
+2026-05-19T21:05:28.7087810Z [36;1m  exit 1[0m
+2026-05-19T21:05:28.7088120Z [36;1mfi[0m
+2026-05-19T21:05:28.7088540Z [36;1mecho "Binary verified: $CLAP_BUNDLE/Contents/MacOS/Freeze95"[0m
+2026-05-19T21:05:28.7089160Z [36;1mfile "$CLAP_BUNDLE/Contents/MacOS/Freeze95"[0m
+2026-05-19T21:05:28.7089680Z [36;1mlipo -info "$CLAP_BUNDLE/Contents/MacOS/Freeze95"[0m
+2026-05-19T21:05:28.7245810Z shell: /bin/bash -e {0}
+2026-05-19T21:05:28.7246270Z env:
+2026-05-19T21:05:28.7246600Z   BINARY_NAME: Freeze95
+2026-05-19T21:05:28.7246840Z ##[endgroup]
+2026-05-19T21:05:28.7749360Z CLAP bundle found at: /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.clap
+2026-05-19T21:05:28.7831600Z total 16
+2026-05-19T21:05:28.7833250Z drwxr-xr-x  3 admin  staff    96 May 19 21:05 _CodeSignature
+2026-05-19T21:05:28.7833580Z drwxr-xr-x  7 admin  staff   224 May 19 21:05 .
+2026-05-19T21:05:28.7833830Z drwxr-xr-x  3 admin  staff    96 May 19 21:05 ..
+2026-05-19T21:05:28.7834130Z -rw-r--r--  1 admin  staff  1475 May 19 21:05 Info.plist
+2026-05-19T21:05:28.7834350Z drwxr-xr-x  3 admin  staff    96 May 19 21:05 MacOS
+2026-05-19T21:05:28.7834680Z -rw-r--r--  1 admin  staff     8 May 19 21:05 PkgInfo
+2026-05-19T21:05:28.7834980Z drwxr-xr-x  3 admin  staff    96 May 19 21:05 Resources
+2026-05-19T21:05:28.7835360Z Binary verified: /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95
+2026-05-19T21:05:28.7890290Z /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95: Mach-O universal binary with 2 architectures: [x86_64:Mach-O 64-bit bundle x86_64] [arm64]
+2026-05-19T21:05:28.7891070Z /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95 (for architecture x86_64):	Mach-O 64-bit bundle x86_64
+2026-05-19T21:05:28.7891730Z /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95 (for architecture arm64):	Mach-O 64-bit bundle arm64
+2026-05-19T21:05:28.8069120Z Architectures in the fat file: /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95 are: x86_64 arm64 

@@ -1,0 +1,488 @@
+﻿2026-05-19T21:30:37.9646180Z ##[group]Run set -euo pipefail
+2026-05-19T21:30:37.9647040Z [36;1mset -euo pipefail[0m
+2026-05-19T21:30:37.9647410Z [36;1mVST3="Freeze95/build-mac/Products/Freeze95.vst3"[0m
+2026-05-19T21:30:37.9647840Z [36;1mCLAP="Freeze95/build-mac/Products/Freeze95.clap"[0m
+2026-05-19T21:30:37.9648260Z [36;1mVST3_BIN="$VST3/Contents/MacOS/Freeze95"[0m
+2026-05-19T21:30:37.9648790Z [36;1mCLAP_BIN="$CLAP/Contents/MacOS/Freeze95"[0m
+2026-05-19T21:30:37.9649220Z [36;1mERRORS=0[0m
+2026-05-19T21:30:37.9649440Z [36;1m[0m
+2026-05-19T21:30:37.9649630Z [36;1merror() {[0m
+2026-05-19T21:30:37.9649880Z [36;1m  echo "ERROR: $1"[0m
+2026-05-19T21:30:37.9650140Z [36;1m  ERRORS=$((ERRORS + 1))[0m
+2026-05-19T21:30:37.9650410Z [36;1m}[0m
+2026-05-19T21:30:37.9650610Z [36;1m[0m
+2026-05-19T21:30:37.9650970Z [36;1mecho "========================================"[0m
+2026-05-19T21:30:37.9651370Z [36;1mecho "COMPREHENSIVE MACOS PLUGIN VALIDATION"[0m
+2026-05-19T21:30:37.9652190Z [36;1mecho "========================================"[0m
+2026-05-19T21:30:37.9668340Z [36;1m[0m
+2026-05-19T21:30:37.9669020Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9669760Z [36;1m# 1. BUNDLE STRUCTURE & FILES[0m
+2026-05-19T21:30:37.9670250Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9670760Z [36;1mecho ""[0m
+2026-05-19T21:30:37.9671280Z [36;1mecho "[1/10] Bundle Structure Check"[0m
+2026-05-19T21:30:37.9671690Z [36;1mecho "------------------------------"[0m
+2026-05-19T21:30:37.9672200Z [36;1m[0m
+2026-05-19T21:30:37.9672530Z [36;1mfor BUNDLE in "$VST3" "$CLAP"; do[0m
+2026-05-19T21:30:37.9672870Z [36;1m  echo "Checking $(basename $BUNDLE)..."[0m
+2026-05-19T21:30:37.9673510Z [36;1m  test -d "$BUNDLE" || error "Bundle directory missing: $BUNDLE"[0m
+2026-05-19T21:30:37.9673800Z [36;1m  test -d "$BUNDLE/Contents" || error "Contents/ missing in $BUNDLE"[0m
+2026-05-19T21:30:37.9674650Z [36;1m  test -d "$BUNDLE/Contents/MacOS" || error "Contents/MacOS/ missing in $BUNDLE"[0m
+2026-05-19T21:30:37.9675490Z [36;1m  test -f "$BUNDLE/Contents/Info.plist" || error "Contents/Info.plist missing in $BUNDLE"[0m
+2026-05-19T21:30:37.9676430Z [36;1m  test -f "$BUNDLE/Contents/MacOS/Freeze95" || error "Binary missing in $BUNDLE/Contents/MacOS/"[0m
+2026-05-19T21:30:37.9676760Z [36;1mdone[0m
+2026-05-19T21:30:37.9676840Z [36;1m[0m
+2026-05-19T21:30:37.9676940Z [36;1m# Check VST3-specific files[0m
+2026-05-19T21:30:37.9677170Z [36;1mtest -f "$VST3/Contents/Resources/moduleinfo.json" || error "VST3 moduleinfo.json missing"[0m
+2026-05-19T21:30:37.9677480Z [36;1mtest -f "$VST3/Contents/_CodeSignature/CodeResources" || error "VST3 CodeResources missing"[0m
+2026-05-19T21:30:37.9678510Z [36;1m[0m
+2026-05-19T21:30:37.9678870Z [36;1m# Check for unexpected nested bundles (common failure mode)[0m
+2026-05-19T21:30:37.9679470Z [36;1mif find "$VST3" -maxdepth 1 -type d | grep -v "^$VST3$" | grep -v "/Contents$"; then[0m
+2026-05-19T21:30:37.9680340Z [36;1m  error "Unexpected nested directories in VST3 bundle"[0m
+2026-05-19T21:30:37.9681160Z [36;1mfi[0m
+2026-05-19T21:30:37.9681320Z [36;1m[0m
+2026-05-19T21:30:37.9681520Z [36;1m# Check file permissions (executables must be executable)[0m
+2026-05-19T21:30:37.9681920Z [36;1mtest -x "$VST3_BIN" || error "VST3 binary is not executable"[0m
+2026-05-19T21:30:37.9682220Z [36;1mtest -x "$CLAP_BIN" || error "CLAP binary is not executable"[0m
+2026-05-19T21:30:37.9682660Z [36;1m[0m
+2026-05-19T21:30:37.9683030Z [36;1m# Check for symlinks (shouldn't have any in a clean build)[0m
+2026-05-19T21:30:37.9683710Z [36;1mif find "$VST3" -type l | grep -q .; then[0m
+2026-05-19T21:30:37.9684430Z [36;1m  error "VST3 bundle contains symlinks"[0m
+2026-05-19T21:30:37.9684700Z [36;1mfi[0m
+2026-05-19T21:30:37.9684820Z [36;1m[0m
+2026-05-19T21:30:37.9684920Z [36;1mecho "Bundle structure: OK"[0m
+2026-05-19T21:30:37.9685040Z [36;1m[0m
+2026-05-19T21:30:37.9685180Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9687000Z [36;1m# 2. INFO.PLIST COMPLETENESS & CORRECTNESS[0m
+2026-05-19T21:30:37.9687240Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9687420Z [36;1mecho ""[0m
+2026-05-19T21:30:37.9687560Z [36;1mecho "[2/10] Info.plist Validation"[0m
+2026-05-19T21:30:37.9687740Z [36;1mecho "-----------------------------"[0m
+2026-05-19T21:30:37.9687890Z [36;1m[0m
+2026-05-19T21:30:37.9687990Z [36;1mfor BUNDLE in "$VST3" "$CLAP"; do[0m
+2026-05-19T21:30:37.9688150Z [36;1m  PLIST="$BUNDLE/Contents/Info.plist"[0m
+2026-05-19T21:30:37.9688340Z [36;1m  echo "Checking $(basename $BUNDLE)/Contents/Info.plist..."[0m
+2026-05-19T21:30:37.9688490Z [36;1m[0m
+2026-05-19T21:30:37.9688570Z [36;1m  # Syntax validation[0m
+2026-05-19T21:30:37.9688760Z [36;1m  plutil -lint "$PLIST" >/dev/null || error "Invalid plist syntax: $PLIST"[0m
+2026-05-19T21:30:37.9689010Z [36;1m[0m
+2026-05-19T21:30:37.9689260Z [36;1m  # Required keys[0m
+2026-05-19T21:30:37.9689640Z [36;1m  for KEY in CFBundleExecutable CFBundleIdentifier CFBundleName CFBundlePackageType CFBundleShortVersionString CFBundleVersion CFBundleInfoDictionaryVersion; do[0m
+2026-05-19T21:30:37.9690770Z [36;1m    if ! /usr/libexec/PlistBuddy -c "Print :$KEY" "$PLIST" >/dev/null 2>&1; then[0m
+2026-05-19T21:30:37.9691360Z [36;1m      error "Missing required plist key $KEY in $(basename $BUNDLE)"[0m
+2026-05-19T21:30:37.9691870Z [36;1m    fi[0m
+2026-05-19T21:30:37.9691970Z [36;1m  done[0m
+2026-05-19T21:30:37.9692060Z [36;1m[0m
+2026-05-19T21:30:37.9692140Z [36;1m  # Correct values[0m
+2026-05-19T21:30:37.9692500Z [36;1m  BUNDLE_EXEC=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$PLIST" 2>/dev/null || echo "")[0m
+2026-05-19T21:30:37.9693330Z [36;1m  BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$PLIST" 2>/dev/null || echo "")[0m
+2026-05-19T21:30:37.9694340Z [36;1m  BUNDLE_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleName" "$PLIST" 2>/dev/null || echo "")[0m
+2026-05-19T21:30:37.9695400Z [36;1m  BUNDLE_VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST" 2>/dev/null || echo "")[0m
+2026-05-19T21:30:37.9696500Z [36;1m  BUNDLE_PKG_TYPE=$(/usr/libexec/PlistBuddy -c "Print :CFBundlePackageType" "$PLIST" 2>/dev/null || echo "")[0m
+2026-05-19T21:30:37.9697250Z [36;1m[0m
+2026-05-19T21:30:37.9698040Z [36;1m  [ "$BUNDLE_EXEC" = "Freeze95" ] || error "CFBundleExecutable mismatch in $(basename $BUNDLE): got '$BUNDLE_EXEC', expected 'Freeze95'"[0m
+2026-05-19T21:30:37.9699090Z [36;1m  [ "$BUNDLE_ID" = "com.cloph.Freeze95" ] || error "CFBundleIdentifier mismatch in $(basename $BUNDLE): got '$BUNDLE_ID'"[0m
+2026-05-19T21:30:37.9700000Z [36;1m  [ "$BUNDLE_NAME" = "Freeze95" ] || error "CFBundleName mismatch in $(basename $BUNDLE): got '$BUNDLE_NAME'"[0m
+2026-05-19T21:30:37.9700950Z [36;1m  [ "$BUNDLE_VER" = "1.3.0" ] || error "CFBundleShortVersionString mismatch in $(basename $BUNDLE): got '$BUNDLE_VER', expected '1.3.0'"[0m
+2026-05-19T21:30:37.9701890Z [36;1m  [ "$BUNDLE_PKG_TYPE" = "BNDL" ] || error "CFBundlePackageType must be BNDL, got '$BUNDLE_PKG_TYPE'"[0m
+2026-05-19T21:30:37.9702620Z [36;1m[0m
+2026-05-19T21:30:37.9702920Z [36;1m  # No template residue[0m
+2026-05-19T21:30:37.9703520Z [36;1m  if grep -qi "IPlugEffect\|Acme Inc\|Acme" "$PLIST"; then[0m
+2026-05-19T21:30:37.9704170Z [36;1m    error "Info.plist still contains template values (IPlugEffect/Acme) in $(basename $BUNDLE)"[0m
+2026-05-19T21:30:37.9704680Z [36;1m  fi[0m
+2026-05-19T21:30:37.9705010Z [36;1mdone[0m
+2026-05-19T21:30:37.9705190Z [36;1m[0m
+2026-05-19T21:30:37.9705300Z [36;1mecho "Info.plist: OK"[0m
+2026-05-19T21:30:37.9705420Z [36;1m[0m
+2026-05-19T21:30:37.9705560Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9705740Z [36;1m# 3. BINARY ARCHITECTURE & UNIVERSAL BUILD[0m
+2026-05-19T21:30:37.9705900Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9706400Z [36;1mecho ""[0m
+2026-05-19T21:30:37.9706530Z [36;1mecho "[3/10] Binary Architecture Check"[0m
+2026-05-19T21:30:37.9706690Z [36;1mecho "---------------------------------"[0m
+2026-05-19T21:30:37.9706820Z [36;1m[0m
+2026-05-19T21:30:37.9706910Z [36;1mfor BIN in "$VST3_BIN" "$CLAP_BIN"; do[0m
+2026-05-19T21:30:37.9707140Z [36;1m  echo "Checking $(basename $(dirname $(dirname $BIN)))/$(basename $BIN)..."[0m
+2026-05-19T21:30:37.9707330Z [36;1m[0m
+2026-05-19T21:30:37.9707430Z [36;1m  # Must be Mach-O universal[0m
+2026-05-19T21:30:37.9707710Z [36;1m  file "$BIN" | grep -q "Mach-O universal binary" || error "Not a Mach-O universal binary: $BIN"[0m
+2026-05-19T21:30:37.9707950Z [36;1m[0m
+2026-05-19T21:30:37.9708040Z [36;1m  # Must contain both architectures[0m
+2026-05-19T21:30:37.9708200Z [36;1m  LIPO_OUT=$(lipo -info "$BIN" 2>&1)[0m
+2026-05-19T21:30:37.9708330Z [36;1m  echo "$LIPO_OUT"[0m
+2026-05-19T21:30:37.9708480Z [36;1m  echo "$LIPO_OUT" | grep -q "x86_64" || error "Missing x86_64 in $BIN"[0m
+2026-05-19T21:30:37.9708750Z [36;1m  echo "$LIPO_OUT" | grep -q "arm64" || error "Missing arm64 in $BIN"[0m
+2026-05-19T21:30:37.9708950Z [36;1m[0m
+2026-05-19T21:30:37.9709060Z [36;1m  # Binary size check (should be > 1MB for a real plugin)[0m
+2026-05-19T21:30:37.9709280Z [36;1m  SIZE=$(stat -f%z "$BIN" 2>/dev/null || stat -c%s "$BIN" 2>/dev/null || echo 0)[0m
+2026-05-19T21:30:37.9709490Z [36;1m  if [ "$SIZE" -lt 1048576 ]; then[0m
+2026-05-19T21:30:37.9709680Z [36;1m    error "Binary suspiciously small ($SIZE bytes): $BIN"[0m
+2026-05-19T21:30:37.9709870Z [36;1m  fi[0m
+2026-05-19T21:30:37.9709970Z [36;1m  echo "Binary size: $SIZE bytes"[0m
+2026-05-19T21:30:37.9710110Z [36;1mdone[0m
+2026-05-19T21:30:37.9710200Z [36;1m[0m
+2026-05-19T21:30:37.9710310Z [36;1mecho "Binary architecture: OK"[0m
+2026-05-19T21:30:37.9710450Z [36;1m[0m
+2026-05-19T21:30:37.9710540Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9710690Z [36;1m# 4. CODE SIGNATURE INTEGRITY[0m
+2026-05-19T21:30:37.9710820Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9710980Z [36;1mecho ""[0m
+2026-05-19T21:30:37.9711100Z [36;1mecho "[4/10] Code Signature Check"[0m
+2026-05-19T21:30:37.9711240Z [36;1mecho "----------------------------"[0m
+2026-05-19T21:30:37.9711370Z [36;1m[0m
+2026-05-19T21:30:37.9711450Z [36;1mfor BUNDLE in "$VST3" "$CLAP"; do[0m
+2026-05-19T21:30:37.9711580Z [36;1m  echo "Checking $(basename $BUNDLE)..."[0m
+2026-05-19T21:30:37.9711720Z [36;1m[0m
+2026-05-19T21:30:37.9711860Z [36;1m  # Strict signature verification (no --deep here, check bundle itself)[0m
+2026-05-19T21:30:37.9712160Z [36;1m  codesign -vvv "$BUNDLE" || error "Signature verification failed for $(basename $BUNDLE)"[0m
+2026-05-19T21:30:37.9712920Z [36;1m[0m
+2026-05-19T21:30:37.9713220Z [36;1m  # Verify signature is ad-hoc[0m
+2026-05-19T21:30:37.9713560Z [36;1m  CS_INFO=$(codesign -dvv "$BUNDLE" 2>&1)[0m
+2026-05-19T21:30:37.9714120Z [36;1m  echo "$CS_INFO"[0m
+2026-05-19T21:30:37.9714730Z [36;1m  echo "$CS_INFO" | grep -q "Signature=adhoc" || error "Not ad-hoc signed: $(basename $BUNDLE)"[0m
+2026-05-19T21:30:37.9715650Z [36;1m    # Allow either adhoc,runtime or just adhoc (macOS 15+ can't embed entitlements ad-hoc)[0m
+2026-05-19T21:30:37.9716230Z [36;1m    if echo "$CS_INFO" | grep -q "adhoc,runtime"; then[0m
+2026-05-19T21:30:37.9716610Z [36;1m      echo "  Hardened runtime: enabled"[0m
+2026-05-19T21:30:37.9716940Z [36;1m    else[0m
+2026-05-19T21:30:37.9717420Z [36;1m      echo "  Hardened runtime: disabled (expected — ad-hoc on macOS 15+ can't embed entitlements)"[0m
+2026-05-19T21:30:37.9717960Z [36;1m    fi[0m
+2026-05-19T21:30:37.9718140Z [36;1m[0m
+2026-05-19T21:30:37.9718410Z [36;1m  # Verify CodeDirectory exists and is sealed[0m
+2026-05-19T21:30:37.9718990Z [36;1m  echo "$CS_INFO" | grep -q "Sealed Resources" || error "Sealed Resources missing: $(basename $BUNDLE)"[0m
+2026-05-19T21:30:37.9720200Z [36;1m[0m
+2026-05-19T21:30:37.9721100Z [36;1m  # Check that no files are modified after signing[0m
+2026-05-19T21:30:37.9721630Z [36;1m  if codesign -vvv "$BUNDLE" 2>&1 | grep -qi "modified"; then[0m
+2026-05-19T21:30:37.9722070Z [36;1m    error "Files modified after signing in $(basename $BUNDLE)"[0m
+2026-05-19T21:30:37.9722280Z [36;1m  fi[0m
+2026-05-19T21:30:37.9722400Z [36;1mdone[0m
+2026-05-19T21:30:37.9722480Z [36;1m[0m
+2026-05-19T21:30:37.9722570Z [36;1mecho "Code signature: OK"[0m
+2026-05-19T21:30:37.9722720Z [36;1m[0m
+2026-05-19T21:30:37.9722850Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9723100Z [36;1m# 5. ENTITLEMENTS (skip if no hardened runtime — ad-hoc on macOS 15+ can't embed)[0m
+2026-05-19T21:30:37.9723330Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9723860Z [36;1mecho ""[0m
+2026-05-19T21:30:37.9724180Z [36;1mecho "[5/10] Entitlements Check"[0m
+2026-05-19T21:30:37.9724510Z [36;1mecho "-------------------------"[0m
+2026-05-19T21:30:37.9724790Z [36;1m[0m
+2026-05-19T21:30:37.9725040Z [36;1mcheck_entitlements() {[0m
+2026-05-19T21:30:37.9725290Z [36;1m  local BIN="$1"[0m
+2026-05-19T21:30:37.9725520Z [36;1m  local NAME="$2"[0m
+2026-05-19T21:30:37.9725830Z [36;1m  local CS_INFO=$(codesign -dvv "$BIN" 2>&1 || echo "")[0m
+2026-05-19T21:30:37.9726460Z [36;1m  if echo "$CS_INFO" | grep -q "runtime"; then[0m
+2026-05-19T21:30:37.9727100Z [36;1m    # Hardened runtime is enabled — check entitlements[0m
+2026-05-19T21:30:37.9727660Z [36;1m    local ENTITLEMENTS=$(codesign -d --entitlements - "$BIN" 2>/dev/null || echo "")[0m
+2026-05-19T21:30:37.9727950Z [36;1m    if [ -z "$ENTITLEMENTS" ]; then[0m
+2026-05-19T21:30:37.9728150Z [36;1m      error "No entitlements found in $NAME (has hardened runtime)"[0m
+2026-05-19T21:30:37.9728320Z [36;1m    else[0m
+2026-05-19T21:30:37.9728530Z [36;1m      echo "$ENTITLEMENTS" | grep -q "com.apple.security.cs.disable-library-validation" || \[0m
+2026-05-19T21:30:37.9729420Z [36;1m        error "Missing disable-library-validation entitlement in $NAME"[0m
+2026-05-19T21:30:37.9729880Z [36;1m    fi[0m
+2026-05-19T21:30:37.9730090Z [36;1m  else[0m
+2026-05-19T21:30:37.9730460Z [36;1m    echo "SKIP: $NAME has no hardened runtime — entitlements not applicable"[0m
+2026-05-19T21:30:37.9731000Z [36;1m  fi[0m
+2026-05-19T21:30:37.9731620Z [36;1m}[0m
+2026-05-19T21:30:37.9731830Z [36;1m[0m
+2026-05-19T21:30:37.9732070Z [36;1mcheck_entitlements "$VST3_BIN" "VST3"[0m
+2026-05-19T21:30:37.9732680Z [36;1mcheck_entitlements "$CLAP_BIN" "CLAP"[0m
+2026-05-19T21:30:37.9732990Z [36;1m[0m
+2026-05-19T21:30:37.9733230Z [36;1mecho "Entitlements: OK"[0m
+2026-05-19T21:30:37.9733400Z [36;1m[0m
+2026-05-19T21:30:37.9733530Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9733700Z [36;1m# 6. BINARY LINKING & DEPENDENCIES[0m
+2026-05-19T21:30:37.9733850Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9734020Z [36;1mecho ""[0m
+2026-05-19T21:30:37.9734140Z [36;1mecho "[6/10] Binary Dependencies Check"[0m
+2026-05-19T21:30:37.9734290Z [36;1mecho "---------------------------------"[0m
+2026-05-19T21:30:37.9734470Z [36;1m[0m
+2026-05-19T21:30:37.9734570Z [36;1mfor BIN in "$VST3_BIN" "$CLAP_BIN"; do[0m
+2026-05-19T21:30:37.9734760Z [36;1m  echo "Checking $(basename $(dirname $(dirname $BIN)))/$(basename $BIN)..."[0m
+2026-05-19T21:30:37.9734950Z [36;1m[0m
+2026-05-19T21:30:37.9735070Z [36;1m  # Check for required frameworks[0m
+2026-05-19T21:30:37.9735210Z [36;1m  OTOOL_OUT=$(otool -L "$BIN" 2>&1)[0m
+2026-05-19T21:30:37.9735330Z [36;1m  echo "$OTOOL_OUT"[0m
+2026-05-19T21:30:37.9735420Z [36;1m[0m
+2026-05-19T21:30:37.9735500Z [36;1m  # Must link Metal (for UI)[0m
+2026-05-19T21:30:37.9735730Z [36;1m  echo "$OTOOL_OUT" | grep -q "Metal.framework" || error "Metal.framework not linked: $(basename $BIN)"[0m
+2026-05-19T21:30:37.9736000Z [36;1m[0m
+2026-05-19T21:30:37.9736370Z [36;1m  # Must link MetalKit[0m
+2026-05-19T21:30:37.9736650Z [36;1m  echo "$OTOOL_OUT" | grep -q "MetalKit.framework" || error "MetalKit.framework not linked: $(basename $BIN)"[0m
+2026-05-19T21:30:37.9736930Z [36;1m[0m
+2026-05-19T21:30:37.9737040Z [36;1m  # Must NOT have unresolvable @rpath references[0m
+2026-05-19T21:30:37.9737220Z [36;1m  if echo "$OTOOL_OUT" | grep -q "@rpath.*not found"; then[0m
+2026-05-19T21:30:37.9737450Z [36;1m    error "Unresolved @rpath reference in $(basename $BIN)"[0m
+2026-05-19T21:30:37.9737640Z [36;1m  fi[0m
+2026-05-19T21:30:37.9737730Z [36;1m[0m
+2026-05-19T21:30:37.9738410Z [36;1m  # Check for suspicious dylib dependencies (shouldn't depend on Homebrew/etc)[0m
+2026-05-19T21:30:37.9739390Z [36;1m  if echo "$OTOOL_OUT" | grep -Ei "/usr/local/|/opt/homebrew/|/brew/"; then[0m
+2026-05-19T21:30:37.9740240Z [36;1m    error "Binary depends on Homebrew paths: $(basename $BIN)"[0m
+2026-05-19T21:30:37.9740630Z [36;1m  fi[0m
+2026-05-19T21:30:37.9740970Z [36;1mdone[0m
+2026-05-19T21:30:37.9741160Z [36;1m[0m
+2026-05-19T21:30:37.9741410Z [36;1mecho "Binary dependencies: OK"[0m
+2026-05-19T21:30:37.9741680Z [36;1m[0m
+2026-05-19T21:30:37.9742320Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9742540Z [36;1m# 7. MODULEINFO.JSON (VST3 only)[0m
+2026-05-19T21:30:37.9742730Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9743230Z [36;1mecho ""[0m
+2026-05-19T21:30:37.9743520Z [36;1mecho "[7/10] moduleinfo.json Check"[0m
+2026-05-19T21:30:37.9744020Z [36;1mecho "-----------------------------"[0m
+2026-05-19T21:30:37.9744310Z [36;1m[0m
+2026-05-19T21:30:37.9744600Z [36;1mif [ -f "$VST3/Contents/Resources/moduleinfo.json" ]; then[0m
+2026-05-19T21:30:37.9744990Z [36;1m  # Valid JSON[0m
+2026-05-19T21:30:37.9746120Z [36;1m  python3 -c "import json; json.load(open('$VST3/Contents/Resources/moduleinfo.json'))" || error "Invalid JSON in moduleinfo.json"[0m
+2026-05-19T21:30:37.9746890Z [36;1m[0m
+2026-05-19T21:30:37.9747120Z [36;1m  # Required fields[0m
+2026-05-19T21:30:37.9747790Z [36;1m  MOD_NAME=$(python3 -c "import json; print(json.load(open('$VST3/Contents/Resources/moduleinfo.json')).get('Name',''))")[0m
+2026-05-19T21:30:37.9749110Z [36;1m  MOD_VER=$(python3 -c "import json; print(json.load(open('$VST3/Contents/Resources/moduleinfo.json')).get('Version',''))")[0m
+2026-05-19T21:30:37.9750140Z [36;1m  MOD_SDK=$(python3 -c "import json; print(json.load(open('$VST3/Contents/Resources/moduleinfo.json')).get('SDKVersion',''))")[0m
+2026-05-19T21:30:37.9751170Z [36;1m[0m
+2026-05-19T21:30:37.9751810Z [36;1m  [ "$MOD_NAME" = "Freeze95" ] || error "moduleinfo.json Name mismatch: got '$MOD_NAME'"[0m
+2026-05-19T21:30:37.9752690Z [36;1m  [ -n "$MOD_VER" ] || error "moduleinfo.json Version is empty"[0m
+2026-05-19T21:30:37.9753100Z [36;1m  echo "$MOD_SDK" | grep -q "VST" || error "moduleinfo.json SDKVersion must contain 'VST', got '$MOD_SDK'"[0m
+2026-05-19T21:30:37.9753390Z [36;1m[0m
+2026-05-19T21:30:37.9753510Z [36;1m  echo "moduleinfo.json: OK (Name=$MOD_NAME, Version=$MOD_VER)"[0m
+2026-05-19T21:30:37.9753670Z [36;1melse[0m
+2026-05-19T21:30:37.9753770Z [36;1m  error "moduleinfo.json missing"[0m
+2026-05-19T21:30:37.9754210Z [36;1mfi[0m
+2026-05-19T21:30:37.9754360Z [36;1m[0m
+2026-05-19T21:30:37.9754490Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9754660Z [36;1m# 8. BUNDLE SIZE SANITY CHECKS[0m
+2026-05-19T21:30:37.9754810Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9754940Z [36;1mecho ""[0m
+2026-05-19T21:30:37.9755050Z [36;1mecho "[8/10] Bundle Size Check"[0m
+2026-05-19T21:30:37.9755170Z [36;1mecho "------------------------"[0m
+2026-05-19T21:30:37.9755380Z [36;1m[0m
+2026-05-19T21:30:37.9755490Z [36;1mfor BUNDLE in "$VST3" "$CLAP"; do[0m
+2026-05-19T21:30:37.9755640Z [36;1m  SIZE=$(du -sk "$BUNDLE" | awk '{print $1}')[0m
+2026-05-19T21:30:37.9756470Z [36;1m  echo "$(basename $BUNDLE): ${SIZE}KB"[0m
+2026-05-19T21:30:37.9756840Z [36;1m[0m
+2026-05-19T21:30:37.9756960Z [36;1m  # A real plugin should be > 500KB, < 200MB[0m
+2026-05-19T21:30:37.9757130Z [36;1m  if [ "$SIZE" -lt 500 ]; then[0m
+2026-05-19T21:30:37.9757300Z [36;1m    error "Bundle suspiciously small (${SIZE}KB): $(basename $BUNDLE)"[0m
+2026-05-19T21:30:37.9757470Z [36;1m  fi[0m
+2026-05-19T21:30:37.9757590Z [36;1m  if [ "$SIZE" -gt 204800 ]; then[0m
+2026-05-19T21:30:37.9757760Z [36;1m    error "Bundle suspiciously large (${SIZE}KB): $(basename $BUNDLE)"[0m
+2026-05-19T21:30:37.9757940Z [36;1m  fi[0m
+2026-05-19T21:30:37.9758040Z [36;1mdone[0m
+2026-05-19T21:30:37.9758450Z [36;1m[0m
+2026-05-19T21:30:37.9758600Z [36;1mecho "Bundle size: OK"[0m
+2026-05-19T21:30:37.9758750Z [36;1m[0m
+2026-05-19T21:30:37.9758900Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9759080Z [36;1m# 9. QUARANTINE / EXTENDED ATTRIBUTES[0m
+2026-05-19T21:30:37.9759270Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9759410Z [36;1mecho ""[0m
+2026-05-19T21:30:37.9759520Z [36;1mecho "[9/10] Extended Attributes Check"[0m
+2026-05-19T21:30:37.9759680Z [36;1mecho "---------------------------------"[0m
+2026-05-19T21:30:37.9759810Z [36;1m[0m
+2026-05-19T21:30:37.9759900Z [36;1mfor BUNDLE in "$VST3" "$CLAP"; do[0m
+2026-05-19T21:30:37.9760070Z [36;1m  XATTRS=$(xattr -l "$BUNDLE" 2>/dev/null || echo "")[0m
+2026-05-19T21:30:37.9760420Z [36;1m  if echo "$XATTRS" | grep -q "com.apple.quarantine"; then[0m
+2026-05-19T21:30:37.9760650Z [36;1m    error "Quarantine attribute still present on $(basename $BUNDLE)"[0m
+2026-05-19T21:30:37.9760820Z [36;1m  fi[0m
+2026-05-19T21:30:37.9760970Z [36;1m  echo "$(basename $BUNDLE) extended attributes: OK"[0m
+2026-05-19T21:30:37.9761810Z [36;1mdone[0m
+2026-05-19T21:30:37.9762030Z [36;1m[0m
+2026-05-19T21:30:37.9762230Z [36;1mecho "Extended attributes: OK"[0m
+2026-05-19T21:30:37.9762810Z [36;1m[0m
+2026-05-19T21:30:37.9763090Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9763460Z [36;1m# 10. BINARY HEADERS & FLAGS[0m
+2026-05-19T21:30:37.9763790Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9764240Z [36;1mecho ""[0m
+2026-05-19T21:30:37.9764540Z [36;1mecho "[10/10] Mach-O Header Flags"[0m
+2026-05-19T21:30:37.9764930Z [36;1mecho "----------------------------"[0m
+2026-05-19T21:30:37.9765280Z [36;1m[0m
+2026-05-19T21:30:37.9765370Z [36;1mfor BIN in "$VST3_BIN" "$CLAP_BIN"; do[0m
+2026-05-19T21:30:37.9765570Z [36;1m  echo "Checking $(basename $(dirname $(dirname $BIN)))/$(basename $BIN)..."[0m
+2026-05-19T21:30:37.9765770Z [36;1m[0m
+2026-05-19T21:30:37.9765910Z [36;1m  # Check for position-independent executable (PIE) flag[0m
+2026-05-19T21:30:37.9766090Z [36;1m  # All modern macOS binaries should have this[0m
+2026-05-19T21:30:37.9766250Z [36;1m  if ! otool -hv "$BIN" 2>/dev/null | grep -q "PIE"; then[0m
+2026-05-19T21:30:37.9766480Z [36;1m    echo "WARNING: PIE flag not found in $(basename $BIN)"[0m
+2026-05-19T21:30:37.9766620Z [36;1m  fi[0m
+2026-05-19T21:30:37.9766700Z [36;1m[0m
+2026-05-19T21:30:37.9766780Z [36;1m  # Check minimum OS version in binary[0m
+2026-05-19T21:30:37.9767150Z [36;1m  MINOS=$(otool -l "$BIN" 2>/dev/null | grep -A2 "LC_BUILD_VERSION" | grep "minos" | awk '{print $2}' | head -1 || echo "")[0m
+2026-05-19T21:30:37.9767490Z [36;1m  if [ -n "$MINOS" ]; then[0m
+2026-05-19T21:30:37.9767660Z [36;1m    echo "Minimum OS version: $MINOS"[0m
+2026-05-19T21:30:37.9767900Z [36;1m  fi[0m
+2026-05-19T21:30:37.9767990Z [36;1mdone[0m
+2026-05-19T21:30:37.9768070Z [36;1m[0m
+2026-05-19T21:30:37.9768140Z [36;1mecho "Mach-O headers: OK"[0m
+2026-05-19T21:30:37.9768240Z [36;1m[0m
+2026-05-19T21:30:37.9768330Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9768470Z [36;1m# SUMMARY[0m
+2026-05-19T21:30:37.9768750Z [36;1m# ============================================================[0m
+2026-05-19T21:30:37.9769070Z [36;1mecho ""[0m
+2026-05-19T21:30:37.9769180Z [36;1mecho "========================================"[0m
+2026-05-19T21:30:37.9769320Z [36;1mif [ "$ERRORS" -eq 0 ]; then[0m
+2026-05-19T21:30:37.9769470Z [36;1m  echo "ALL VALIDATIONS PASSED (10/10)"[0m
+2026-05-19T21:30:37.9769670Z [36;1m  echo "========================================"[0m
+2026-05-19T21:30:37.9769800Z [36;1m  exit 0[0m
+2026-05-19T21:30:37.9769870Z [36;1melse[0m
+2026-05-19T21:30:37.9769980Z [36;1m  echo "VALIDATION FAILED: $ERRORS error(s) found"[0m
+2026-05-19T21:30:37.9770130Z [36;1m  echo "========================================"[0m
+2026-05-19T21:30:37.9770250Z [36;1m  exit 1[0m
+2026-05-19T21:30:37.9770330Z [36;1mfi[0m
+2026-05-19T21:30:37.9886300Z shell: /bin/bash -e {0}
+2026-05-19T21:30:37.9886470Z env:
+2026-05-19T21:30:37.9886560Z   BINARY_NAME: Freeze95
+2026-05-19T21:30:37.9886660Z ##[endgroup]
+2026-05-19T21:30:38.0412660Z ========================================
+2026-05-19T21:30:38.0413370Z COMPREHENSIVE MACOS PLUGIN VALIDATION
+2026-05-19T21:30:38.0413680Z ========================================
+2026-05-19T21:30:38.0413870Z 
+2026-05-19T21:30:38.0413980Z [1/10] Bundle Structure Check
+2026-05-19T21:30:38.0414230Z ------------------------------
+2026-05-19T21:30:38.0453300Z Checking Freeze95.vst3...
+2026-05-19T21:30:38.0474820Z Checking Freeze95.clap...
+2026-05-19T21:30:38.0591600Z Bundle structure: OK
+2026-05-19T21:30:38.0591800Z 
+2026-05-19T21:30:38.0591990Z [2/10] Info.plist Validation
+2026-05-19T21:30:38.0592410Z -----------------------------
+2026-05-19T21:30:38.0613490Z Checking Freeze95.vst3/Contents/Info.plist...
+2026-05-19T21:30:38.1520780Z Checking Freeze95.clap/Contents/Info.plist...
+2026-05-19T21:30:38.2258450Z Info.plist: OK
+2026-05-19T21:30:38.2258750Z 
+2026-05-19T21:30:38.2258860Z [3/10] Binary Architecture Check
+2026-05-19T21:30:38.2259230Z ---------------------------------
+2026-05-19T21:30:38.2423810Z Checking Contents/Freeze95...
+2026-05-19T21:30:39.5222920Z Architectures in the fat file: Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95 are: x86_64 arm64 
+2026-05-19T21:30:39.5357300Z Binary size: 3965872 bytes
+2026-05-19T21:30:39.5495530Z Checking Contents/Freeze95...
+2026-05-19T21:30:39.5696350Z Architectures in the fat file: Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95 are: x86_64 arm64 
+2026-05-19T21:30:39.5828760Z Binary size: 3140816 bytes
+2026-05-19T21:30:39.5829160Z Binary architecture: OK
+2026-05-19T21:30:39.5829340Z 
+2026-05-19T21:30:39.5829420Z [4/10] Code Signature Check
+2026-05-19T21:30:39.5829730Z ----------------------------
+2026-05-19T21:30:39.5872180Z Checking Freeze95.vst3...
+2026-05-19T21:30:39.6016200Z Freeze95/build-mac/Products/Freeze95.vst3: valid on disk
+2026-05-19T21:30:39.6018690Z Freeze95/build-mac/Products/Freeze95.vst3: satisfies its Designated Requirement
+2026-05-19T21:30:39.6145280Z Executable=/Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95
+2026-05-19T21:30:39.6146250Z Identifier=com.cloph.Freeze95
+2026-05-19T21:30:39.6147670Z Format=bundle with Mach-O universal (x86_64 arm64)
+2026-05-19T21:30:39.6148290Z CodeDirectory v=20400 size=3915 flags=0x2(adhoc) hashes=116+3 location=embedded
+2026-05-19T21:30:39.6148590Z Signature=adhoc
+2026-05-19T21:30:39.6148730Z Info.plist entries=22
+2026-05-19T21:30:39.6148920Z TeamIdentifier=not set
+2026-05-19T21:30:39.6149060Z Sealed Resources version=2 rules=13 files=2
+2026-05-19T21:30:39.6149290Z Internal requirements count=0 size=12
+2026-05-19T21:30:39.6247490Z   Hardened runtime: disabled (expected — ad-hoc on macOS 15+ can't embed entitlements)
+2026-05-19T21:30:39.6501860Z Checking Freeze95.clap...
+2026-05-19T21:30:39.6630840Z Freeze95/build-mac/Products/Freeze95.clap: valid on disk
+2026-05-19T21:30:39.6636870Z Freeze95/build-mac/Products/Freeze95.clap: satisfies its Designated Requirement
+2026-05-19T21:30:39.6766950Z Executable=/Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95
+2026-05-19T21:30:39.6768730Z Identifier=com.cloph.Freeze95
+2026-05-19T21:30:39.6769100Z Format=bundle with Mach-O universal (x86_64 arm64)
+2026-05-19T21:30:39.6769620Z CodeDirectory v=20400 size=3115 flags=0x2(adhoc) hashes=91+3 location=embedded
+2026-05-19T21:30:39.6770140Z Signature=adhoc
+2026-05-19T21:30:39.6770360Z Info.plist entries=22
+2026-05-19T21:30:39.6770600Z TeamIdentifier=not set
+2026-05-19T21:30:39.6770870Z Sealed Resources version=2 rules=13 files=1
+2026-05-19T21:30:39.6771240Z Internal requirements count=0 size=12
+2026-05-19T21:30:39.6853800Z   Hardened runtime: disabled (expected — ad-hoc on macOS 15+ can't embed entitlements)
+2026-05-19T21:30:39.7044780Z Code signature: OK
+2026-05-19T21:30:39.7044940Z 
+2026-05-19T21:30:39.7045000Z [5/10] Entitlements Check
+2026-05-19T21:30:39.7045140Z -------------------------
+2026-05-19T21:30:39.7217670Z SKIP: VST3 has no hardened runtime — entitlements not applicable
+2026-05-19T21:30:39.7403990Z SKIP: CLAP has no hardened runtime — entitlements not applicable
+2026-05-19T21:30:39.7407810Z Entitlements: OK
+2026-05-19T21:30:39.7408190Z 
+2026-05-19T21:30:39.7408240Z [6/10] Binary Dependencies Check
+2026-05-19T21:30:39.7408400Z ---------------------------------
+2026-05-19T21:30:39.7498300Z Checking Contents/Freeze95...
+2026-05-19T21:30:40.5287750Z Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95 (architecture x86_64):
+2026-05-19T21:30:40.5290080Z 	/System/Library/Frameworks/Metal.framework/Versions/A/Metal (compatibility version 1.0.0, current version 372.16.0)
+2026-05-19T21:30:40.5293780Z 	/System/Library/Frameworks/MetalKit.framework/Versions/A/MetalKit (compatibility version 1.0.0, current version 173.7.0)
+2026-05-19T21:30:40.5295830Z 	/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa (compatibility version 1.0.0, current version 24.0.0)
+2026-05-19T21:30:40.5297340Z 	/System/Library/Frameworks/Carbon.framework/Versions/A/Carbon (compatibility version 2.0.0, current version 170.0.0)
+2026-05-19T21:30:40.5299020Z 	/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 4424.1.255)
+2026-05-19T21:30:40.5300180Z 	/System/Library/Frameworks/CoreData.framework/Versions/A/CoreData (compatibility version 1.0.0, current version 1526.0.0)
+2026-05-19T21:30:40.5301550Z 	/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 4424.1.255)
+2026-05-19T21:30:40.5303440Z 	/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1226.0.0)
+2026-05-19T21:30:40.5304710Z 	/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore (compatibility version 1.2.0, current version 1195.9.0)
+2026-05-19T21:30:40.5305150Z 	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+2026-05-19T21:30:40.5305780Z 	/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2100.43.0)
+2026-05-19T21:30:40.5306540Z 	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)
+2026-05-19T21:30:40.5307370Z 	/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit (compatibility version 45.0.0, current version 2685.50.119)
+2026-05-19T21:30:40.5308470Z 	/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (compatibility version 64.0.0, current version 1965.4.5)
+2026-05-19T21:30:40.5309600Z 	/System/Library/Frameworks/CoreText.framework/Versions/A/CoreText (compatibility version 1.0.0, current version 877.4.0)
+2026-05-19T21:30:40.5310490Z Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95 (architecture arm64):
+2026-05-19T21:30:40.5311380Z 	/System/Library/Frameworks/Metal.framework/Versions/A/Metal (compatibility version 1.0.0, current version 372.16.0)
+2026-05-19T21:30:40.5312400Z 	/System/Library/Frameworks/MetalKit.framework/Versions/A/MetalKit (compatibility version 1.0.0, current version 173.7.0)
+2026-05-19T21:30:40.5314600Z 	/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa (compatibility version 1.0.0, current version 24.0.0)
+2026-05-19T21:30:40.5315090Z 	/System/Library/Frameworks/Carbon.framework/Versions/A/Carbon (compatibility version 2.0.0, current version 170.0.0)
+2026-05-19T21:30:40.5315590Z 	/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 4424.1.255)
+2026-05-19T21:30:40.5316470Z 	/System/Library/Frameworks/CoreData.framework/Versions/A/CoreData (compatibility version 1.0.0, current version 1526.0.0)
+2026-05-19T21:30:40.5317550Z 	/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 4424.1.255)
+2026-05-19T21:30:40.5318200Z 	/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1226.0.0)
+2026-05-19T21:30:40.5318760Z 	/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore (compatibility version 1.2.0, current version 1195.9.0)
+2026-05-19T21:30:40.5319150Z 	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+2026-05-19T21:30:40.5319450Z 	/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2100.43.0)
+2026-05-19T21:30:40.5319910Z 	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)
+2026-05-19T21:30:40.5320360Z 	/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit (compatibility version 45.0.0, current version 2685.50.119)
+2026-05-19T21:30:40.5320900Z 	/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (compatibility version 64.0.0, current version 1965.4.5)
+2026-05-19T21:30:40.5321440Z 	/System/Library/Frameworks/CoreText.framework/Versions/A/CoreText (compatibility version 1.0.0, current version 877.4.0)
+2026-05-19T21:30:40.5608380Z Checking Contents/Freeze95...
+2026-05-19T21:30:40.5843940Z Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95 (architecture x86_64):
+2026-05-19T21:30:40.5844620Z 	/System/Library/Frameworks/Metal.framework/Versions/A/Metal (compatibility version 1.0.0, current version 372.16.0)
+2026-05-19T21:30:40.5845120Z 	/System/Library/Frameworks/MetalKit.framework/Versions/A/MetalKit (compatibility version 1.0.0, current version 173.7.0)
+2026-05-19T21:30:40.5845560Z 	/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa (compatibility version 1.0.0, current version 24.0.0)
+2026-05-19T21:30:40.5846010Z 	/System/Library/Frameworks/Carbon.framework/Versions/A/Carbon (compatibility version 2.0.0, current version 170.0.0)
+2026-05-19T21:30:40.5846510Z 	/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 4424.1.255)
+2026-05-19T21:30:40.5847210Z 	/System/Library/Frameworks/CoreData.framework/Versions/A/CoreData (compatibility version 1.0.0, current version 1526.0.0)
+2026-05-19T21:30:40.5847720Z 	/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 4424.1.255)
+2026-05-19T21:30:40.5848260Z 	/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1226.0.0)
+2026-05-19T21:30:40.5848890Z 	/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore (compatibility version 1.2.0, current version 1195.9.0)
+2026-05-19T21:30:40.5849280Z 	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+2026-05-19T21:30:40.5849580Z 	/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2100.43.0)
+2026-05-19T21:30:40.5849890Z 	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)
+2026-05-19T21:30:40.5850270Z 	/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit (compatibility version 45.0.0, current version 2685.50.119)
+2026-05-19T21:30:40.5851130Z 	/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (compatibility version 64.0.0, current version 1965.4.5)
+2026-05-19T21:30:40.5852040Z 	/System/Library/Frameworks/CoreText.framework/Versions/A/CoreText (compatibility version 1.0.0, current version 877.4.0)
+2026-05-19T21:30:40.5852410Z Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95 (architecture arm64):
+2026-05-19T21:30:40.5852810Z 	/System/Library/Frameworks/Metal.framework/Versions/A/Metal (compatibility version 1.0.0, current version 372.16.0)
+2026-05-19T21:30:40.5853370Z 	/System/Library/Frameworks/MetalKit.framework/Versions/A/MetalKit (compatibility version 1.0.0, current version 173.7.0)
+2026-05-19T21:30:40.5853920Z 	/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa (compatibility version 1.0.0, current version 24.0.0)
+2026-05-19T21:30:40.5854370Z 	/System/Library/Frameworks/Carbon.framework/Versions/A/Carbon (compatibility version 2.0.0, current version 170.0.0)
+2026-05-19T21:30:40.5854840Z 	/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 4424.1.255)
+2026-05-19T21:30:40.5855380Z 	/System/Library/Frameworks/CoreData.framework/Versions/A/CoreData (compatibility version 1.0.0, current version 1526.0.0)
+2026-05-19T21:30:40.5855830Z 	/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 4424.1.255)
+2026-05-19T21:30:40.5856290Z 	/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1226.0.0)
+2026-05-19T21:30:40.5856800Z 	/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore (compatibility version 1.2.0, current version 1195.9.0)
+2026-05-19T21:30:40.5857160Z 	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+2026-05-19T21:30:40.5857480Z 	/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2100.43.0)
+2026-05-19T21:30:40.5857760Z 	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)
+2026-05-19T21:30:40.5858130Z 	/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit (compatibility version 45.0.0, current version 2685.50.119)
+2026-05-19T21:30:40.5858620Z 	/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (compatibility version 64.0.0, current version 1965.4.5)
+2026-05-19T21:30:40.5859200Z 	/System/Library/Frameworks/CoreText.framework/Versions/A/CoreText (compatibility version 1.0.0, current version 877.4.0)
+2026-05-19T21:30:40.6035960Z Binary dependencies: OK
+2026-05-19T21:30:40.6036320Z 
+2026-05-19T21:30:40.6036450Z [7/10] moduleinfo.json Check
+2026-05-19T21:30:40.6037330Z -----------------------------
+2026-05-19T21:30:40.8277620Z moduleinfo.json: OK (Name=Freeze95, Version=1.0.0)
+2026-05-19T21:30:40.8278710Z 
+2026-05-19T21:30:40.8278940Z [8/10] Bundle Size Check
+2026-05-19T21:30:40.8280150Z ------------------------
+2026-05-19T21:30:40.8370830Z Freeze95.vst3: 4036KB
+2026-05-19T21:30:40.8459790Z Freeze95.clap: 3224KB
+2026-05-19T21:30:40.8460850Z Bundle size: OK
+2026-05-19T21:30:40.8461210Z 
+2026-05-19T21:30:40.8461390Z [9/10] Extended Attributes Check
+2026-05-19T21:30:40.8461640Z ---------------------------------
+2026-05-19T21:30:40.8577360Z Freeze95.vst3 extended attributes: OK
+2026-05-19T21:30:40.8692720Z Freeze95.clap extended attributes: OK
+2026-05-19T21:30:40.8693340Z Extended attributes: OK
+2026-05-19T21:30:40.8694190Z 
+2026-05-19T21:30:40.8694480Z [10/10] Mach-O Header Flags
+2026-05-19T21:30:40.8694780Z ----------------------------
+2026-05-19T21:30:40.8811620Z Checking Contents/Freeze95...
+2026-05-19T21:30:40.9018630Z WARNING: PIE flag not found in Freeze95
+2026-05-19T21:30:40.9285970Z Checking Contents/Freeze95...
+2026-05-19T21:30:40.9483690Z WARNING: PIE flag not found in Freeze95
+2026-05-19T21:30:40.9635470Z Mach-O headers: OK
+2026-05-19T21:30:40.9635700Z 
+2026-05-19T21:30:40.9636050Z ========================================
+2026-05-19T21:30:40.9636670Z ALL VALIDATIONS PASSED (10/10)
+2026-05-19T21:30:40.9637150Z ========================================

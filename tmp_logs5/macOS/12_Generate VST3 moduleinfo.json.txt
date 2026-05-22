@@ -1,0 +1,27 @@
+﻿2026-05-19T21:37:19.6737430Z ##[group]Run mkdir -p Freeze95/build-mac/Products/Freeze95.vst3/Contents/Resources
+2026-05-19T21:37:19.6738210Z [36;1mmkdir -p Freeze95/build-mac/Products/Freeze95.vst3/Contents/Resources[0m
+2026-05-19T21:37:19.6738800Z [36;1mcat > Freeze95/build-mac/Products/Freeze95.vst3/Contents/Resources/moduleinfo.json << 'JSONEOF'[0m
+2026-05-19T21:37:19.6739140Z [36;1m{[0m
+2026-05-19T21:37:19.6739310Z [36;1m  "Name": "Freeze95",[0m
+2026-05-19T21:37:19.6739780Z [36;1m  "Version": "1.0.0",[0m
+2026-05-19T21:37:19.6739960Z [36;1m  "SDKVersion": "VST 3.7.0",[0m
+2026-05-19T21:37:19.6740160Z [36;1m  "URL": "https://cloph-dsp.github.io",[0m
+2026-05-19T21:37:19.6740440Z [36;1m  "Email": "",[0m
+2026-05-19T21:37:19.6740610Z [36;1m  "Flags": {[0m
+2026-05-19T21:37:19.6740770Z [36;1m    "Unicode": true[0m
+2026-05-19T21:37:19.6741060Z [36;1m  }[0m
+2026-05-19T21:37:19.6741260Z [36;1m}[0m
+2026-05-19T21:37:19.6741390Z [36;1mJSONEOF[0m
+2026-05-19T21:37:19.6741630Z [36;1m# Re-sign VST3 binary (moduleinfo.json addition invalidated the bundle)[0m
+2026-05-19T21:37:19.6742070Z [36;1m# WARNING: macOS 15+ ad-hoc CANNOT embed entitlements. Don't use --options=runtime[0m
+2026-05-19T21:37:19.6742520Z [36;1m# or --entitlements — hardened runtime without entitlements blocks dlopen in DAWs.[0m
+2026-05-19T21:37:19.6743150Z [36;1mVST3_BIN="Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95"[0m
+2026-05-19T21:37:19.6743610Z [36;1mcodesign --force --sign - "$VST3_BIN"[0m
+2026-05-19T21:37:19.6743920Z [36;1m# Then re-sign bundle wrapper[0m
+2026-05-19T21:37:19.6744200Z [36;1mcodesign --force --sign - Freeze95/build-mac/Products/Freeze95.vst3[0m
+2026-05-19T21:37:19.6865390Z shell: /bin/bash -e {0}
+2026-05-19T21:37:19.6865640Z env:
+2026-05-19T21:37:19.6865900Z   BINARY_NAME: Freeze95
+2026-05-19T21:37:19.6866100Z ##[endgroup]
+2026-05-19T21:37:19.7443710Z Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95: replacing existing signature
+2026-05-19T21:37:19.7670510Z Freeze95/build-mac/Products/Freeze95.vst3: replacing existing signature

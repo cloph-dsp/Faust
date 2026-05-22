@@ -1,0 +1,18 @@
+﻿2026-05-19T21:30:37.2437900Z ##[group]Run for BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do
+2026-05-19T21:30:37.2439620Z [36;1mfor BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do[0m
+2026-05-19T21:30:37.2440290Z [36;1m  PLIST="$BUNDLE/Contents/Info.plist"[0m
+2026-05-19T21:30:37.2440620Z [36;1m  if [ -f "$PLIST" ]; then[0m
+2026-05-19T21:30:37.2441090Z [36;1m    /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Freeze95" "$PLIST" || true[0m
+2026-05-19T21:30:37.2441720Z [36;1m    /usr/libexec/PlistBuddy -c "Set :CFBundleName Freeze95" "$PLIST" || true[0m
+2026-05-19T21:30:37.2442390Z [36;1m    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cloph.Freeze95" "$PLIST" || true[0m
+2026-05-19T21:30:37.2443300Z [36;1m    /usr/libexec/PlistBuddy -c "Set :CFBundleGetInfoString 'Freeze95 v1.3.0 Copyright 2026 cloph'" "$PLIST" || true[0m
+2026-05-19T21:30:37.2443660Z [36;1m    /usr/libexec/PlistBuddy -c "Set :CFBundleSignature 'Frz5'" "$PLIST" || true[0m
+2026-05-19T21:30:37.2443980Z [36;1m    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.3.0'" "$PLIST" || true[0m
+2026-05-19T21:30:37.2444470Z [36;1m    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '1.3.0'" "$PLIST" || true[0m
+2026-05-19T21:30:37.2444970Z [36;1m    /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion '11.0'" "$PLIST" || true[0m
+2026-05-19T21:30:37.2445320Z [36;1m  fi[0m
+2026-05-19T21:30:37.2445570Z [36;1mdone[0m
+2026-05-19T21:30:37.2790560Z shell: /bin/bash -e {0}
+2026-05-19T21:30:37.2790810Z env:
+2026-05-19T21:30:37.2790970Z   BINARY_NAME: Freeze95
+2026-05-19T21:30:37.2791240Z ##[endgroup]

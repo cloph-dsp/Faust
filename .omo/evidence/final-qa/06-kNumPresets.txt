@@ -1,0 +1,1 @@
+﻿kNumPresets = 6 (6 > 1, so presets are available)

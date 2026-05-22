@@ -1,0 +1,7 @@
+﻿2026-05-19T21:11:05.4259600Z ##[group]Run mkdir -p Freeze95/build-mac/stage-vst3
+2026-05-19T21:11:05.4259840Z [36;1mmkdir -p Freeze95/build-mac/stage-vst3[0m
+2026-05-19T21:11:05.4260060Z [36;1mcp -R Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/stage-vst3/[0m
+2026-05-19T21:11:05.4329290Z shell: /bin/bash -e {0}
+2026-05-19T21:11:05.4329430Z env:
+2026-05-19T21:11:05.4329530Z   BINARY_NAME: Freeze95
+2026-05-19T21:11:05.4329650Z ##[endgroup]

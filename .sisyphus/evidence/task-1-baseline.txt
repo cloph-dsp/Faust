@@ -1,0 +1,18 @@
+﻿Task 1: Build Baseline Verification + Doctest Download
+Date: 2026-05-10
+
+Baseline Build Result:
+- VST3 SDK: Needed initialization (submodules cloned) ✓
+- Framework references: Resolve correctly after SDK init ✓
+- Grungr.cpp: Compiles without errors ✓
+- GrungrIPlug2UI.cpp: COMPILATION ERRORS (pre-existing)
+  - Root cause: Line 305 premature } closes Draw() early;
+    line 307 spurious function declaration w/o { orphans ~90 lines
+  - Line 308-397: Orphaned Draw() body code (specular highlights, badge, ripple, focus, pulse)
+  - Count: 40+ cascading errors from this single bug
+- iPlug2 framework files: Compile fine ✓
+- Grungr.h/config.h: Compile fine ✓
+- Doctest.h: Downloaded to Grungr/tests/doctest.h ✓
+
+Verdict: Baseline established. Pre-existing compile errors in GrungrIPlug2UI.cpp
+need to be fixed before plan tasks can be verified.

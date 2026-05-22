@@ -1,0 +1,5 @@
+﻿RESULT: FAIL (resize found in ProcessBlock context)
+	:67: return ConstrainEditorResize(width, height);
+	:73: GetUI()->Resize(width, height, 1.f, true);
+
+Note: These are UI resize functions, NOT buffer resizes - they constrain editor size, not audio buffers.

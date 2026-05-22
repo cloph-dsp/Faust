@@ -1,0 +1,204 @@
+﻿2026-05-19T21:05:28.8145560Z ##[group]Run set -euo pipefail
+2026-05-19T21:05:28.8146020Z [36;1mset -euo pipefail[0m
+2026-05-19T21:05:28.8146470Z [36;1mVST3_BIN="Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95"[0m
+2026-05-19T21:05:28.8147150Z [36;1mCLAP_BIN="Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95"[0m
+2026-05-19T21:05:28.8147600Z [36;1mERRORS=0[0m
+2026-05-19T21:05:28.8147790Z [36;1m[0m
+2026-05-19T21:05:28.8148130Z [36;1merror() { echo "FAIL: $1"; ERRORS=$((ERRORS + 1)); }[0m
+2026-05-19T21:05:28.8148620Z [36;1m[0m
+2026-05-19T21:05:28.8148840Z [36;1mecho "========================================"[0m
+2026-05-19T21:05:28.8149210Z [36;1mecho "BINARY LOAD & EXPORT TESTS"[0m
+2026-05-19T21:05:28.8149660Z [36;1mecho "========================================"[0m
+2026-05-19T21:05:28.8150020Z [36;1m[0m
+2026-05-19T21:05:28.8150330Z [36;1m# ============================================================[0m
+2026-05-19T21:05:28.8150730Z [36;1m# 1. VST3 ENTRY-POINT EXPORTS[0m
+2026-05-19T21:05:28.8151270Z [36;1m# ============================================================[0m
+2026-05-19T21:05:28.8151660Z [36;1mecho ""[0m
+2026-05-19T21:05:28.8151960Z [36;1mecho "[1/3] VST3 Entry-Point Exports"[0m
+2026-05-19T21:05:28.8152370Z [36;1mecho "-----------------------------"[0m
+2026-05-19T21:05:28.8152670Z [36;1m[0m
+2026-05-19T21:05:28.8152980Z [36;1mVST3_EXPORTS=$(nm -gU "$VST3_BIN" 2>&1)[0m
+2026-05-19T21:05:28.8153690Z [36;1mecho "$VST3_EXPORTS" | grep -q "GetPluginFactory" || error "GetPluginFactory not exported in VST3 binary"[0m
+2026-05-19T21:05:28.8154710Z [36;1mecho "  GetPluginFactory: FOUND"[0m
+2026-05-19T21:05:28.8155070Z [36;1m[0m
+2026-05-19T21:05:28.8155330Z [36;1m# Also check CLAP entry[0m
+2026-05-19T21:05:28.8156050Z [36;1mCLAP_EXPORTS=$(nm -gU "$CLAP_BIN" 2>&1)[0m
+2026-05-19T21:05:28.8157110Z [36;1mecho "$CLAP_EXPORTS" | grep -q "clap_entry" || error "clap_entry not exported in CLAP binary"[0m
+2026-05-19T21:05:28.8157740Z [36;1mecho "  clap_entry: FOUND"[0m
+2026-05-19T21:05:28.8158170Z [36;1m[0m
+2026-05-19T21:05:28.8158440Z [36;1mecho "  Extra VST3 exports:"[0m
+2026-05-19T21:05:28.8159090Z [36;1mecho "$VST3_EXPORTS" | grep -v "^$" | grep -v "^.*_T" | grep -v "^.*OSSpin" | grep -v "dyld_stub_binder" | head -20[0m
+2026-05-19T21:05:28.8159700Z [36;1m[0m
+2026-05-19T21:05:28.8160000Z [36;1m# ============================================================[0m
+2026-05-19T21:05:28.8160350Z [36;1m# 2. UNDEFINED SYMBOLS[0m
+2026-05-19T21:05:28.8160760Z [36;1m# ============================================================[0m
+2026-05-19T21:05:28.8161230Z [36;1mecho ""[0m
+2026-05-19T21:05:28.8161480Z [36;1mecho "[2/3] Undefined (imported) symbols"[0m
+2026-05-19T21:05:28.8162280Z [36;1mecho "----------------------------------"[0m
+2026-05-19T21:05:28.8162650Z [36;1m[0m
+2026-05-19T21:05:28.8163050Z [36;1mfor BIN in "$VST3_BIN" "$CLAP_BIN"; do[0m
+2026-05-19T21:05:28.8163450Z [36;1m  NAME=$(basename "$(dirname "$(dirname "$BIN")")")[0m
+2026-05-19T21:05:28.8163960Z [36;1m  UNDEFINED=$(nm -u "$BIN" 2>&1 | grep -v "^$" || true)[0m
+2026-05-19T21:05:28.8164490Z [36;1m  COUNT=$(echo "$UNDEFINED" | grep -c . || true)[0m
+2026-05-19T21:05:28.8165430Z [36;1m  echo "  $NAME: $COUNT undefined symbol(s) (expected for framework-linked binaries)"[0m
+2026-05-19T21:05:28.8165790Z [36;1m  echo "$UNDEFINED" | grep -v "^$" | grep -v "^.*_T" | head -20[0m
+2026-05-19T21:05:28.8166050Z [36;1mdone[0m
+2026-05-19T21:05:28.8166280Z [36;1m[0m
+2026-05-19T21:05:28.8166490Z [36;1m# ============================================================[0m
+2026-05-19T21:05:28.8166740Z [36;1m# 3. dlopen LOAD TEST[0m
+2026-05-19T21:05:28.8167440Z [36;1m# ============================================================[0m
+2026-05-19T21:05:28.8167710Z [36;1mecho ""[0m
+2026-05-19T21:05:28.8167920Z [36;1mecho "[3/3] dlopen load test"[0m
+2026-05-19T21:05:28.8168140Z [36;1mecho "----------------------"[0m
+2026-05-19T21:05:28.8168370Z [36;1mecho "  Compiling VST3 loader..."[0m
+2026-05-19T21:05:28.8168920Z [36;1m[0m
+2026-05-19T21:05:28.8169070Z [36;1mcat > /tmp/vst3_loader.c << 'CEOF'[0m
+2026-05-19T21:05:28.8169280Z [36;1m#include <dlfcn.h>[0m
+2026-05-19T21:05:28.8169500Z [36;1m#include <stdio.h>[0m
+2026-05-19T21:05:28.8169650Z [36;1m#include <stdlib.h>[0m
+2026-05-19T21:05:28.8169760Z [36;1m#include <string.h>[0m
+2026-05-19T21:05:28.8169910Z [36;1m[0m
+2026-05-19T21:05:28.8170700Z [36;1mint main(int argc, char** argv) {[0m
+2026-05-19T21:05:28.8171230Z [36;1m    if (argc < 2) {[0m
+2026-05-19T21:05:28.8171650Z [36;1m        fprintf(stderr, "Usage: %s <binary_path>\n", argv[0]);[0m
+2026-05-19T21:05:28.8172120Z [36;1m        return 1;[0m
+2026-05-19T21:05:28.8172340Z [36;1m    }[0m
+2026-05-19T21:05:28.8172530Z [36;1m[0m
+2026-05-19T21:05:28.8172900Z [36;1m    char* resolved = realpath(argv[1], NULL);[0m
+2026-05-19T21:05:28.8173290Z [36;1m    if (!resolved) {[0m
+2026-05-19T21:05:28.8174110Z [36;1m        fprintf(stderr, "realpath FAILED: %s\n", argv[1]);[0m
+2026-05-19T21:05:28.8174690Z [36;1m        return 1;[0m
+2026-05-19T21:05:28.8175110Z [36;1m    }[0m
+2026-05-19T21:05:28.8175370Z [36;1m[0m
+2026-05-19T21:05:28.8175650Z [36;1m    fprintf(stderr, "  Binary: %s\n", resolved);[0m
+2026-05-19T21:05:28.8176050Z [36;1m[0m
+2026-05-19T21:05:28.8176580Z [36;1m    // RTLD_NOW = resolve all symbols immediately; if any dep is missing this fails[0m
+2026-05-19T21:05:28.8178790Z [36;1m    void* handle = dlopen(resolved, RTLD_NOW | RTLD_LOCAL);[0m
+2026-05-19T21:05:28.8179780Z [36;1m    if (!handle) {[0m
+2026-05-19T21:05:28.8180240Z [36;1m        fprintf(stderr, "  dlopen: FAILED\n");[0m
+2026-05-19T21:05:28.8180710Z [36;1m        fprintf(stderr, "  Reason: %s\n", dlerror());[0m
+2026-05-19T21:05:28.8181160Z [36;1m        free(resolved);[0m
+2026-05-19T21:05:28.8181490Z [36;1m        return 1;[0m
+2026-05-19T21:05:28.8181860Z [36;1m    }[0m
+2026-05-19T21:05:28.8182110Z [36;1m[0m
+2026-05-19T21:05:28.8182710Z [36;1m    // Check for VST3 entry (GetPluginFactory) or CLAP entry (clap_entry)[0m
+2026-05-19T21:05:28.8183470Z [36;1m    void* factory = dlsym(handle, "GetPluginFactory");[0m
+2026-05-19T21:05:28.8183980Z [36;1m    void* clap_entry = dlsym(handle, "clap_entry");[0m
+2026-05-19T21:05:28.8184440Z [36;1m    if (!factory && !clap_entry) {[0m
+2026-05-19T21:05:28.8185030Z [36;1m        fprintf(stderr, "  Entry point: NOT FOUND (checked GetPluginFactory and clap_entry)\n");[0m
+2026-05-19T21:05:28.8185700Z [36;1m        dlclose(handle);[0m
+2026-05-19T21:05:28.8186060Z [36;1m        free(resolved);[0m
+2026-05-19T21:05:28.8186380Z [36;1m        return 1;[0m
+2026-05-19T21:05:28.8186770Z [36;1m    }[0m
+2026-05-19T21:05:28.8187040Z [36;1m[0m
+2026-05-19T21:05:28.8187350Z [36;1m    printf("  dlopen:       SUCCESS\n");[0m
+2026-05-19T21:05:28.8187940Z [36;1m    if (factory) printf("  GetPluginFactory: %p\n", factory);[0m
+2026-05-19T21:05:28.8188610Z [36;1m    if (clap_entry) printf("  clap_entry:      %p\n", clap_entry);[0m
+2026-05-19T21:05:28.8189090Z [36;1m    dlclose(handle);[0m
+2026-05-19T21:05:28.8189450Z [36;1m    free(resolved);[0m
+2026-05-19T21:05:28.8189830Z [36;1m    return 0;[0m
+2026-05-19T21:05:28.8190040Z [36;1m}[0m
+2026-05-19T21:05:28.8190280Z [36;1mCEOF[0m
+2026-05-19T21:05:28.8190530Z [36;1m[0m
+2026-05-19T21:05:28.8191040Z [36;1mclang -o /tmp/vst3_loader /tmp/vst3_loader.c -framework CoreFoundation 2>&1 || {[0m
+2026-05-19T21:05:28.8191740Z [36;1m  echo "  WARNING: Could not compile VST3 loader (clang unavailable?)"[0m
+2026-05-19T21:05:28.8192280Z [36;1m  exit 0[0m
+2026-05-19T21:05:28.8192510Z [36;1m}[0m
+2026-05-19T21:05:28.8192740Z [36;1m[0m
+2026-05-19T21:05:28.8193070Z [36;1mecho ""[0m
+2026-05-19T21:05:28.8193580Z [36;1mfor BIN in "$VST3_BIN" "$CLAP_BIN"; do[0m
+2026-05-19T21:05:28.8194060Z [36;1m  NAME=$(basename "$(dirname "$(dirname "$BIN")")")[0m
+2026-05-19T21:05:28.8194490Z [36;1m  echo "  Testing $NAME..."[0m
+2026-05-19T21:05:28.8194910Z [36;1m  if /tmp/vst3_loader "$BIN"; then[0m
+2026-05-19T21:05:28.8195270Z [36;1m    echo "  $NAME: LOAD OK"[0m
+2026-05-19T21:05:28.8196340Z [36;1m  else[0m
+2026-05-19T21:05:28.8196750Z [36;1m    error "$NAME binary failed dlopen load test"[0m
+2026-05-19T21:05:28.8197370Z [36;1m  fi[0m
+2026-05-19T21:05:28.8197810Z [36;1m  echo ""[0m
+2026-05-19T21:05:28.8198100Z [36;1mdone[0m
+2026-05-19T21:05:28.8198430Z [36;1m[0m
+2026-05-19T21:05:28.8199040Z [36;1mif [ "$ERRORS" -gt 0 ]; then[0m
+2026-05-19T21:05:28.8199350Z [36;1m  echo "FAILED: $ERRORS error(s) found"[0m
+2026-05-19T21:05:28.8199540Z [36;1m  exit 1[0m
+2026-05-19T21:05:28.8199730Z [36;1mfi[0m
+2026-05-19T21:05:28.8199880Z [36;1mecho "ALL LOAD TESTS PASSED"[0m
+2026-05-19T21:05:28.8357560Z shell: /bin/bash -e {0}
+2026-05-19T21:05:28.8357770Z env:
+2026-05-19T21:05:28.8358010Z   BINARY_NAME: Freeze95
+2026-05-19T21:05:28.8358170Z ##[endgroup]
+2026-05-19T21:05:28.8785110Z ========================================
+2026-05-19T21:05:28.8785440Z BINARY LOAD & EXPORT TESTS
+2026-05-19T21:05:28.8785690Z ========================================
+2026-05-19T21:05:28.8785870Z 
+2026-05-19T21:05:28.8785980Z [1/3] VST3 Entry-Point Exports
+2026-05-19T21:05:28.8786150Z -----------------------------
+2026-05-19T21:05:29.7577690Z   GetPluginFactory: FOUND
+2026-05-19T21:05:29.7868380Z   clap_entry: FOUND
+2026-05-19T21:05:29.7868820Z   Extra VST3 exports:
+2026-05-19T21:05:29.7939190Z 0000000000002b44 T _GetPluginFactory
+2026-05-19T21:05:29.7940480Z 000000000004a47c T __ZN5iplug9igraphics12IGraphicsMac28InitiateExternalFileDragDropEPKcRKNS0_5IRECTE
+2026-05-19T21:05:29.7941850Z 000000000005c2d8 T _bundleEntry
+2026-05-19T21:05:29.7942150Z 000000000005c450 T _bundleExit
+2026-05-19T21:05:29.7942350Z 
+2026-05-19T21:05:29.7942440Z [2/3] Undefined (imported) symbols
+2026-05-19T21:05:29.7942860Z ----------------------------------
+2026-05-19T21:05:29.8407480Z   Contents: 321 undefined symbol(s) (expected for framework-linked binaries)
+2026-05-19T21:05:29.8461500Z _CFAbsoluteTimeGetCurrent
+2026-05-19T21:05:29.8462310Z _CFArrayGetCount
+2026-05-19T21:05:29.8462640Z _CFArrayGetValueAtIndex
+2026-05-19T21:05:29.8462940Z _CFBundleCopyBundleURL
+2026-05-19T21:05:29.8463080Z _CFBundleCreate
+2026-05-19T21:05:29.8463220Z _CFBundleGetFunctionPointerForName
+2026-05-19T21:05:29.8464050Z _CFBundleLoadExecutable
+2026-05-19T21:05:29.8464690Z _CFBundleUnloadExecutable
+2026-05-19T21:05:29.8465020Z _CFDataGetBytePtr
+2026-05-19T21:05:29.8465280Z _CFDataGetLength
+2026-05-19T21:05:29.8465790Z _CFDictionaryCreate
+2026-05-19T21:05:29.8466190Z _CFGetRetainCount
+2026-05-19T21:05:29.8466440Z _CFRelease
+2026-05-19T21:05:29.8466930Z _CFRetain
+2026-05-19T21:05:29.8467200Z _CFRunLoopAddTimer
+2026-05-19T21:05:29.8467470Z _CFRunLoopGetMain
+2026-05-19T21:05:29.8467720Z _CFRunLoopRemoveTimer
+2026-05-19T21:05:29.8467970Z _CFRunLoopTimerCreate
+2026-05-19T21:05:29.8468310Z _CFRunLoopTimerInvalidate
+2026-05-19T21:05:29.8468580Z _CFSetCreate
+2026-05-19T21:05:29.8906710Z   Contents: 305 undefined symbol(s) (expected for framework-linked binaries)
+2026-05-19T21:05:29.8954100Z _CFAbsoluteTimeGetCurrent
+2026-05-19T21:05:29.8955120Z _CFArrayGetCount
+2026-05-19T21:05:29.8955770Z _CFArrayGetValueAtIndex
+2026-05-19T21:05:29.8955940Z _CFDataGetBytePtr
+2026-05-19T21:05:29.8956040Z _CFDataGetLength
+2026-05-19T21:05:29.8956140Z _CFDictionaryCreate
+2026-05-19T21:05:29.8956300Z _CFRelease
+2026-05-19T21:05:29.8956430Z _CFRetain
+2026-05-19T21:05:29.8956530Z _CFRunLoopAddTimer
+2026-05-19T21:05:29.8956680Z _CFRunLoopGetMain
+2026-05-19T21:05:29.8956790Z _CFRunLoopTimerCreate
+2026-05-19T21:05:29.8957000Z _CFRunLoopTimerInvalidate
+2026-05-19T21:05:29.8957150Z _CFSetCreate
+2026-05-19T21:05:29.8957250Z _CFStringCreateWithCString
+2026-05-19T21:05:29.8957370Z _CFURLCreateWithFileSystemPath
+2026-05-19T21:05:29.8957520Z _CGAssociateMouseAndMouseCursorPosition
+2026-05-19T21:05:29.8957700Z _CGBitmapContextCreate
+2026-05-19T21:05:29.8957820Z _CGBitmapContextCreateImage
+2026-05-19T21:05:29.8957950Z _CGColorCreateGenericRGB
+2026-05-19T21:05:29.8958100Z _CGColorRelease
+2026-05-19T21:05:29.8958350Z 
+2026-05-19T21:05:29.8958430Z [3/3] dlopen load test
+2026-05-19T21:05:29.8958810Z ----------------------
+2026-05-19T21:05:29.8958970Z   Compiling VST3 loader...
+2026-05-19T21:05:30.8513680Z 
+2026-05-19T21:05:30.8650400Z   Testing Contents...
+2026-05-19T21:05:30.8718150Z   Binary: /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95
+2026-05-19T21:05:30.8794570Z   dlopen:       SUCCESS
+2026-05-19T21:05:30.8794890Z   GetPluginFactory: 0x102a0eb44
+2026-05-19T21:05:30.8796120Z   Contents: LOAD OK
+2026-05-19T21:05:30.8796570Z 
+2026-05-19T21:05:30.8926300Z   Testing Contents...
+2026-05-19T21:05:30.8998400Z   Binary: /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95
+2026-05-19T21:05:30.9050940Z   dlopen:       SUCCESS
+2026-05-19T21:05:30.9051720Z   clap_entry:      0x104714fe0
+2026-05-19T21:05:30.9052780Z   Contents: LOAD OK
+2026-05-19T21:05:30.9052930Z 
+2026-05-19T21:05:30.9053260Z ALL LOAD TESTS PASSED

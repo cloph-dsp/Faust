@@ -1,0 +1,20 @@
+iPlug2 Version Audit - 05/09/2026 14:29:50
+====================================
+
+COLLECTIVE VERSION (BLUR, Freeze95, Sore Throat, SpectrumMatch):
+  All 4 copies are identical ? same older upstream snapshot.
+  Backup location: _backup/iplug2-versions/Freeze95/
+
+GRUNGR VERSION:
+  Different from both the collective version and current upstream.
+  Has custom modifications to framework files.
+  Backup location: _backup/iplug2-versions/Grungr/
+
+UPSTREAM (as of audit date):
+  https://github.com/iPlug2/iPlug2
+  master branch, cloned with --depth 1
+
+FILES CHECKED:
+  common-win.props, common-mac.xcconfig, IPlugAPIBase.cpp, IPlugParameter.cpp,
+  IPlugPaths.cpp, IPlugPluginBase.cpp, IPlugProcessor.cpp, IPlugAAX.cpp,
+  and 54+ other framework files across IPlug/, IGraphics/, WDL/, Scripts/

@@ -1,0 +1,4 @@
+﻿PDB_FILE condition found in Grungr-win.props:
+  Line 11: <PDB_FILE Condition="'$(Configuration)'!='Release'">$(SolutionDir)build-win\pdbs\$(TargetName)_$(Platform).pdb</PDB_FILE>
+  Line 28: <ProgramDatabaseFile>$(PDB_FILE)</ProgramDatabaseFile>
+  Lines 55-56: BuildMacro PDB_FILE defined and used

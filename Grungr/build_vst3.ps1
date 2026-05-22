@@ -1,5 +1,5 @@
-$project = Join-Path $PSScriptRoot "iPlug2\Examples\DODGrunge\projects\Grungr-vst3.vcxproj"
-$solutionDir = Join-Path $PSScriptRoot "iPlug2\Examples\DODGrunge"
+$project = Join-Path $PSScriptRoot "projects\Grungr-vst3.vcxproj"
+$solutionDir = $PSScriptRoot
 $solutionDirArgument = $solutionDir + "\\"
 
 Write-Host "Building Grungr VST3 plugin..."
@@ -22,7 +22,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Build completed successfully"
 
-$sourceBundle = Join-Path $PSScriptRoot "iPlug2\Examples\DODGrunge\build-win\Grungr.vst3"
+$sourceBundle = Join-Path $PSScriptRoot "build-win\Grungr.vst3"
 $commonFilesDir = Join-Path $PSScriptRoot "..\common files\vst3"
 
 if (-not (Test-Path $sourceBundle)) {
@@ -47,7 +47,7 @@ try {
     Copy-Item -Path $sourceBundle -Destination $systemVst3 -Recurse -Force
     Write-Host "  -> $systemVst3"
 } catch {
-    Write-Warning "Could not write to system VST3 folder: $_"
+    Write-Warning "Could not write to system VST3 folder (need admin?): $_"
 }
 
 Write-Host "Build and deployment complete!"

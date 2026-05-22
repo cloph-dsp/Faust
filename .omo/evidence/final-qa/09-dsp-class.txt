@@ -1,0 +1,2 @@
+﻿class GrungrFaustDSP found at Grungr/DSP/GrungrFaustDSP.h:42
+#define FAUSTCLASS GrungrFaustDSP at line 21

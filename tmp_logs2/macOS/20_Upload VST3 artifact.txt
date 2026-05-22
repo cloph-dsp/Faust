@@ -1,0 +1,22 @@
+﻿2026-05-19T21:11:05.4713090Z ##[group]Run actions/upload-artifact@v4
+2026-05-19T21:11:05.4713280Z with:
+2026-05-19T21:11:05.4713380Z   name: Freeze95-macOS-VST3
+2026-05-19T21:11:05.4713500Z   path: Freeze95/build-mac/stage-vst3/
+2026-05-19T21:11:05.4713620Z   if-no-files-found: warn
+2026-05-19T21:11:05.4713730Z   compression-level: 6
+2026-05-19T21:11:05.4713840Z   overwrite: false
+2026-05-19T21:11:05.4713940Z   include-hidden-files: false
+2026-05-19T21:11:05.4714080Z env:
+2026-05-19T21:11:05.4714210Z   BINARY_NAME: Freeze95
+2026-05-19T21:11:05.4714320Z ##[endgroup]
+2026-05-19T21:11:05.7061600Z With the provided path, there will be 6 files uploaded
+2026-05-19T21:11:05.7062120Z Artifact name is valid!
+2026-05-19T21:11:05.7062320Z Root directory input is valid!
+2026-05-19T21:11:06.1586250Z Beginning upload of artifact content to blob storage
+2026-05-19T21:11:07.3298920Z Uploaded bytes 1432836
+2026-05-19T21:11:07.4469510Z Finished uploading artifact content to blob storage!
+2026-05-19T21:11:07.4470500Z SHA256 digest of uploaded artifact zip is 4b6032a6afda53f1de2b14d123783c70c26ca3ca60f28d75ffc3b738de3a8cb3
+2026-05-19T21:11:07.4471160Z Finalizing artifact upload
+2026-05-19T21:11:07.7747960Z Artifact Freeze95-macOS-VST3.zip successfully finalized. Artifact ID 7095489401
+2026-05-19T21:11:07.7748370Z Artifact Freeze95-macOS-VST3 has been successfully uploaded! Final size is 1432836 bytes. Artifact ID is 7095489401
+2026-05-19T21:11:07.7753920Z Artifact download URL: https://github.com/cloph-dsp/Faust/actions/runs/26125488853/artifacts/7095489401

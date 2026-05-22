@@ -1,0 +1,22 @@
+﻿2026-05-19T21:20:21.0338610Z ##[group]Run actions/upload-artifact@v4
+2026-05-19T21:20:21.0338810Z with:
+2026-05-19T21:20:21.0338910Z   name: Freeze95-macOS-CLAP
+2026-05-19T21:20:21.0339040Z   path: Freeze95/build-mac/stage-clap/
+2026-05-19T21:20:21.0339180Z   if-no-files-found: warn
+2026-05-19T21:20:21.0339310Z   compression-level: 6
+2026-05-19T21:20:21.0339420Z   overwrite: false
+2026-05-19T21:20:21.0339530Z   include-hidden-files: false
+2026-05-19T21:20:21.0339640Z env:
+2026-05-19T21:20:21.0339730Z   BINARY_NAME: Freeze95
+2026-05-19T21:20:21.0339830Z ##[endgroup]
+2026-05-19T21:20:21.1503190Z With the provided path, there will be 5 files uploaded
+2026-05-19T21:20:21.1505560Z Artifact name is valid!
+2026-05-19T21:20:21.1505930Z Root directory input is valid!
+2026-05-19T21:20:21.5677150Z Beginning upload of artifact content to blob storage
+2026-05-19T21:20:22.8717170Z Uploaded bytes 1168789
+2026-05-19T21:20:22.9945690Z Finished uploading artifact content to blob storage!
+2026-05-19T21:20:22.9946410Z SHA256 digest of uploaded artifact zip is ba476a1354cf8120dc49e7f7f244b306624b75e0149bab5681391d65dde13706
+2026-05-19T21:20:22.9947150Z Finalizing artifact upload
+2026-05-19T21:20:23.2431080Z Artifact Freeze95-macOS-CLAP.zip successfully finalized. Artifact ID 7095674496
+2026-05-19T21:20:23.2431510Z Artifact Freeze95-macOS-CLAP has been successfully uploaded! Final size is 1168789 bytes. Artifact ID is 7095674496
+2026-05-19T21:20:23.2436300Z Artifact download URL: https://github.com/cloph-dsp/Faust/actions/runs/26125944693/artifacts/7095674496

@@ -1,0 +1,57 @@
+﻿2026-05-19T21:20:18.0056320Z ##[group]Run VST3_BUNDLE="Freeze95/build-mac/Products/Freeze95.vst3"
+2026-05-19T21:20:18.0056670Z [36;1mVST3_BUNDLE="Freeze95/build-mac/Products/Freeze95.vst3"[0m
+2026-05-19T21:20:18.0056890Z [36;1mCLAP_BUNDLE="Freeze95/build-mac/Products/Freeze95.clap"[0m
+2026-05-19T21:20:18.0057100Z [36;1mVST3_SDK="-I Freeze95/iPlug2/Dependencies/IPlug/VST3_SDK"[0m
+2026-05-19T21:20:18.0057300Z [36;1mTEST_SRC="Freeze95/tests/lifecycle_test.cpp"[0m
+2026-05-19T21:20:18.0057430Z [36;1m[0m
+2026-05-19T21:20:18.0057610Z [36;1mif [ ! -d "$VST3_BUNDLE" ]; then[0m
+2026-05-19T21:20:18.0057920Z [36;1m  echo "WARNING: VST3 bundle not found, skipping lifecycle test"[0m
+2026-05-19T21:20:18.0058090Z [36;1m  exit 0[0m
+2026-05-19T21:20:18.0058170Z [36;1mfi[0m
+2026-05-19T21:20:18.0058260Z [36;1m[0m
+2026-05-19T21:20:18.0058380Z [36;1mecho "Compiling lifecycle test..."[0m
+2026-05-19T21:20:18.0058630Z [36;1mclang++ -std=c++17 $VST3_SDK -o /tmp/freeze95_test "$TEST_SRC" -framework CoreFoundation 2>&1 || {[0m
+2026-05-19T21:20:18.0058950Z [36;1m  echo "WARNING: Could not compile lifecycle test (compilation error)"[0m
+2026-05-19T21:20:18.0059190Z [36;1m  exit 0[0m
+2026-05-19T21:20:18.0059340Z [36;1m}[0m
+2026-05-19T21:20:18.0059420Z [36;1mecho "Compilation: OK"[0m
+2026-05-19T21:20:18.0059530Z [36;1m[0m
+2026-05-19T21:20:18.0059610Z [36;1mecho ""[0m
+2026-05-19T21:20:18.0059720Z [36;1mecho "================================================"[0m
+2026-05-19T21:20:18.0059880Z [36;1mecho "  LIFE CYCLE TEST - VST3"[0m
+2026-05-19T21:20:18.0060020Z [36;1mecho "================================================"[0m
+2026-05-19T21:20:18.0060180Z [36;1mif /tmp/freeze95_test "$VST3_BUNDLE"; then[0m
+2026-05-19T21:20:18.0060310Z [36;1m  echo ""[0m
+2026-05-19T21:20:18.0060410Z [36;1m  echo "LIFECYCLE VST3: PASSED"[0m
+2026-05-19T21:20:18.0060520Z [36;1melse[0m
+2026-05-19T21:20:18.0060600Z [36;1m  echo ""[0m
+2026-05-19T21:20:18.0060700Z [36;1m  echo "LIFECYCLE VST3: FAILED"[0m
+2026-05-19T21:20:18.0060810Z [36;1m  exit 1[0m
+2026-05-19T21:20:18.0060890Z [36;1mfi[0m
+2026-05-19T21:20:18.0060970Z [36;1m[0m
+2026-05-19T21:20:18.0061120Z [36;1mecho ""[0m
+2026-05-19T21:20:18.0061230Z [36;1mecho "================================================"[0m
+2026-05-19T21:20:18.0061370Z [36;1mecho "  LIFE CYCLE TEST - CLAP"[0m
+2026-05-19T21:20:18.0061510Z [36;1mecho "================================================"[0m
+2026-05-19T21:20:18.0061660Z [36;1mif [ -d "$CLAP_BUNDLE" ]; then[0m
+2026-05-19T21:20:18.0061800Z [36;1m  if /tmp/freeze95_test "$CLAP_BUNDLE"; then[0m
+2026-05-19T21:20:18.0061930Z [36;1m    echo ""[0m
+2026-05-19T21:20:18.0062040Z [36;1m    echo "LIFECYCLE CLAP: PASSED"[0m
+2026-05-19T21:20:18.0062160Z [36;1m  else[0m
+2026-05-19T21:20:18.0062240Z [36;1m    echo ""[0m
+2026-05-19T21:20:18.0062410Z [36;1m    echo "LIFECYCLE CLAP: FAILED"[0m
+2026-05-19T21:20:18.0062530Z [36;1m    exit 1[0m
+2026-05-19T21:20:18.0062610Z [36;1m  fi[0m
+2026-05-19T21:20:18.0062690Z [36;1melse[0m
+2026-05-19T21:20:18.0068550Z [36;1m  echo "CLAP bundle not found, skipping"[0m
+2026-05-19T21:20:18.0068710Z [36;1mfi[0m
+2026-05-19T21:20:18.0139880Z shell: /bin/bash -e {0}
+2026-05-19T21:20:18.0140020Z env:
+2026-05-19T21:20:18.0140120Z   BINARY_NAME: Freeze95
+2026-05-19T21:20:18.0140220Z ##[endgroup]
+2026-05-19T21:20:18.0339980Z Compiling lifecycle test...
+2026-05-19T21:20:18.4923420Z Freeze95/tests/lifecycle_test.cpp:23:10: fatal error: 'pluginterfaces/vst/ivstspeaker.h' file not found
+2026-05-19T21:20:18.4923800Z    23 | #include <pluginterfaces/vst/ivstspeaker.h>
+2026-05-19T21:20:18.4923970Z       |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-05-19T21:20:18.4945200Z 1 error generated.
+2026-05-19T21:20:18.4958010Z WARNING: Could not compile lifecycle test (compilation error)

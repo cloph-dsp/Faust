@@ -1,0 +1,29 @@
+﻿2026-05-19T21:30:37.4576600Z ##[group]Run for BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do
+2026-05-19T21:30:37.4578230Z [36;1mfor BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do[0m
+2026-05-19T21:30:37.4579200Z [36;1m  if [ -d "$BUNDLE" ]; then[0m
+2026-05-19T21:30:37.4579660Z [36;1m    BINARY="$BUNDLE/Contents/MacOS/Freeze95"[0m
+2026-05-19T21:30:37.4580200Z [36;1m    echo "Signing binary: $BINARY"[0m
+2026-05-19T21:30:37.4581140Z [36;1m    # Ad-hoc sign WITHOUT hardened runtime — macOS 15+ ad-hoc cannot embed entitlements[0m
+2026-05-19T21:30:37.4582340Z [36;1m    # Hardened runtime + zero entitlements would break dlopen in DAWs, so skip --options=runtime[0m
+2026-05-19T21:30:37.4583230Z [36;1m    codesign --force --sign - "$BINARY"[0m
+2026-05-19T21:30:37.4583590Z [36;1m    echo "Signing bundle wrapper: $BUNDLE"[0m
+2026-05-19T21:30:37.4583890Z [36;1m    codesign --force --sign - "$BUNDLE"[0m
+2026-05-19T21:30:37.4584210Z [36;1m    codesign -vvv --deep "$BUNDLE" || echo "Warning: signature verification had issues"[0m
+2026-05-19T21:30:37.4584580Z [36;1m  fi[0m
+2026-05-19T21:30:37.4584770Z [36;1mdone[0m
+2026-05-19T21:30:37.4702870Z shell: /bin/bash -e {0}
+2026-05-19T21:30:37.4703110Z env:
+2026-05-19T21:30:37.4703310Z   BINARY_NAME: Freeze95
+2026-05-19T21:30:37.4703530Z ##[endgroup]
+2026-05-19T21:30:37.5287090Z Signing binary: Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95
+2026-05-19T21:30:37.5468020Z Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95: replacing existing signature
+2026-05-19T21:30:37.5766230Z Signing bundle wrapper: Freeze95/build-mac/Products/Freeze95.vst3
+2026-05-19T21:30:37.5871480Z Freeze95/build-mac/Products/Freeze95.vst3: replacing existing signature
+2026-05-19T21:30:37.6210470Z Freeze95/build-mac/Products/Freeze95.vst3: valid on disk
+2026-05-19T21:30:37.6217390Z Freeze95/build-mac/Products/Freeze95.vst3: satisfies its Designated Requirement
+2026-05-19T21:30:37.6222190Z Signing binary: Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95
+2026-05-19T21:30:37.6320020Z Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95: replacing existing signature
+2026-05-19T21:30:37.6503480Z Signing bundle wrapper: Freeze95/build-mac/Products/Freeze95.clap
+2026-05-19T21:30:37.6600380Z Freeze95/build-mac/Products/Freeze95.clap: replacing existing signature
+2026-05-19T21:30:37.6909810Z Freeze95/build-mac/Products/Freeze95.clap: valid on disk
+2026-05-19T21:30:37.6917120Z Freeze95/build-mac/Products/Freeze95.clap: satisfies its Designated Requirement

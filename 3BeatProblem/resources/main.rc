@@ -1,0 +1,8 @@
+// Resource file for 3BeatProblem VST3
+// Placeholder for future resources (SVG backgrounds, fonts, etc.)
+
+#ifndef APSTUDIO_INVOKED
+
+#include "..\config.h"
+
+#endif

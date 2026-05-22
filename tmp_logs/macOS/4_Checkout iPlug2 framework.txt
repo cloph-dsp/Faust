@@ -1,0 +1,7 @@
+﻿2026-05-19T21:04:05.2202190Z ##[group]Run git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2
+2026-05-19T21:04:05.2202760Z [36;1mgit clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git Freeze95/iPlug2[0m
+2026-05-19T21:04:05.2281510Z shell: /bin/bash -e {0}
+2026-05-19T21:04:05.2281800Z env:
+2026-05-19T21:04:05.2282010Z   BINARY_NAME: Freeze95
+2026-05-19T21:04:05.2282170Z ##[endgroup]
+2026-05-19T21:04:05.2661220Z Cloning into 'Freeze95/iPlug2'...

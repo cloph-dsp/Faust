@@ -1,0 +1,1 @@
+﻿Build completed. VST3 bundle created at: D:\Github\VST3 Developments\Grungr\build-win\vst3\x64\Release\Grungr.vst3

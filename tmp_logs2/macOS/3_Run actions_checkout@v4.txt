@@ -1,0 +1,74 @@
+﻿2026-05-19T21:10:18.1480670Z ##[group]Run actions/checkout@v4
+2026-05-19T21:10:18.1481200Z with:
+2026-05-19T21:10:18.1481570Z   repository: cloph-dsp/Faust
+2026-05-19T21:10:18.1482160Z   token: ***
+2026-05-19T21:10:18.1482520Z   ssh-strict: true
+2026-05-19T21:10:18.1482860Z   ssh-user: git
+2026-05-19T21:10:18.1483220Z   persist-credentials: true
+2026-05-19T21:10:18.1483640Z   clean: true
+2026-05-19T21:10:18.1484020Z   sparse-checkout-cone-mode: true
+2026-05-19T21:10:18.1484470Z   fetch-depth: 1
+2026-05-19T21:10:18.1484870Z   fetch-tags: false
+2026-05-19T21:10:18.1485280Z   show-progress: true
+2026-05-19T21:10:18.1485660Z   lfs: false
+2026-05-19T21:10:18.1486030Z   submodules: false
+2026-05-19T21:10:18.1486430Z   set-safe-directory: true
+2026-05-19T21:10:18.1486840Z env:
+2026-05-19T21:10:18.1487150Z   BINARY_NAME: Freeze95
+2026-05-19T21:10:18.1487510Z ##[endgroup]
+2026-05-19T21:10:18.3276630Z Syncing repository: cloph-dsp/Faust
+2026-05-19T21:10:18.3278220Z ##[group]Getting Git version info
+2026-05-19T21:10:18.3278920Z Working directory is '/Users/admin/actions-runner/_work/Faust/Faust'
+2026-05-19T21:10:18.3280410Z [command]/opt/homebrew/bin/git version
+2026-05-19T21:10:18.3417910Z git version 2.53.0
+2026-05-19T21:10:18.3437000Z ##[endgroup]
+2026-05-19T21:10:18.3443150Z Temporarily overriding HOME='/Users/admin/actions-runner/_work/_temp/30090a9b-911b-411a-8e0d-f6ba676108aa' before making global git config changes
+2026-05-19T21:10:18.3444390Z Adding repository directory to the temporary git global config as a safe directory
+2026-05-19T21:10:18.3448640Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/admin/actions-runner/_work/Faust/Faust
+2026-05-19T21:10:18.3522290Z Deleting the contents of '/Users/admin/actions-runner/_work/Faust/Faust'
+2026-05-19T21:10:18.3523780Z ##[group]Initializing the repository
+2026-05-19T21:10:18.3524600Z [command]/opt/homebrew/bin/git init /Users/admin/actions-runner/_work/Faust/Faust
+2026-05-19T21:10:18.3645210Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-05-19T21:10:18.3646210Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-05-19T21:10:18.3647440Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-05-19T21:10:18.3648090Z hint: call:
+2026-05-19T21:10:18.3648440Z hint:
+2026-05-19T21:10:18.3648890Z hint: 	git config --global init.defaultBranch <name>
+2026-05-19T21:10:18.3649380Z hint:
+2026-05-19T21:10:18.3649840Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-05-19T21:10:18.3650610Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-05-19T21:10:18.3651230Z hint:
+2026-05-19T21:10:18.3652100Z hint: 	git branch -m <name>
+2026-05-19T21:10:18.3652560Z hint:
+2026-05-19T21:10:18.3653080Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-05-19T21:10:18.3653970Z Initialized empty Git repository in /Users/admin/actions-runner/_work/Faust/Faust/.git/
+2026-05-19T21:10:18.3655470Z [command]/opt/homebrew/bin/git remote add origin https://github.com/cloph-dsp/Faust
+2026-05-19T21:10:18.3697400Z ##[endgroup]
+2026-05-19T21:10:18.3698040Z ##[group]Disabling automatic garbage collection
+2026-05-19T21:10:18.3699200Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+2026-05-19T21:10:18.3739250Z ##[endgroup]
+2026-05-19T21:10:18.3739870Z ##[group]Setting up auth
+2026-05-19T21:10:18.3741720Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-05-19T21:10:18.3775490Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-05-19T21:10:18.4260430Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-05-19T21:10:18.4297880Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-05-19T21:10:18.5089460Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-05-19T21:10:18.5113290Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-05-19T21:10:18.5603920Z [command]/opt/homebrew/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-05-19T21:10:18.5644740Z ##[endgroup]
+2026-05-19T21:10:18.5645760Z ##[group]Fetching the repository
+2026-05-19T21:10:18.5648440Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +0a75d3ac1ad1dda2352c35f353995e94aba3ddb6:refs/remotes/origin/main
+2026-05-19T21:10:19.5652620Z From https://github.com/cloph-dsp/Faust
+2026-05-19T21:10:19.5652980Z  * [new ref]         0a75d3ac1ad1dda2352c35f353995e94aba3ddb6 -> origin/main
+2026-05-19T21:10:19.6005100Z ##[endgroup]
+2026-05-19T21:10:19.6005360Z ##[group]Determining the checkout info
+2026-05-19T21:10:19.6005730Z ##[endgroup]
+2026-05-19T21:10:19.6008210Z [command]/opt/homebrew/bin/git sparse-checkout disable
+2026-05-19T21:10:19.6052380Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+2026-05-19T21:10:19.6101010Z ##[group]Checking out the ref
+2026-05-19T21:10:19.6102820Z [command]/opt/homebrew/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-05-19T21:10:19.6848770Z Switched to a new branch 'main'
+2026-05-19T21:10:19.6850260Z branch 'main' set up to track 'origin/main'.
+2026-05-19T21:10:19.6856700Z ##[endgroup]
+2026-05-19T21:10:19.6909410Z [command]/opt/homebrew/bin/git log -1 --format=%H
+2026-05-19T21:10:19.6944540Z 0a75d3ac1ad1dda2352c35f353995e94aba3ddb6

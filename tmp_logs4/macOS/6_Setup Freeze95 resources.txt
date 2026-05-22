@@ -1,0 +1,18 @@
+﻿2026-05-19T21:29:35.1003440Z ##[group]Run cd Freeze95
+2026-05-19T21:29:35.1003750Z [36;1mcd Freeze95[0m
+2026-05-19T21:29:35.1003990Z [36;1mcp Freeze95.cpp iPlug2/Examples/IPlugEffect/IPlugEffect.cpp[0m
+2026-05-19T21:29:35.1004370Z [36;1mcp Freeze95.h iPlug2/Examples/IPlugEffect/IPlugEffect.h[0m
+2026-05-19T21:29:35.1004680Z [36;1mcp Freeze95.h iPlug2/Examples/IPlugEffect/Freeze95.h[0m
+2026-05-19T21:29:35.1004970Z [36;1mcp config.h iPlug2/Examples/IPlugEffect/config.h[0m
+2026-05-19T21:29:35.1005280Z [36;1mcp Freeze95DSP.h iPlug2/Examples/IPlugEffect/Freeze95DSP.h[0m
+2026-05-19T21:29:35.1005720Z [36;1mcp Freeze95.entitlements iPlug2/Examples/IPlugEffect/Freeze95.entitlements[0m
+2026-05-19T21:29:35.1006130Z [36;1mcp resources/* iPlug2/Examples/IPlugEffect/resources/ 2>/dev/null || true[0m
+2026-05-19T21:29:35.1006520Z [36;1mcp Freeze95DOS.ttf iPlug2/Examples/IPlugEffect/Freeze95DOS.ttf 2>/dev/null || true[0m
+2026-05-19T21:29:35.1006950Z [36;1mcd iPlug2/Examples/IPlugEffect/resources[0m
+2026-05-19T21:29:35.1007200Z [36;1mfor f in IPlugEffect-*.plist; do[0m
+2026-05-19T21:29:35.1007570Z [36;1m  [ -f "$f" ] && cp "$f" "Freeze95${f#IPlugEffect}" || true[0m
+2026-05-19T21:29:35.1008120Z [36;1mdone[0m
+2026-05-19T21:29:35.1106460Z shell: /bin/bash -e {0}
+2026-05-19T21:29:35.1106670Z env:
+2026-05-19T21:29:35.1106830Z   BINARY_NAME: Freeze95
+2026-05-19T21:29:35.1107070Z ##[endgroup]

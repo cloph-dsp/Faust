@@ -4,7 +4,8 @@
 
 import("stdfaust.lib");
 
-declare name "Grungr";\ndeclare author "cloph";
+declare name "Grungr";
+declare author "cloph";
 declare version "2.7";
 
 //============================================================================

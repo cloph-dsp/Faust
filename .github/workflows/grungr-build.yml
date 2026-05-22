@@ -1,0 +1,44 @@
+name: Build Grungr
+
+on:
+  push:
+    paths:
+      - 'Grungr/**'
+      - '.github/workflows/grungr-build.yml'
+  pull_request:
+    paths:
+      - 'Grungr/**'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Clone iPlug2 framework
+        shell: bash
+        run: |
+          git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git ../iPlug2
+
+      - name: Download iPlug2 SDKs (VST3)
+        shell: bash
+        working-directory: ../iPlug2/Dependencies/IPlug
+        run: bash download-iplug-sdks.sh
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Grungr VST3 (Windows)
+        shell: pwsh
+        run: |
+          cd Grungr
+          & "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe" projects\Grungr-vst3.vcxproj /p:Configuration=Release /p:Platform=x64 "/p:SolutionDir=$($env:GITHUB_WORKSPACE)\Grungr\" /v:m
+
+      - name: Upload VST3 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Grungr-Windows
+          path: Grungr/build-win/vst3/x64/Release/Grungr.vst3

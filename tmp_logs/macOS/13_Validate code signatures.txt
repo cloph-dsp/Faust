@@ -1,0 +1,37 @@
+﻿2026-05-19T21:05:25.0609730Z ##[group]Run for BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do
+2026-05-19T21:05:25.0610230Z [36;1mfor BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do[0m
+2026-05-19T21:05:25.0610570Z [36;1m  echo "=== Validating $BUNDLE ==="[0m
+2026-05-19T21:05:25.0610770Z [36;1m  codesign -dvv "$BUNDLE" || true[0m
+2026-05-19T21:05:25.0610990Z [36;1m  codesign -vvv --deep "$BUNDLE" || true[0m
+2026-05-19T21:05:25.0611170Z [36;1m  echo ""[0m
+2026-05-19T21:05:25.0611340Z [36;1mdone[0m
+2026-05-19T21:05:25.0740290Z shell: /bin/bash -e {0}
+2026-05-19T21:05:25.0740890Z env:
+2026-05-19T21:05:25.0741250Z   BINARY_NAME: Freeze95
+2026-05-19T21:05:25.0741650Z ##[endgroup]
+2026-05-19T21:05:25.1155370Z === Validating Freeze95/build-mac/Products/Freeze95.vst3 ===
+2026-05-19T21:05:25.1277510Z Executable=/Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95
+2026-05-19T21:05:25.1278000Z Identifier=com.cloph.Freeze95
+2026-05-19T21:05:25.1278170Z Format=bundle with Mach-O universal (x86_64 arm64)
+2026-05-19T21:05:25.1278430Z CodeDirectory v=20400 size=3915 flags=0x2(adhoc) hashes=116+3 location=embedded
+2026-05-19T21:05:25.1278760Z Signature=adhoc
+2026-05-19T21:05:25.1278900Z Info.plist entries=22
+2026-05-19T21:05:25.1279010Z TeamIdentifier=not set
+2026-05-19T21:05:25.1279140Z Sealed Resources version=2 rules=13 files=2
+2026-05-19T21:05:25.1279310Z Internal requirements count=0 size=12
+2026-05-19T21:05:25.1450280Z Freeze95/build-mac/Products/Freeze95.vst3: valid on disk
+2026-05-19T21:05:25.1457630Z Freeze95/build-mac/Products/Freeze95.vst3: satisfies its Designated Requirement
+2026-05-19T21:05:25.1460760Z 
+2026-05-19T21:05:25.1461370Z === Validating Freeze95/build-mac/Products/Freeze95.clap ===
+2026-05-19T21:05:25.1552500Z Executable=/Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.clap/Contents/MacOS/Freeze95
+2026-05-19T21:05:25.1553640Z Identifier=com.cloph.Freeze95
+2026-05-19T21:05:25.1555040Z Format=bundle with Mach-O universal (x86_64 arm64)
+2026-05-19T21:05:25.1558400Z CodeDirectory v=20400 size=3115 flags=0x2(adhoc) hashes=91+3 location=embedded
+2026-05-19T21:05:25.1560270Z Signature=adhoc
+2026-05-19T21:05:25.1561670Z Info.plist entries=22
+2026-05-19T21:05:25.1562200Z TeamIdentifier=not set
+2026-05-19T21:05:25.1562970Z Sealed Resources version=2 rules=13 files=1
+2026-05-19T21:05:25.1566930Z Internal requirements count=0 size=12
+2026-05-19T21:05:25.1679980Z Freeze95/build-mac/Products/Freeze95.clap: valid on disk
+2026-05-19T21:05:25.1687170Z Freeze95/build-mac/Products/Freeze95.clap: satisfies its Designated Requirement
+2026-05-19T21:05:25.1691490Z 

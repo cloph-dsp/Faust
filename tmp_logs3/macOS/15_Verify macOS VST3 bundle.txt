@@ -1,0 +1,35 @@
+﻿2026-05-19T21:20:16.9511620Z ##[group]Run VST3_BUNDLE="/Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.vst3"
+2026-05-19T21:20:16.9512120Z [36;1mVST3_BUNDLE="/Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.vst3"[0m
+2026-05-19T21:20:16.9512390Z [36;1mif [ ! -d "$VST3_BUNDLE" ]; then[0m
+2026-05-19T21:20:16.9512550Z [36;1m  echo "ERROR: VST3 bundle not found at $VST3_BUNDLE"[0m
+2026-05-19T21:20:16.9512700Z [36;1m  exit 1[0m
+2026-05-19T21:20:16.9512780Z [36;1mfi[0m
+2026-05-19T21:20:16.9512880Z [36;1mecho "VST3 bundle found at: $VST3_BUNDLE"[0m
+2026-05-19T21:20:16.9513030Z [36;1mls -la "$VST3_BUNDLE/Contents/"[0m
+2026-05-19T21:20:16.9513190Z [36;1mif [ ! -f "$VST3_BUNDLE/Contents/MacOS/Freeze95" ]; then[0m
+2026-05-19T21:20:16.9513390Z [36;1m  echo "ERROR: Binary not found in VST3 bundle Contents/MacOS/"[0m
+2026-05-19T21:20:16.9513570Z [36;1m  echo "Contents of MacOS dir:"[0m
+2026-05-19T21:20:16.9513740Z [36;1m  ls -la "$VST3_BUNDLE/Contents/MacOS/" || echo "MacOS dir missing"[0m
+2026-05-19T21:20:16.9513930Z [36;1m  exit 1[0m
+2026-05-19T21:20:16.9514010Z [36;1mfi[0m
+2026-05-19T21:20:16.9514140Z [36;1mecho "Binary verified: $VST3_BUNDLE/Contents/MacOS/Freeze95"[0m
+2026-05-19T21:20:16.9514330Z [36;1mfile "$VST3_BUNDLE/Contents/MacOS/Freeze95"[0m
+2026-05-19T21:20:16.9514500Z [36;1mlipo -info "$VST3_BUNDLE/Contents/MacOS/Freeze95"[0m
+2026-05-19T21:20:16.9663450Z shell: /bin/bash -e {0}
+2026-05-19T21:20:16.9663590Z env:
+2026-05-19T21:20:16.9663680Z   BINARY_NAME: Freeze95
+2026-05-19T21:20:16.9663790Z ##[endgroup]
+2026-05-19T21:20:16.9864170Z VST3 bundle found at: /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.vst3
+2026-05-19T21:20:16.9900690Z total 16
+2026-05-19T21:20:16.9900900Z drwxr-xr-x  3 admin  staff    96 May 19 21:20 _CodeSignature
+2026-05-19T21:20:16.9901120Z drwxr-xr-x  7 admin  staff   224 May 19 21:20 .
+2026-05-19T21:20:16.9901280Z drwxr-xr-x  3 admin  staff    96 May 19 21:20 ..
+2026-05-19T21:20:16.9901490Z -rw-r--r--  1 admin  staff  1475 May 19 21:20 Info.plist
+2026-05-19T21:20:16.9901700Z drwxr-xr-x  3 admin  staff    96 May 19 21:20 MacOS
+2026-05-19T21:20:16.9901880Z -rw-r--r--  1 admin  staff     8 May 19 21:19 PkgInfo
+2026-05-19T21:20:16.9902040Z drwxr-xr-x  4 admin  staff   128 May 19 21:20 Resources
+2026-05-19T21:20:16.9902440Z Binary verified: /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95
+2026-05-19T21:20:16.9928280Z /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95: Mach-O universal binary with 2 architectures: [x86_64:Mach-O 64-bit bundle x86_64] [arm64]
+2026-05-19T21:20:16.9929300Z /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95 (for architecture x86_64):	Mach-O 64-bit bundle x86_64
+2026-05-19T21:20:16.9930100Z /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95 (for architecture arm64):	Mach-O 64-bit bundle arm64
+2026-05-19T21:20:17.0003490Z Architectures in the fat file: /Users/admin/actions-runner/_work/Faust/Faust/Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95 are: x86_64 arm64 

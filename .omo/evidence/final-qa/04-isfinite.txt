@@ -1,0 +1,3 @@
+﻿isfinite found at:
+	:161: if (!std::isfinite(out0[s])) out0[s] = 0.0;
+	:162: if (nOut > 1 && !std::isfinite(out1[s])) out1[s] = 0.0;
