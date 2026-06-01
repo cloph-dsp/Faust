@@ -10,8 +10,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
-#include <unistd.h>
 #include <sys/wait.h>
+#include <spawn.h>
+#include <mach-o/dyld.h>
+#include <crt_externs.h>
 #include <cmath>
 #include <CoreGraphics/CoreGraphics.h>
 
@@ -422,17 +424,49 @@ static void test_clap_entry(void* handle)
 // ============================================================================
 static bool try_dlopen(const char* path)
 {
-  pid_t pid = fork();
-  if (pid == 0) {
-    // Suppress ObjC fork safety in child — dlopen of the plugin binary
-    // triggers AppKit class registration via the dynamic linker.
-    setenv("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES", 1);
-    // Child: just dlopen + dlclose, then exit
-    void* h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-    if (h) dlclose(h);
-    _exit(h ? 0 : 1);
+  // Resolve current executable path for posix_spawn
+  uint32_t bufSize = 0;
+  _NSGetExecutablePath(NULL, &bufSize);
+  char execPath[4096];
+  if (bufSize >= sizeof(execPath)) return false;
+  if (_NSGetExecutablePath(execPath, &bufSize) != 0) return false;
+  char resolvedPath[4096];
+  if (!realpath(execPath, resolvedPath)) return false;
+
+  // Build argv: [execPath, NULL]
+  char* argv[] = { resolvedPath, NULL };
+
+  // Build env: parent env + FREEZE95_DLOPEN_TEST=<path> + OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+  char** env = *_NSGetEnviron();
+  int envCount = 0;
+  while (env[envCount]) envCount++;
+
+  // Allocate: existing vars + 2 new vars + NULL terminator
+  char** envp = (char**)malloc((size_t)(envCount + 3) * sizeof(char*));
+  if (!envp) return false;
+
+  for (int i = 0; i < envCount; i++) {
+    envp[i] = strdup(env[i]);
   }
-  if (pid < 0) return false;  // fork failed
+
+  char dlopenVar[4096];
+  snprintf(dlopenVar, sizeof(dlopenVar), "FREEZE95_DLOPEN_TEST=%s", path);
+  envp[envCount] = strdup(dlopenVar);
+  envp[envCount + 1] = strdup("OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES");
+  envp[envCount + 2] = NULL;
+
+  pid_t pid;
+  int spawnErr = posix_spawn(&pid, resolvedPath, NULL, NULL, argv, envp);
+
+  // Clean up envp
+  for (int i = 0; i < envCount + 2; i++) free(envp[i]);
+  free(envp);
+
+  if (spawnErr != 0) {
+    fprintf(stderr, "  posix_spawn failed: %d\n", spawnErr);
+    return false;
+  }
+
   int status;
   waitpid(pid, &status, 0);
   return WIFEXITED(status) && WEXITSTATUS(status) == 0;
@@ -730,10 +764,13 @@ static id nil_nsscreen_mainScreen(id self, SEL _cmd, ...) {
 }
 
 // ============================================================================
-// Run all VST3 lifecycle tests in child process — fork-guarded from crashes
+// Run all VST3 lifecycle tests in child process — spawn-guarded from crashes
 // ============================================================================
-static int run_vst3_child_tests(const char* binPath)
+static int run_vst3_child_tests(const char* bundlePath)
 {
+  char binPath[4096];
+  snprintf(binPath, sizeof(binPath), "%s/Contents/MacOS/Freeze95", bundlePath);
+
   void* module = dlopen(binPath, RTLD_NOW | RTLD_LOCAL);
   if (!module) {
     fprintf(stderr, "  FATAL: dlopen failed in child: %s\n", dlerror());
@@ -804,27 +841,56 @@ static int run_vst3_child_tests(const char* binPath)
 // ============================================================================
 // Fork-guard wrapper — runs fn(arg) in child, catches crashes
 // ============================================================================
-static bool fork_guard_run(int (*fn)(const char*), const char* arg)
+static bool fork_guard_run(const char* bundlePath)
 {
-  // macOS: fork()+ObjC crash. The child process inherits libraries loaded
-  // before fork, and ANY lazy ObjC class initialization after fork triggers
-  // _objc_initializeAfterForkError → SIGABRT.
-  // 
-  // CRITICAL: setenv() must happen in the CHILD after fork(), NOT in the
-  // parent. On some macOS versions (15+), environment inheritance does not
-  // reliably suppress the fork-safety check. Setting it in the child ensures
-  // it is present before any ObjC class is initialized (e.g. NSScreen in
-  // the headless simulation, or AppKit classes loaded via dlopen).
-  pid_t pid = fork();
-  if (pid == 0) {
-    setenv("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES", 1);
-    int result = fn(arg);
-    _exit(result);
+  // We use posix_spawn instead of fork() because macOS 15+ crashes on
+  // ObjC class initialization after fork, even with
+  // OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES. By spawning a completely
+  // new process, the child starts with a clean ObjC runtime and can
+  // safely initialize AppKit classes during dlopen.
+
+  // Resolve current executable path
+  uint32_t bufSize = 0;
+  _NSGetExecutablePath(NULL, &bufSize);
+  char execPath[4096];
+  if (bufSize >= sizeof(execPath)) return false;
+  if (_NSGetExecutablePath(execPath, &bufSize) != 0) return false;
+  char resolvedPath[4096];
+  if (!realpath(execPath, resolvedPath)) return false;
+
+  // Build argv: [execPath, NULL]
+  char* argv[] = { resolvedPath, NULL };
+
+  // Build env: parent env + FREEZE95_CHILD_RUN=<bundlePath> + OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+  char** env = *_NSGetEnviron();
+  int envCount = 0;
+  while (env[envCount]) envCount++;
+
+  char** envp = (char**)malloc((size_t)(envCount + 3) * sizeof(char*));
+  if (!envp) return false;
+
+  for (int i = 0; i < envCount; i++) {
+    envp[i] = strdup(env[i]);
   }
-  if (pid < 0) {
-    fprintf(stderr, "  fork_guard: fork failed\n");
+
+  char childRunVar[4096];
+  snprintf(childRunVar, sizeof(childRunVar), "FREEZE95_CHILD_RUN=%s", bundlePath);
+  envp[envCount] = strdup(childRunVar);
+  envp[envCount + 1] = strdup("OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES");
+  envp[envCount + 2] = NULL;
+
+  pid_t pid;
+  int spawnErr = posix_spawn(&pid, resolvedPath, NULL, NULL, argv, envp);
+
+  // Clean up envp
+  for (int i = 0; i < envCount + 2; i++) free(envp[i]);
+  free(envp);
+
+  if (spawnErr != 0) {
+    fprintf(stderr, "  posix_spawn failed: %d\n", spawnErr);
     return false;
   }
+
   int status;
   waitpid(pid, &status, 0);
   if (WIFSIGNALED(status)) {
@@ -840,6 +906,17 @@ static bool fork_guard_run(int (*fn)(const char*), const char* arg)
 // ============================================================================
 int main(int argc, char** argv)
 {
+  // Child process mode — invoked via posix_spawn, check env vars first
+  if (const char* dlopenTest = getenv("FREEZE95_DLOPEN_TEST")) {
+    void* h = dlopen(dlopenTest, RTLD_NOW | RTLD_LOCAL);
+    if (h) dlclose(h);
+    return h ? 0 : 1;
+  }
+
+  if (const char* childRun = getenv("FREEZE95_CHILD_RUN")) {
+    return run_vst3_child_tests(childRun);
+  }
+
   if (argc < 2) {
     fprintf(stderr, "Usage: %s <path/to/Freeze95.vst3>\n", argv[0]);
     return 1;
@@ -869,16 +946,17 @@ int main(int argc, char** argv)
   // --- Graphics context diagnostic ---
   check_graphics_context();
 
-  // --- Fork-guarded VST3 lifecycle tests ---
-  // CRITICAL: fork() MUST happen before the parent dlopen()s the plugin.
-  // The plugin links AppKit.framework, and once AppKit has been initialized
-  // in the parent process, fork() triggers _objc_initializeAfterForkError.
-  // By forking BEFORE dlopen, the child has a clean ObjC runtime state.
-  printf("\n--- VST3 Tests (fork-guarded) ---\n");
-  if (fork_guard_run(run_vst3_child_tests, binPath)) {
-    printf("  Fork-guarded VST3 tests: ALL PASSED\n");
+  // --- Spawn-guarded VST3 lifecycle tests ---
+  // CRITICAL: The child process MUST run before the parent dlopen()s
+  // the plugin. We use posix_spawn() instead of fork() because macOS 15+
+  // crashes on ObjC class initialization after fork. By spawning the
+  // child BEFORE dlopen in the parent, the child starts with a clean
+  // ObjC runtime state (no AppKit loaded yet).
+  printf("\n--- VST3 Tests (spawn-guarded) ---\n");
+  if (fork_guard_run(bundlePath)) {
+    printf("  Spawn-guarded VST3 tests: ALL PASSED\n");
   } else {
-    printf("  Fork-guarded VST3 tests: FAILED (see child output above)\n");
+    printf("  Spawn-guarded VST3 tests: FAILED (see child output above)\n");
     gErrors++;
   }
 
