@@ -658,6 +658,7 @@ static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
     return;
   }
 
+  CP("[CHILD] cp:edit_ctrl_got_controller\n");
   printf("  IEditController: OK\n");
 
   // CRITICAL: Query IComponent and call initialize() to populate the VST3 SDK's
@@ -670,15 +671,18 @@ static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
   res = controller->queryInterface(INLINE_UID_OF(IComponent), (void**)&editControllerComponent);
   if (editControllerComponent) {
     MinimalHostContext initCtx;
+    CP("[CHILD] cp:edit_ctrl_before_init\n");
     tresult initRes = editControllerComponent->initialize(&initCtx);
     editControllerInitialized = (initRes == kResultOk);
     printf("  initialize: %s (res=%08x)\n",
            editControllerInitialized ? "OK" : "FAILED", initRes);
+    CP("[CHILD] cp:edit_ctrl_after_init\n");
   } else {
     printf("  WARNING: Could not query IComponent from controller — ");
     printf("parameters may be empty\n");
   }
 
+  CP("[CHILD] cp:edit_ctrl_before_params\n");
   // Get parameters
   int32 paramCount = controller->getParameterCount();
   printf("  Parameters: %d\n", (int)paramCount);
@@ -693,8 +697,10 @@ static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
     }
   }
 
+  CP("[CHILD] cp:edit_ctrl_before_createview\n");
   // Try creating the editor view — exercises GUI init code path
   IPlugView* view = controller->createView("editor");
+  CP("[CHILD] cp:edit_ctrl_after_createview\n");
   if (view) {
     printf("  createView(\"editor\"): OK (GUI view created)\n");
 
@@ -715,28 +721,36 @@ static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
     // The NSScreen swizzle remains active but passing nullptr for the parent
     // view means IGraphicsMac::OpenWindow is not triggered, avoiding any
     // potential display-init crash.
+    CP("[CHILD] cp:edit_ctrl_before_attached\n");
     printf("  Calling view->attached(nullptr, kPlatformTypeNSView)\n");
     tresult attachRes = view->attached(nullptr, Steinberg::kPlatformTypeNSView);
     printf("  view->attached() returned: %s (%08x)\n",
            attachRes == Steinberg::kResultOk ? "kResultOk" : "kResultFalse", attachRes);
     TEST(attachRes == Steinberg::kResultOk,
          "view->attached() should return kResultOk");
+    CP("[CHILD] cp:edit_ctrl_after_attached\n");
 
     // Detach to clean up
     view->removed();
+    CP("[CHILD] cp:edit_ctrl_after_removed\n");
     view->release();
+    CP("[CHILD] cp:edit_ctrl_after_view_release\n");
   } else {
     printf("  createView(\"editor\"): gracefully declined (no parent window)\n");
   }
 
   // Terminate the component if we initialized it (cleans up ParameterContainer etc.)
   if (editControllerInitialized && editControllerComponent) {
+    CP("[CHILD] cp:edit_ctrl_before_terminate\n");
     editControllerComponent->terminate();
     printf("  terminate: OK\n");
     editControllerComponent->release(); // release the ref from queryInterface
+    CP("[CHILD] cp:edit_ctrl_after_terminate\n");
   }
 
+  CP("[CHILD] cp:edit_ctrl_before_ctrl_release\n");
   controller->release();
+  CP("[CHILD] cp:edit_ctrl_after_ctrl_release\n");
   printf("IEditController test: complete\n");
 }
 
