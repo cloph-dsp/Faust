@@ -860,7 +860,23 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  // --- Load plugin binary (safe now — pre-flight passed) ---
+  // --- Graphics context diagnostic ---
+  check_graphics_context();
+
+  // --- Fork-guarded VST3 lifecycle tests ---
+  // CRITICAL: fork() MUST happen before the parent dlopen()s the plugin.
+  // The plugin links AppKit.framework, and once AppKit has been initialized
+  // in the parent process, fork() triggers _objc_initializeAfterForkError.
+  // By forking BEFORE dlopen, the child has a clean ObjC runtime state.
+  printf("\n--- VST3 Tests (fork-guarded) ---\n");
+  if (fork_guard_run(run_vst3_child_tests, binPath)) {
+    printf("  Fork-guarded VST3 tests: ALL PASSED\n");
+  } else {
+    printf("  Fork-guarded VST3 tests: FAILED (see child output above)\n");
+    gErrors++;
+  }
+
+  // --- Load plugin binary in parent (safe now — tests already ran in child) ---
   void* module = dlopen(binPath, RTLD_NOW | RTLD_LOCAL);
   TEST(module != nullptr, "dlopen(RTLD_NOW)");
   if (!module) {
@@ -871,21 +887,6 @@ int main(int argc, char** argv)
 
   // --- Test CLAP entry ---
   test_clap_entry(module);
-
-  // --- Graphics context diagnostic ---
-  check_graphics_context();
-
-  // --- Fork-guarded VST3 lifecycle tests ---
-  // We fork BEFORE loading the factory so that any crash during
-  // GetPluginFactory, component creation, audio processing, or
-  // view creation is caught in the child process.
-  printf("\n--- VST3 Tests (fork-guarded) ---\n");
-  if (fork_guard_run(run_vst3_child_tests, binPath)) {
-    printf("  Fork-guarded VST3 tests: ALL PASSED\n");
-  } else {
-    printf("  Fork-guarded VST3 tests: FAILED (see child output above)\n");
-    gErrors++;
-  }
 
   dlclose(module);
 
