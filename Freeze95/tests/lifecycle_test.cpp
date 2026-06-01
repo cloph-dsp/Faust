@@ -12,6 +12,7 @@
 #include <cassert>
 #include <sys/wait.h>
 #include <spawn.h>
+#include <unistd.h>
 #include <mach-o/dyld.h>
 #include <crt_externs.h>
 #include <cmath>
@@ -810,15 +811,27 @@ static int run_vst3_child_tests(const char* bundlePath)
     printf("  Headless simulation SKIPPED\n");
   }
 
+  // Use raw write() for checkpoint diagnostics — stderr FILE* may be
+  // fully buffered in CI (pipe), but write(2, ...) is a direct syscall.
+  #define CP(msg) write(2, msg, sizeof(msg) - 1)
+  CP("[CHILD] cp:factory\n");
   test_vst3_factory(factory);
+  CP("[CHILD] cp:instance1\n");
   test_vst3_instance(factory, 1);
+  CP("[CHILD] cp:stress\n");
   test_vst3_stress(factory);
+  CP("[CHILD] cp:instance3\n");
   test_vst3_instance(factory, 3);
+  CP("[CHILD] cp:edge\n");
   test_edge_case_processing(factory, audioClassIdx);
+  CP("[CHILD] cp:edit_ctrl\n");
   test_edit_controller(factory, audioClassIdx);
+  CP("[CHILD] cp:release_factory\n");
 
   factory->release();
+  CP("[CHILD] cp:dlclose\n");
   dlclose(module);
+  CP("[CHILD] cp:return\n");
   return gErrors;
 }
 
