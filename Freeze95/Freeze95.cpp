@@ -1,7 +1,5 @@
 #include "Freeze95.h"
 
-// Freeze95 - a VST3 plugin
-
 #include <algorithm>
 
 #include <chrono>

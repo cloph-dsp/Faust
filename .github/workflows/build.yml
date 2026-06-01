@@ -80,7 +80,7 @@ jobs:
 
   build-macos:
     name: macOS
-    runs-on: getmac
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
