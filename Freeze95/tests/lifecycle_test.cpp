@@ -657,8 +657,8 @@ static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
     ParameterInfo pinfo;
     memset(&pinfo, 0, sizeof(pinfo));
     if (controller->getParameterInfo(i, pinfo) == kResultOk) {
-      printf("    Param[%d]: '%s' (short='%s') default=%.3f\n",
-             (int)i, pinfo.title, pinfo.shortTitle, pinfo.defaultNormalizedValue);
+      printf("    Param[%d]: id=%d default=%.3f\n",
+             (int)i, pinfo.id, pinfo.defaultNormalizedValue);
     }
   }
 
@@ -803,6 +803,13 @@ static int run_vst3_child_tests(const char* binPath)
 // ============================================================================
 static bool fork_guard_run(int (*fn)(const char*), const char* arg)
 {
+  // macOS: fork()+ObjC crash. Once AppKit has been initialized in the parent,
+  // fork() triggers _objc_initializeAfterForkError → SIGABRT because
+  // ObjC classes (e.g. NSResponder) may have been initializing in another
+  // thread at fork time. The child process CANNOT safely use ObjC without
+  // this env var override.
+  setenv("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES", 1);
+
   pid_t pid = fork();
   if (pid == 0) {
     int result = fn(arg);
