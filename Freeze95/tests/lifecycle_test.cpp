@@ -424,6 +424,9 @@ static bool try_dlopen(const char* path)
 {
   pid_t pid = fork();
   if (pid == 0) {
+    // Suppress ObjC fork safety in child — dlopen of the plugin binary
+    // triggers AppKit class registration via the dynamic linker.
+    setenv("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES", 1);
     // Child: just dlopen + dlclose, then exit
     void* h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (h) dlclose(h);
@@ -803,15 +806,18 @@ static int run_vst3_child_tests(const char* binPath)
 // ============================================================================
 static bool fork_guard_run(int (*fn)(const char*), const char* arg)
 {
-  // macOS: fork()+ObjC crash. Once AppKit has been initialized in the parent,
-  // fork() triggers _objc_initializeAfterForkError → SIGABRT because
-  // ObjC classes (e.g. NSResponder) may have been initializing in another
-  // thread at fork time. The child process CANNOT safely use ObjC without
-  // this env var override.
-  setenv("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES", 1);
-
+  // macOS: fork()+ObjC crash. The child process inherits libraries loaded
+  // before fork, and ANY lazy ObjC class initialization after fork triggers
+  // _objc_initializeAfterForkError → SIGABRT.
+  // 
+  // CRITICAL: setenv() must happen in the CHILD after fork(), NOT in the
+  // parent. On some macOS versions (15+), environment inheritance does not
+  // reliably suppress the fork-safety check. Setting it in the child ensures
+  // it is present before any ObjC class is initialized (e.g. NSScreen in
+  // the headless simulation, or AppKit classes loaded via dlopen).
   pid_t pid = fork();
   if (pid == 0) {
+    setenv("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES", 1);
     int result = fn(arg);
     _exit(result);
   }
