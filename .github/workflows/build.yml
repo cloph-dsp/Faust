@@ -782,7 +782,10 @@ jobs:
           echo "================================================"
           echo "  LIFE CYCLE TEST - VST3"
           echo "================================================"
-          if /tmp/freeze95_test "$VST3_BUNDLE"; then
+          # CRITICAL: OBJC_DISABLE_INITIALIZE_FORK_SAFETY must be set BEFORE the
+          # process starts — libobjc reads it once at startup via a constructor.
+          # Setting it via setenv() during runtime is too late for fork safety.
+          if OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES /tmp/freeze95_test "$VST3_BUNDLE"; then
             echo ""
             echo "LIFECYCLE VST3: PASSED"
           else
