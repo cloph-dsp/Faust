@@ -27,6 +27,9 @@ Build/
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user
+# Grungr project files (required for CI build)
+!Grungr/projects/*.vcxproj
+!Grungr/projects/*.vcxproj.filters
 *.suo
 *.userosscache
 *.sln.docstates
