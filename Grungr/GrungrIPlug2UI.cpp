@@ -189,10 +189,14 @@ public:
                              const ThemePalette& palette,
                              bool reduceMotion,
                              const igraphics::ISVG& shoeSoleSVG,
+                             const igraphics::ISVG& faceplateSVG,
+                             const igraphics::IRECT& backgroundBounds,
                              const char* textFontID = "Roboto-Regular")
   : IControl(bounds, paramIdx)
   , mReduceMotion(reduceMotion)
   , mShoeSoleSVG(shoeSoleSVG)
+  , mFaceplateSVG(faceplateSVG)
+  , mBackgroundBounds(backgroundBounds)
   , mFontID((textFontID && textFontID[0] != '\0') ? textFontID : "Roboto-Regular")
   {
     mDblAsSingleClick = true;
@@ -271,7 +275,28 @@ public:
       }
     }
 
-    // LED position in control-local coordinates.
+    // Cave-in offset: the stomp plate sinks when pressed.
+    const float caveOffset = mPressT * 3.0f + mVisualDown * 1.5f;
+
+    // Cave-in: the stomp plate sinks when pressed. Draw the faceplate SVG shifted
+    // down within the stomp control, clipped to its bounds. A dark fill at the top
+    // creates the gap where the plate separated from the body.
+    if (caveOffset > 0.1f && mFaceplateSVG.IsValid()) {
+      auto* pLayer = g.StartLayer(mRECT);
+
+      const igraphics::IRECT shiftedBG(mBackgroundBounds.L,
+                                        mBackgroundBounds.T + caveOffset,
+                                        mBackgroundBounds.R,
+                                        mBackgroundBounds.B + caveOffset);
+      g.DrawSVG(mFaceplateSVG, shiftedBG, &mBlend);
+
+      g.FillRect(igraphics::IColor(255, 2, 2, 2),
+                 igraphics::IRECT(mRECT.L, mRECT.T, mRECT.R, mRECT.T + caveOffset), &mBlend);
+
+      g.DrawLayer(pLayer);
+    }
+
+    // LED position in control-local coordinates (stays fixed on the chassis).
     static constexpr float kLedRelY =
         (kLedYNorm - kStompTopNorm) / (kStompBottomNorm - kStompTopNorm);
 
@@ -375,7 +400,7 @@ public:
         const float aspect = mShoeSoleSVG.H() / mShoeSoleSVG.W();
         const float soleH = soleW * aspect;
         const float cx = mRECT.MW();
-        const float cy = treadTop + treadH * 0.08f + soleH * 0.5f;
+        const float cy = treadTop + treadH * 0.08f + soleH * 0.5f + caveOffset;
 
         const igraphics::IRECT soleRect(cx - soleW * 0.5f,
                                          cy - soleH * 0.5f,
@@ -497,6 +522,8 @@ private:
   float mKeyboardFocus = 0.f;
   bool mPrevEngaged = false;
   igraphics::ISVG mShoeSoleSVG;
+  igraphics::ISVG mFaceplateSVG;
+  igraphics::IRECT mBackgroundBounds;
   const char* mFontID = "Roboto-Regular";
 };
 
@@ -1660,6 +1687,8 @@ LayoutRects layout = MakeLayout(uiBounds, backgroundBounds, ResolveLayoutVariant
                                                         palette,
                                                         gRuntimeBehavior.reduceMotion,
                                                         stompSoleSVG,
+                                                        backgroundSVG,
+                                                        layout.background,
                                                         labelFontID);
   pBypassToggle->SetTooltip(kTooltipStomp);
   pGraphics->AttachControl(pBypassToggle, kTagBypassToggle);
