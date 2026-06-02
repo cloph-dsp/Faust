@@ -12,7 +12,6 @@
 #include <cassert>
 #include <sys/wait.h>
 #include <spawn.h>
-#include <unistd.h>
 #include <mach-o/dyld.h>
 #include <crt_externs.h>
 #include <cmath>
@@ -601,10 +600,6 @@ static void test_edge_case_processing(IPluginFactory* factory, int32 classIdx)
   printf("Edge-case processing: complete\n");
 }
 
-// Use raw write() for checkpoint diagnostics — stderr FILE* may be
-// fully buffered in CI (pipe), but write(2, ...) is a direct syscall.
-#define CP(msg) write(2, msg, sizeof(msg) - 1)
-
 // ============================================================================
 // IEditController test — exercises view creation code path
 // ============================================================================
@@ -662,7 +657,6 @@ static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
     return;
   }
 
-  CP("[CHILD] cp:edit_ctrl_got_controller\n");
   printf("  IEditController: OK\n");
 
   // CRITICAL: Query IComponent and call initialize() to populate the VST3 SDK's
@@ -675,18 +669,15 @@ static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
   res = controller->queryInterface(INLINE_UID_OF(IComponent), (void**)&editControllerComponent);
   if (editControllerComponent) {
     MinimalHostContext initCtx;
-    CP("[CHILD] cp:edit_ctrl_before_init\n");
     tresult initRes = editControllerComponent->initialize(&initCtx);
     editControllerInitialized = (initRes == kResultOk);
     printf("  initialize: %s (res=%08x)\n",
            editControllerInitialized ? "OK" : "FAILED", initRes);
-    CP("[CHILD] cp:edit_ctrl_after_init\n");
   } else {
     printf("  WARNING: Could not query IComponent from controller — ");
     printf("parameters may be empty\n");
   }
 
-  CP("[CHILD] cp:edit_ctrl_before_params\n");
   // Get parameters
   int32 paramCount = controller->getParameterCount();
   printf("  Parameters: %d\n", (int)paramCount);
@@ -701,10 +692,8 @@ static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
     }
   }
 
-  CP("[CHILD] cp:edit_ctrl_before_createview\n");
   // Try creating the editor view — exercises GUI init code path
   IPlugView* view = controller->createView("editor");
-  CP("[CHILD] cp:edit_ctrl_after_createview\n");
   if (view) {
     printf("  createView(\"editor\"): OK (GUI view created)\n");
 
@@ -723,7 +712,6 @@ static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
     //
     // If you need to test attached() in the future, wrap it in its own
     // posix_spawn subprocess to isolate the crash.
-    CP("[CHILD] cp:edit_ctrl_skip_attached\n");
     view->release();
   } else {
     printf("  createView(\"editor\"): gracefully declined (no parent window)\n");
@@ -731,16 +719,12 @@ static void test_edit_controller(IPluginFactory* factory, int32 classIdx)
 
   // Terminate the component if we initialized it (cleans up ParameterContainer etc.)
   if (editControllerInitialized && editControllerComponent) {
-    CP("[CHILD] cp:edit_ctrl_before_terminate\n");
     editControllerComponent->terminate();
     printf("  terminate: OK\n");
     editControllerComponent->release(); // release the ref from queryInterface
-    CP("[CHILD] cp:edit_ctrl_after_terminate\n");
   }
 
-  CP("[CHILD] cp:edit_ctrl_before_ctrl_release\n");
   controller->release();
-  CP("[CHILD] cp:edit_ctrl_after_ctrl_release\n");
   printf("IEditController test: complete\n");
 }
 
@@ -815,24 +799,15 @@ static int run_vst3_child_tests(const char* bundlePath)
     printf("  Headless simulation SKIPPED\n");
   }
 
-  CP("[CHILD] cp:factory\n");
   test_vst3_factory(factory);
-  CP("[CHILD] cp:instance1\n");
   test_vst3_instance(factory, 1);
-  CP("[CHILD] cp:stress\n");
   test_vst3_stress(factory);
-  CP("[CHILD] cp:instance3\n");
   test_vst3_instance(factory, 3);
-  CP("[CHILD] cp:edge\n");
   test_edge_case_processing(factory, audioClassIdx);
-  CP("[CHILD] cp:edit_ctrl\n");
   test_edit_controller(factory, audioClassIdx);
-  CP("[CHILD] cp:release_factory\n");
 
   factory->release();
-  CP("[CHILD] cp:dlclose\n");
   dlclose(module);
-  CP("[CHILD] cp:return\n");
   return gErrors;
 }
 
