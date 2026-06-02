@@ -33,10 +33,11 @@ jobs:
 
       - name: Build Grungr VST3 (Windows)
         shell: pwsh
+        working-directory: Grungr
         run: |
-          cd Grungr
           $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
           Write-Host "Using MSBuild: $msbuild"
+          Write-Host "Working dir: $(Get-Location)"
           & $msbuild projects\Grungr-vst3.vcxproj /p:Configuration=Release /p:Platform=x64 "/p:SolutionDir=$($env:GITHUB_WORKSPACE)\Grungr\" /v:m
 
       - name: Upload VST3 Artifact
