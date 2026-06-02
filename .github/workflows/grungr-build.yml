@@ -35,11 +35,26 @@ jobs:
         shell: pwsh
         working-directory: Grungr
         run: |
+          Write-Host "=== Working dir ==="
+          Get-Location
+          Write-Host "=== Top-level Grungr dir ==="
+          Get-ChildItem -Force | Select-Object Name,Mode
+          Write-Host "=== projects/ contents ==="
+          if (Test-Path projects) {
+            Get-ChildItem -Force projects | Select-Object Name,Mode
+          } else {
+            Write-Host "NO projects/ DIRECTORY!"
+          }
+          Write-Host "=== Looking for vcxproj ==="
+          Get-ChildItem -Recurse -Filter "*.vcxproj" -ErrorAction SilentlyContinue | Select-Object FullName
+          Write-Host "=== GITHUB_WORKSPACE ==="
+          Write-Host $env:GITHUB_WORKSPACE
+          Write-Host "=== Trying absolute path ==="
           $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
-          Write-Host "Using MSBuild: $msbuild"
-          Write-Host "Working dir: $(Get-Location)"
-          Get-ChildItem projects -Filter "*.vcxproj" | ForEach-Object { Write-Host "  found: $($_.FullName)" }
-          & $msbuild "./projects/Grungr-vst3.vcxproj" /p:Configuration=Release /p:Platform=x64 "/p:SolutionDir=$($env:GITHUB_WORKSPACE)/Grungr/" /v:m
+          $proj = "$env:GITHUB_WORKSPACE\Grungr\projects\Grungr-vst3.vcxproj"
+          Write-Host "Project path: $proj"
+          Write-Host "Project exists: $(Test-Path $proj)"
+          & $msbuild $proj /p:Configuration=Release /p:Platform=x64 "/p:SolutionDir=$env:GITHUB_WORKSPACE\Grungr\" /v:m
 
       - name: Upload VST3 Artifact
         uses: actions/upload-artifact@v4
