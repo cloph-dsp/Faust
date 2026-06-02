@@ -38,7 +38,8 @@ jobs:
           $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
           Write-Host "Using MSBuild: $msbuild"
           Write-Host "Working dir: $(Get-Location)"
-          & $msbuild projects\Grungr-vst3.vcxproj /p:Configuration=Release /p:Platform=x64 "/p:SolutionDir=$($env:GITHUB_WORKSPACE)\Grungr\" /v:m
+          Get-ChildItem projects -Filter "*.vcxproj" | ForEach-Object { Write-Host "  found: $($_.FullName)" }
+          & $msbuild "./projects/Grungr-vst3.vcxproj" /p:Configuration=Release /p:Platform=x64 "/p:SolutionDir=$($env:GITHUB_WORKSPACE)/Grungr/" /v:m
 
       - name: Upload VST3 Artifact
         uses: actions/upload-artifact@v4
