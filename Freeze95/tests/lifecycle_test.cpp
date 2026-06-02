@@ -601,6 +601,10 @@ static void test_edge_case_processing(IPluginFactory* factory, int32 classIdx)
   printf("Edge-case processing: complete\n");
 }
 
+// Use raw write() for checkpoint diagnostics — stderr FILE* may be
+// fully buffered in CI (pipe), but write(2, ...) is a direct syscall.
+#define CP(msg) write(2, msg, sizeof(msg) - 1)
+
 // ============================================================================
 // IEditController test — exercises view creation code path
 // ============================================================================
@@ -825,9 +829,6 @@ static int run_vst3_child_tests(const char* bundlePath)
     printf("  Headless simulation SKIPPED\n");
   }
 
-  // Use raw write() for checkpoint diagnostics — stderr FILE* may be
-  // fully buffered in CI (pipe), but write(2, ...) is a direct syscall.
-  #define CP(msg) write(2, msg, sizeof(msg) - 1)
   CP("[CHILD] cp:factory\n");
   test_vst3_factory(factory);
   CP("[CHILD] cp:instance1\n");
