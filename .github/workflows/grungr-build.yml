@@ -28,6 +28,22 @@ jobs:
         working-directory: iPlug2/Dependencies/IPlug
         run: bash download-iplug-sdks.sh
 
+      - name: Install Faust (2.81.2)
+        shell: pwsh
+        run: |
+          $faustInstaller = "$env:TEMP\Faust-2.81.2-win64.exe"
+          Write-Host "Downloading Faust 2.81.2..."
+          Invoke-WebRequest -Uri "https://github.com/grame-cncm/faust/releases/download/2.81.2/Faust-2.81.2-win64.exe" -OutFile $faustInstaller -UseBasicParsing
+          Write-Host "Installing Faust (silent)..."
+          $proc = Start-Process -FilePath $faustInstaller -ArgumentList "/S","/D=C:\Program Files\Faust" -Wait -PassThru
+          Write-Host "Faust installer exit code: $($proc.ExitCode)"
+          if (Test-Path "C:\Program Files\Faust\include\faust\dsp\dsp.h") {
+            Write-Host "Faust headers installed at C:\Program Files\Faust\include"
+          } else {
+            Write-Host "ERROR: Faust headers not found at expected location"
+            exit 1
+          }
+
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
 

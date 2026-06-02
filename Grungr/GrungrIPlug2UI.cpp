@@ -282,7 +282,7 @@ public:
     // down within the stomp control, clipped to its bounds. A dark fill at the top
     // creates the gap where the plate separated from the body.
     if (caveOffset > 0.1f && mFaceplateSVG.IsValid()) {
-      auto* pLayer = g.StartLayer(mRECT);
+      g.StartLayer(this, mRECT);
 
       const igraphics::IRECT shiftedBG(mBackgroundBounds.L,
                                         mBackgroundBounds.T + caveOffset,
@@ -293,7 +293,8 @@ public:
       g.FillRect(igraphics::IColor(255, 2, 2, 2),
                  igraphics::IRECT(mRECT.L, mRECT.T, mRECT.R, mRECT.T + caveOffset), &mBlend);
 
-      g.DrawLayer(pLayer);
+      igraphics::ILayerPtr caveLayer = g.EndLayer();
+      g.DrawLayer(caveLayer, &mBlend);
     }
 
     // LED position in control-local coordinates (stays fixed on the chassis).
