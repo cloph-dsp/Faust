@@ -20,6 +20,7 @@ enum EParams {
   kParamLoFi,
   kParamBpm,
   kParamSync,
+  kParamDryWet,
   kNumParams
 };
 
@@ -61,6 +62,10 @@ private:
   // Smoothed power gain for click-free bypass toggling (ramped per-sample)
   float mPowerGain = 1.0f;
   float mTargetPowerGain = 1.0f;
+
+  // Smoothed dry/wet mix (0..1) for click-free knob tweaks
+  float mDryWet = 1.0f;
+  float mTargetDryWet = 1.0f;
 
   bool mHasTransportState = false;
   bool mLastTransportRunning = false;

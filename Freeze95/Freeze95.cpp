@@ -2358,6 +2358,8 @@ Freeze95::Freeze95(const InstanceInfo& info)
   GetParam(kParamLoFi)->InitDouble("Lo-Fi Amount", 0.30, 0.0, 1.0, 0.01, "%");
   GetParam(kParamBpm)->InitDouble("Tempo (BPM)", 120.0, 20.0, 300.0, 0.1, "bpm");
   GetParam(kParamSync)->InitBool("Sync to Host", true);
+  // Dry/Wet is applied in C++ ProcessBlock (post-Faust mix), not in the Faust DSP itself.
+  GetParam(kParamDryWet)->InitDouble("Dry/Wet", 100.0, 0.0, 100.0, 1.0, "%");
 
   // Factory presets - these work with iPlug2's MakePreset API.
   // NOTE: Some DAWs (e.g., certain VST3 hosts) do not expose factory presets in their
@@ -2433,7 +2435,10 @@ void Freeze95::LayoutUI(IGraphics* g) {
 
   const float knobGap = Snap8(16.f);
   const float transportGap = Snap8(24.f);
-  const float powerGap = Snap8(40.f);
+  // Dry/Wet knob is a tiny "mix" knob, smaller than the main controls.
+  const float dryWetGap = Snap8(12.f);
+  // Reduced from 40 to 16 — the Dry/Wet knob now sits in this gap.
+  const float powerGap = Snap8(16.f);
 
   // Equal raw gaps looked uneven because the knob faces occupy much less of
   // their bounds than the transport panel and power button. Weight the row by
@@ -2441,6 +2446,7 @@ void Freeze95::LayoutUI(IGraphics* g) {
   float chaosWidth = Snap8(ClampValue(w * 0.175f, 144.f, 152.f));
   float loFiWidth = chaosWidth;
   float powerWidth = Snap8(ClampValue(w * 0.175f, 144.f, 152.f));
+  float dryWetWidth = Snap8(ClampValue(w * 0.082f, 64.f, 72.f));
 
   const float logoPlateWidth = chaosWidth;
   const float badgePlateWidth = powerWidth;
@@ -2508,7 +2514,7 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const float transportInsetY = Snap8(16.f);
 
   const float totalTransportWidth = Snap8(ClampValue(w * 0.27f, 216.f, 224.f));
-  const float contentWidth = chaosWidth + knobGap + loFiWidth + transportGap + totalTransportWidth + powerGap + powerWidth;
+  const float contentWidth = chaosWidth + knobGap + loFiWidth + transportGap + totalTransportWidth + dryWetGap + dryWetWidth + powerGap + powerWidth;
   const float rowLeft = std::max(outerMargin, 0.5f * (w - contentWidth));
 
   const IRECT chaosBounds(rowLeft,
@@ -2529,7 +2535,13 @@ void Freeze95::LayoutUI(IGraphics* g) {
 
   const float powerTop = majorTop + macroTopInset;
   const float powerBottom = majorBottom - macroBottomInset;
-  const float powerPanelL = transportPanelBounds.R + powerGap;
+
+  // Dry/Wet "mix" knob — sits between the transport panel and the power button.
+  const float dryWetPanelL = transportPanelBounds.R + dryWetGap;
+  const IRECT dryWetBounds(dryWetPanelL, powerTop,
+                           dryWetPanelL + dryWetWidth, powerBottom);
+
+  const float powerPanelL = dryWetBounds.R + powerGap;
   const IRECT powerBounds(powerPanelL, powerTop, powerPanelL + powerWidth, powerBottom);
 
   // Plates anchored to align exactly with inner bezels.
@@ -2567,6 +2579,13 @@ void Freeze95::LayoutUI(IGraphics* g) {
   g->AttachControl(new SpeakerKnobControl(
     loFiBounds,
     kParamLoFi, "LO-FI"));
+
+  // Tiny Dry/Wet mix knob — same SpeakerKnobControl renderer as the main knobs
+  // (so the look matches), but with a smaller bound.  Located between the
+  // transport panel and the power button.
+  g->AttachControl(new SpeakerKnobControl(
+    dryWetBounds,
+    kParamDryWet, "MIX"));
 
   g->AttachControl(new MiniManualToggleControl(
     syncBounds,
@@ -2749,18 +2768,29 @@ void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
   // The Faust DSP already has an 8 ms internal smooth, but a longer C++ ramp
   // prevents discontinuities when the host bypasses or the user toggles rapidly.
   mTargetPowerGain = GetParam(kParamPower)->Value() > 0.5f ? 1.0f : 0.0f;
+  // Dry/Wet: param range 0..100, normalised to 0..1 here.
+  mTargetDryWet = static_cast<float>(GetParam(kParamDryWet)->Value() / 100.0);
   const float gainRamp = 0.04f; // ~25 samples to converge
+  const float dryWetRamp = 0.02f; // ~50 samples — gentler for smooth knob tweaks
 
   if (nOut >= 2) {
     for (int s = 0; s < nFrames; ++s) {
       mPowerGain += (mTargetPowerGain - mPowerGain) * gainRamp;
-      outputs[0][s] = static_cast<sample>(mOutL[s] * mPowerGain + inputs[0][s] * (1.0f - mPowerGain));
-      outputs[1][s] = static_cast<sample>(mOutR[s] * mPowerGain + inputs[1][s] * (1.0f - mPowerGain));
+      mDryWet += (mTargetDryWet - mDryWet) * dryWetRamp;
+      // Power scales how much of the processed signal is heard; dry/wet then
+      // blends that with the unprocessed input.  Net gain is wet = mPowerGain*mDryWet.
+      const float wet = mPowerGain * mDryWet;
+      const float dry = 1.0f - wet;
+      outputs[0][s] = static_cast<sample>(mOutL[s] * wet + inputs[0][s] * dry);
+      outputs[1][s] = static_cast<sample>(mOutR[s] * wet + inputs[1][s] * dry);
     }
   } else if (nOut == 1) {
     for (int s = 0; s < nFrames; ++s) {
       mPowerGain += (mTargetPowerGain - mPowerGain) * gainRamp;
-      outputs[0][s] = static_cast<sample>(mOutL[s] * mPowerGain + inputs[0][s] * (1.0f - mPowerGain));
+      mDryWet += (mTargetDryWet - mDryWet) * dryWetRamp;
+      const float wet = mPowerGain * mDryWet;
+      const float dry = 1.0f - wet;
+      outputs[0][s] = static_cast<sample>(mOutL[s] * wet + inputs[0][s] * dry);
     }
   }
 
