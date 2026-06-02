@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>3 Beat Workstation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <h1>3 Beat Workstation</h1>
+          <p>Polyrhythm lab for fast iteration.</p>
+        </div>
+        <div class="transport-panel" aria-label="Transport controls">
+          <button id="playToggle" class="primary-btn" aria-pressed="false">Play</button>
+          <button id="panicButton" class="ghost-btn">Panic</button>
+          <label>BPM
+            <input id="bpmInput" type="number" min="40" max="300" step="1" inputmode="numeric">
+          </label>
+          <label>Bars
+            <select id="barsInput">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8">8</option>
+            </select>
+          </label>
+          <label>Swing
+            <input id="swingInput" type="range" min="0" max="100" step="1">
+          </label>
+          <span id="swingValue" class="mono">0%</span>
+        </div>
+        <div class="status-panel mono" id="statusPanel" aria-live="polite"></div>
+      </header>
+
+      <section class="workflow-panel" aria-label="Workflow tools">
+        <div class="tool-group">
+          <button id="addLane" class="ghost-btn">Add Lane</button>
+          <button id="undoButton" class="ghost-btn">Undo</button>
+          <button id="redoButton" class="ghost-btn">Redo</button>
+          <button id="shortcutButton" class="ghost-btn">Shortcuts</button>
+        </div>
+        <div class="tool-group">
+          <label>Mutate
+            <input id="mutateAmount" type="range" min="0" max="100" step="1">
+          </label>
+          <button id="mutateActiveLane" class="ghost-btn">Mutate Lane</button>
+          <button id="exportMidi" class="ghost-btn">Export MIDI</button>
+        </div>
+        <div class="tool-group">
+          <input id="presetName" type="text" placeholder="Preset name">
+          <button id="savePreset" class="ghost-btn">Save Preset</button>
+          <select id="presetSelect"></select>
+          <button id="loadPreset" class="ghost-btn">Load</button>
+          <button id="deletePreset" class="ghost-btn">Delete</button>
+        </div>
+        <div class="tool-group">
+          <button id="exportSession" class="ghost-btn">Export Session</button>
+          <label class="file-label">
+            Import Session
+            <input id="importSession" type="file" accept=".json,application/json">
+          </label>
+        </div>
+      </section>
+
+      <main id="laneContainer" class="lane-container" aria-label="Sequencer lanes"></main>
+    </div>
+
+    <aside id="shortcutPanel" class="shortcut-panel hidden" aria-hidden="true">
+      <h2>Keyboard</h2>
+      <p><kbd>Space</kbd> Play / Stop</p>
+      <p><kbd>Ctrl/Cmd + Z</kbd> Undo</p>
+      <p><kbd>Ctrl/Cmd + Shift + Z</kbd> Redo</p>
+      <p><kbd>R</kbd> Mutate active lane</p>
+      <p><kbd>C</kbd> Copy active lane</p>
+      <p><kbd>V</kbd> Paste active lane</p>
+      <p><kbd>?</kbd> Toggle this panel</p>
+      <p><kbd>1-9</kbd> Select lane</p>
+      <p><kbd>Arrows</kbd> Navigate steps</p>
+      <p><kbd>Enter</kbd> Toggle step</p>
+      <p><kbd>A</kbd> Cycle step accent</p>
+    </aside>
+
+    <div id="toastHost" class="toast-host" aria-live="polite"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hotkeys-js@3.13.13/dist/hotkeys.min.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
