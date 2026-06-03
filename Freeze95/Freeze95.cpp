@@ -1503,51 +1503,90 @@ private:
   std::chrono::steady_clock::time_point mReadoutPulseStart;
 };
 
-// Compact circular knob for the Dry/Wet mix control.  Designed to fit in
-// the existing 24-36 px lower margin below the power button — about a
-// 24-32 px diameter circle with a position indicator.  No big label
-// footer (would not fit); the "MIX" label is drawn in the lower margin
-// next to the knob by the layout, not by this control.
+// Compact circular knob for the Dry/Wet mix control.  Same visual language
+// as SpeakerKnobControl (kKnobTop fill, radial indicator, travel arc,
+// full-range track) but scaled down to ~16-20 px diameter so it fits in
+// the lower margin below the power button.  A small "MIX" label is drawn
+// below the knob using DrawUtilityText.
 class TinyKnobControl final : public IKnobControlBase {
 public:
-  TinyKnobControl(const IRECT& bounds, int paramIdx)
-    : IKnobControlBase(bounds, paramIdx) {
+  TinyKnobControl(const IRECT& bounds, int paramIdx, const char* label)
+    : IKnobControlBase(bounds, paramIdx)
+    , mLabel((label && label[0]) ? label : "MIX") {
     mDblAsSingleClick = true;
   }
 
   void OnResize() override {
+    // Reserve a small band at the bottom of mRECT for the label, and let
+    // the IKnobControlBase hit-test cover the whole rect so clicks are easy.
     SetTargetRECT(mRECT);
   }
 
   void Draw(IGraphics& g) override {
-    const float cx = mRECT.MW();
-    const float cy = mRECT.MH();
-    const float r = 0.5f * std::min(mRECT.W(), mRECT.H()) - 1.f;
-    if (r < 2.f) return;
+    const float value = static_cast<float>(GetValue());
 
-    const bool active = GetMouseIsOver() || GetAnimationProgress() > 0.f;
-    const IColor rim = active ? kShellLight : BlendColor(kShellText, kShellLight, 0.3f);
+    // Knob area = square at the top of the control, with a label band at the bottom.
+    const float knobH = std::max(10.f, mRECT.H() * (2.f / 3.f));
+    const IRECT knobRect(mRECT.L, mRECT.T, mRECT.R, mRECT.T + knobH);
+    const IRECT labelRect(mRECT.L, mRECT.T + knobH, mRECT.R, mRECT.B);
 
-    // Outer rim
-    g.DrawCircle(rim, cx, cy, r, nullptr, 1.2f);
+    const float cx = knobRect.MW();
+    const float cy = knobRect.MH();
+    const float r = 0.5f * std::min(knobRect.W(), knobRect.H()) - 1.5f;
+    if (r < 3.f) return;
 
-    // Inner fill — a slightly darker disc to give a sense of depth
-    g.FillCircle(WithAlpha(kShellDark, 180), cx, cy, r - 1.0f);
+    const bool hover = GetMouseIsOver();
+    const bool captured = GetUI() && GetUI()->ControlIsCaptured(this);
+    const bool active = (hover || captured || mMouseDown) && !IsDisabled();
 
-    // Position indicator — a short line from the centre to the rim, swept
-    // across the standard knob range (-135° at value 0 to +135° at value 1).
-    const double v = GetValue();
-    const float a = static_cast<float>(kPi * (-0.75 + 1.5 * v));
-    const float ix0 = cx + std::cos(a) * (r * 0.18f);
-    const float iy0 = cy + std::sin(a) * (r * 0.18f);
-    const float ix1 = cx + std::cos(a) * (r * 0.78f);
-    const float iy1 = cy + std::sin(a) * (r * 0.78f);
-    g.DrawLine(WithAlpha(kShellText, 220), ix0, iy0, ix1, iy1, nullptr,
-               std::max(1.2f, r * 0.18f));
+    // Faint full-range track (225° → 495° = 270° of travel).
+    g.DrawArc(WithAlpha(IColor(65, 250, 245, 230), 70),
+              cx, cy, r + 1.6f, 225.f, 495.f, nullptr, 1.0f);
 
-    // Centre dot
-    g.FillCircle(WithAlpha(kShellText, 160), cx, cy, std::max(0.8f, r * 0.10f));
+    // Travel arc — shows consumed range, brightens on hover/active.
+    if (value > 0.002f) {
+      const float lineAngle = Lerp(135.f, 405.f, value);
+      g.DrawArc(active ? WithAlpha(kCoolGlow, 170) : WithAlpha(kCoolOn, 130),
+                cx, cy, r + 1.6f, 225.f, lineAngle + 90.f, nullptr, 1.0f);
+    }
+
+    // Drop shadow under the knob for depth.
+    g.FillCircle(WithAlpha(kShellDeep, 20), cx + 0.6f, cy + 1.0f, r + 0.4f);
+
+    // Knob body — same kKnobTop → kShellLight blend as the main knobs.
+    const IColor knobFill = BlendColor(kKnobTop, kShellLight, active ? 0.30f : 0.20f);
+    g.FillCircle(knobFill, cx, cy, r);
+
+    // Subtle highlight rim on hover.
+    if (active) {
+      g.DrawCircle(WithAlpha(kShellLight, 110), cx, cy, r + 0.3f, nullptr, 0.7f);
+    }
+
+    // Position indicator — same formula as SpeakerKnobControl (135°→405°).
+    const float lineAngle = Lerp(135.f, 405.f, value);
+    DrawRadialLine(g,
+                   WithAlpha(BlendColor(kKnobPointerDark, kShellDeep, 0.5f), 230),
+                   cx, cy, lineAngle,
+                   r * 0.30f, r * 0.85f,
+                   std::max(1.0f, r * 0.16f));
+    DrawRadialLine(g,
+                   WithAlpha(kShellLight, 90),
+                   cx - 0.18f, cy - 0.18f, lineAngle,
+                   r * 0.32f, r * 0.78f,
+                   0.6f);
+
+    // Label
+    DrawUtilityText(g, 7.5f, active ? kFieldText : kShellText,
+                    EAlign::Center, EVAlign::Middle, mLabel.Get(), labelRect);
   }
+
+protected:
+  IRECT GetKnobDragBounds() override {
+    return mRECT.GetPadded(-1.f);
+  }
+
+private:
+  WDL_String mLabel;
 };
 
 class TransportGroupPanelControl final : public IControl {
@@ -2582,17 +2621,28 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const float powerPanelL = transportPanelBounds.R + powerGap;
   const IRECT powerBounds(powerPanelL, powerTop, powerPanelL + powerWidth, powerBottom);
 
-  // Tiny Dry/Wet mix knob — fits in the lower-margin space below the power button.
-  // Diameter is 24-32 px (radius 12-16), positioned just below the power
-  // button and slightly to the left of its centre.  No height change.
-  const float dryWetR = ClampValue(h * 0.04f, 11.f, 15.f);   // radius, raw
+  // Tiny Dry/Wet mix knob — fits in the lower-margin space below the power
+  // button.  Diameter 16-22 px (radius 8-11).  Positioned slightly to the
+  // RIGHT of the power button centre (not the left), and as high as
+  // possible inside the lower margin so it doesn't feel like an afterthought.
+  // A "MIX" label sits in the same control's bounds, below the knob.
+  const float dryWetR = ClampValue(h * 0.034f, 8.f, 11.f);   // radius, raw
   const float dryWetD = dryWetR * 2.f;
-  const float dryWetCenterX = powerBounds.MW() - powerWidth * 0.08f;
-  const float dryWetCenterY = powerBounds.B + dryWetR + 2.f;
+  const float labelBandH = 9.f;  // height reserved for the MIX label band
+  // Horizontal: nudge right of the power button's centre.  Power centre is at
+  // powerBounds.MW(); the knob sits ~26 px to the right of that.
+  const float dryWetCenterX = powerBounds.MW() + 26.f;
+  // Vertical: knob centre is just below the power button's lower edge, with
+  // a small gap, leaving room for the label band at the very bottom of the
+  // plugin (still inside PLUG_HEIGHT, no resizing required).
+  const float dryWetCenterY = powerBounds.B + dryWetR + 1.f;
   const float dryWetLeft = dryWetCenterX - dryWetR;
   const float dryWetTop = dryWetCenterY - dryWetR;
-  const IRECT dryWetBounds(dryWetLeft, dryWetTop,
-                           dryWetLeft + dryWetD, dryWetTop + dryWetD);
+  // The control's bounds include the knob and the label band so the label
+  // is drawn together with the knob.  Padding the right side gives the
+  // user a comfortable hit target for vertical drags.
+  const IRECT dryWetBounds(dryWetLeft - 2.f, dryWetTop,
+                           dryWetLeft + dryWetD + 4.f, dryWetTop + dryWetD + labelBandH);
 
   // Plates anchored to align exactly with inner bezels.
   const IRECT logoPlateBounds(chaosBounds.L, badgePlateTop,
@@ -2643,9 +2693,9 @@ void Freeze95::LayoutUI(IGraphics* g) {
     kParamPower, ""));
 
   // Tiny Dry/Wet mix knob — sits in the lower margin just below the power
-  // button.  Diameter is 22-30 px; the bound is large enough for the host
-  // to receive a click/drag, but the visual is a small disc.
-  g->AttachControl(new TinyKnobControl(dryWetBounds, kParamDryWet));
+  // button.  Same design language as SpeakerKnobControl, just much smaller,
+  // with a "MIX" label drawn inside the same control's bounds.
+  g->AttachControl(new TinyKnobControl(dryWetBounds, kParamDryWet, "MIX"));
 
   // Bypass wash — covers the full panel so power-off reads like the monitor went dark
   const IRECT bypassCoverBounds(0.f, 0.f, w, h);
