@@ -1526,6 +1526,8 @@ public:
     const float value = static_cast<float>(GetValue());
 
     // Knob area = square at the top of the control, with a label band at the bottom.
+    // The label rect is aligned to the knob rect (not the full control) so the
+    // "MIX" caption sits directly under the disc, matching the SpeakerKnob layout.
     const float knobH = std::max(10.f, mRECT.H() * (2.f / 3.f));
     const IRECT knobRect(mRECT.L, mRECT.T, mRECT.R, mRECT.T + knobH);
     const IRECT labelRect(mRECT.L, mRECT.T + knobH, mRECT.R, mRECT.B);
@@ -1540,43 +1542,43 @@ public:
     const bool active = (hover || captured || mMouseDown) && !IsDisabled();
 
     // Faint full-range track (225° → 495° = 270° of travel).
-    g.DrawArc(WithAlpha(IColor(65, 250, 245, 230), 70),
-              cx, cy, r + 1.6f, 225.f, 495.f, nullptr, 1.0f);
+    g.DrawArc(WithAlpha(IColor(65, 250, 245, 230), 75),
+              cx, cy, r + 1.8f, 225.f, 495.f, nullptr, 1.1f);
 
     // Travel arc — shows consumed range, brightens on hover/active.
     if (value > 0.002f) {
       const float lineAngle = Lerp(135.f, 405.f, value);
-      g.DrawArc(active ? WithAlpha(kCoolGlow, 170) : WithAlpha(kCoolOn, 130),
-                cx, cy, r + 1.6f, 225.f, lineAngle + 90.f, nullptr, 1.0f);
+      g.DrawArc(active ? WithAlpha(kCoolGlow, 180) : WithAlpha(kCoolOn, 140),
+                cx, cy, r + 1.8f, 225.f, lineAngle + 90.f, nullptr, 1.1f);
     }
 
     // Drop shadow under the knob for depth.
-    g.FillCircle(WithAlpha(kShellDeep, 20), cx + 0.6f, cy + 1.0f, r + 0.4f);
+    g.FillCircle(WithAlpha(kShellDeep, 22), cx + 0.7f, cy + 1.1f, r + 0.5f);
 
     // Knob body — same kKnobTop → kShellLight blend as the main knobs.
-    const IColor knobFill = BlendColor(kKnobTop, kShellLight, active ? 0.30f : 0.20f);
+    const IColor knobFill = BlendColor(kKnobTop, kShellLight, active ? 0.32f : 0.22f);
     g.FillCircle(knobFill, cx, cy, r);
 
     // Subtle highlight rim on hover.
     if (active) {
-      g.DrawCircle(WithAlpha(kShellLight, 110), cx, cy, r + 0.3f, nullptr, 0.7f);
+      g.DrawCircle(WithAlpha(kShellLight, 120), cx, cy, r + 0.4f, nullptr, 0.8f);
     }
 
     // Position indicator — same formula as SpeakerKnobControl (135°→405°).
     const float lineAngle = Lerp(135.f, 405.f, value);
     DrawRadialLine(g,
-                   WithAlpha(BlendColor(kKnobPointerDark, kShellDeep, 0.5f), 230),
+                   WithAlpha(BlendColor(kKnobPointerDark, kShellDeep, 0.5f), 235),
                    cx, cy, lineAngle,
-                   r * 0.30f, r * 0.85f,
-                   std::max(1.0f, r * 0.16f));
+                   r * 0.30f, r * 0.86f,
+                   std::max(1.1f, r * 0.18f));
     DrawRadialLine(g,
-                   WithAlpha(kShellLight, 90),
+                   WithAlpha(kShellLight, 95),
                    cx - 0.18f, cy - 0.18f, lineAngle,
                    r * 0.32f, r * 0.78f,
-                   0.6f);
+                   0.7f);
 
-    // Label
-    DrawUtilityText(g, 7.5f, active ? kFieldText : kShellText,
+    // Label — slightly larger so it's readable, aligned under the knob.
+    DrawUtilityText(g, 9.f, active ? kFieldText : kShellText,
                     EAlign::Center, EVAlign::Middle, mLabel.Get(), labelRect);
   }
 
@@ -2622,27 +2624,29 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const IRECT powerBounds(powerPanelL, powerTop, powerPanelL + powerWidth, powerBottom);
 
   // Tiny Dry/Wet mix knob — fits in the lower-margin space below the power
-  // button.  Diameter 16-22 px (radius 8-11).  Positioned slightly to the
-  // RIGHT of the power button centre (not the left), and as high as
-  // possible inside the lower margin so it doesn't feel like an afterthought.
-  // A "MIX" label sits in the same control's bounds, below the knob.
-  const float dryWetR = ClampValue(h * 0.034f, 8.f, 11.f);   // radius, raw
+  // button.  Diameter ~23 px (radius ~11.5).  Right-edge aligned with the
+  // power button so it reads as a continuation of the power hardware.
+  // Slightly up (knob top sits at the power button's bottom edge).  A
+  // "MIX" label sits in the same control's bounds, below the knob, aligned
+  // to the knob's width (not the full control rect).
+  // Geometry: lower margin is 32 px (PLUG_HEIGHT - powerBounds.B).  We budget
+  // it as 2 * radius for the knob + 9 px for the label band = exactly 32 px.
+  const float dryWetR = ClampValue(h * 0.0375f, 11.f, 12.f);   // radius, raw
   const float dryWetD = dryWetR * 2.f;
   const float labelBandH = 9.f;  // height reserved for the MIX label band
-  // Horizontal: nudge right of the power button's centre.  Power centre is at
-  // powerBounds.MW(); the knob sits ~26 px to the right of that.
-  const float dryWetCenterX = powerBounds.MW() + 26.f;
-  // Vertical: knob centre is just below the power button's lower edge, with
-  // a small gap, leaving room for the label band at the very bottom of the
-  // plugin (still inside PLUG_HEIGHT, no resizing required).
-  const float dryWetCenterY = powerBounds.B + dryWetR + 1.f;
+  // Horizontal: right-edge align the knob with the power button's right edge
+  // (no extra gap — the power button's bezel draws up to powerBounds.R).
+  const float dryWetCenterX = powerBounds.R - dryWetR;
+  // Vertical: knob top sits flush with the power button's bottom edge, so
+  // the knob reads as attached to the power hardware rather than floating
+  // in the lower margin.
+  const float dryWetCenterY = powerBounds.B + dryWetR;
   const float dryWetLeft = dryWetCenterX - dryWetR;
   const float dryWetTop = dryWetCenterY - dryWetR;
-  // The control's bounds include the knob and the label band so the label
-  // is drawn together with the knob.  Padding the right side gives the
-  // user a comfortable hit target for vertical drags.
-  const IRECT dryWetBounds(dryWetLeft - 2.f, dryWetTop,
-                           dryWetLeft + dryWetD + 4.f, dryWetTop + dryWetD + labelBandH);
+  // The control's bounds include the knob and the label band.  The label
+  // rect inside the control is aligned to the knob's width (see Draw()).
+  const IRECT dryWetBounds(dryWetLeft, dryWetTop,
+                           dryWetLeft + dryWetD, dryWetTop + dryWetD + labelBandH);
 
   // Plates anchored to align exactly with inner bezels.
   const IRECT logoPlateBounds(chaosBounds.L, badgePlateTop,
@@ -2719,7 +2723,15 @@ void Freeze95::OnParentWindowResize(int width, int height) {
   const float scaleY = static_cast<float>(height) / static_cast<float>(PLUG_HEIGHT);
   const float scale = ClampValue(std::min(scaleX, scaleY), 0.65f, 2.0f);
 
+  // Strip and re-layout at the new scale so every control keeps its
+  // proportional relationship to the others.  Without this, the canvas
+  // is scaled but the control bounds are stale, so different controls
+  // (text, knobs, SVGs that were rasterised at the old scale) end up
+  // at different visual scales.  LayoutUI's early-return-on-non-empty
+  // guard is satisfied because we just cleared the controls above.
+  GetUI()->RemoveAllControls();
   GetUI()->Resize(PLUG_WIDTH, PLUG_HEIGHT, scale, false);
+  LayoutUI(GetUI());
 }
 #endif
 
