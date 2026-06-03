@@ -1195,12 +1195,9 @@ const TeethBaseCoords* GetTeethBase() {
 
 class SpeakerKnobControl final : public IKnobControlBase {
 public:
-  SpeakerKnobControl(const IRECT& bounds, int paramIdx, const char* label,
-                     float footerH = 48.f, bool showValue = true)
+  SpeakerKnobControl(const IRECT& bounds, int paramIdx, const char* label)
     : IKnobControlBase(bounds, paramIdx)
-    , mLabel((label && label[0]) ? label : "CTRL")
-    , mFooterH(footerH)
-    , mShowValue(showValue) {
+    , mLabel((label && label[0]) ? label : "CTRL") {
     mDblAsSingleClick = true;
     mDirtSeed = static_cast<unsigned int>((paramIdx * 7919 + 12345) ^ 0x9E3779B9);
   }
@@ -1216,11 +1213,12 @@ public:
   }
 
   void OnResize() override {
-    const IRECT knobArea(mRECT.L + 6.f, mRECT.T + 6.f, mRECT.R - 6.f, mRECT.B - mFooterH);
+    const float footerH = 48.f;
+    const IRECT knobArea(mRECT.L + 6.f, mRECT.T + 6.f, mRECT.R - 6.f, mRECT.B - footerH);
     const float socketSize = std::min(knobArea.W(), knobArea.H());
     mSocketBounds = knobArea.GetCentredInside(socketSize, socketSize);
     // Label sits in a taller band above value; value gets generous room at bottom
-    mLabelBounds = IRECT(mRECT.L, mRECT.B - mFooterH + 4.f, mRECT.R, mRECT.B - mFooterH + 26.f);
+    mLabelBounds = IRECT(mRECT.L, mRECT.B - footerH + 4.f, mRECT.R, mRECT.B - footerH + 26.f);
     mValueBounds = IRECT(mRECT.L, mRECT.B - 28.f, mRECT.R, mRECT.B - 2.f);
     SetTargetRECT(mSocketBounds.GetPadded(6.f));
   }
@@ -1442,20 +1440,18 @@ public:
     // Function label — heavier weight for fast scanning
     DrawRetroText(g, 24.f, kShellText, EAlign::Center, EVAlign::Middle, mLabel.Get(), mLabelBounds);
 
-    if (mShowValue) {
-      WDL_String valueTextStr;
-      FormatKnobReadout(GetParamIdx(), value, valueTextStr);
+    WDL_String valueTextStr;
+    FormatKnobReadout(GetParamIdx(), value, valueTextStr);
         const float readoutSize = 21.f + mReadoutPulse * 1.1f;
         const IColor readoutBase = active ? kFieldText : BlendColor(kShellText, kFieldText, 0.28f);
         const IColor readoutColor = BlendColor(readoutBase, kCoolOn, 0.24f * Clamp01(mReadoutPulse));
-      DrawTertiaryText(g,
-                       readoutSize,
-                       readoutColor,
-                       EAlign::Center,
-                       EVAlign::Middle,
-                       valueTextStr.Get(),
-                       mValueBounds);
-    }
+    DrawTertiaryText(g,
+                     readoutSize,
+                     readoutColor,
+                     EAlign::Center,
+                     EVAlign::Middle,
+                     valueTextStr.Get(),
+                     mValueBounds);
   }
 
 protected:
@@ -1501,12 +1497,57 @@ private:
   float mHoverAmt = 0.f;
   float mHoverTarget = 0.f;
   float mHoverFrom = 0.f;
-  float mFooterH = 48.f;
-  bool mShowValue = true;
   float mReadoutPulse = 0.f;
   float mReadoutPulsePeak = 0.f;
   bool mReadoutPulseActive = false;
   std::chrono::steady_clock::time_point mReadoutPulseStart;
+};
+
+// Compact circular knob for the Dry/Wet mix control.  Designed to fit in
+// the existing 24-36 px lower margin below the power button — about a
+// 24-32 px diameter circle with a position indicator.  No big label
+// footer (would not fit); the "MIX" label is drawn in the lower margin
+// next to the knob by the layout, not by this control.
+class TinyKnobControl final : public IKnobControlBase {
+public:
+  TinyKnobControl(const IRECT& bounds, int paramIdx)
+    : IKnobControlBase(bounds, paramIdx) {
+    mDblAsSingleClick = true;
+  }
+
+  void OnResize() override {
+    SetTargetRECT(mRECT);
+  }
+
+  void Draw(IGraphics& g) override {
+    const float cx = mRECT.MW();
+    const float cy = mRECT.MH();
+    const float r = 0.5f * std::min(mRECT.W(), mRECT.H()) - 1.f;
+    if (r < 2.f) return;
+
+    const bool active = GetMouseIsOver() || GetAnimationProgress() > 0.f;
+    const IColor rim = active ? kShellLight : BlendColor(kShellText, kShellLight, 0.3f);
+
+    // Outer rim
+    g.DrawCircle(rim, cx, cy, r, nullptr, 1.2f);
+
+    // Inner fill — a slightly darker disc to give a sense of depth
+    g.FillCircle(WithAlpha(kShellDark, 180), cx, cy, r - 1.0f);
+
+    // Position indicator — a short line from the centre to the rim, swept
+    // across the standard knob range (-135° at value 0 to +135° at value 1).
+    const double v = GetValue();
+    const float a = static_cast<float>(kPi * (-0.75 + 1.5 * v));
+    const float ix0 = cx + std::cos(a) * (r * 0.18f);
+    const float iy0 = cy + std::sin(a) * (r * 0.18f);
+    const float ix1 = cx + std::cos(a) * (r * 0.78f);
+    const float iy1 = cy + std::sin(a) * (r * 0.78f);
+    g.DrawLine(WithAlpha(kShellText, 220), ix0, iy0, ix1, iy1, nullptr,
+               std::max(1.2f, r * 0.18f));
+
+    // Centre dot
+    g.FillCircle(WithAlpha(kShellText, 160), cx, cy, std::max(0.8f, r * 0.10f));
+  }
 };
 
 class TransportGroupPanelControl final : public IControl {
@@ -2435,11 +2476,8 @@ void Freeze95::LayoutUI(IGraphics* g) {
 
   const float headerGap = Snap8(ClampValue(h * 0.035f, 4.f, 16.f));
   const float majorTop = brandPlateTop + brandPlateHeight + headerGap;
-  // Reserve space at the bottom for a tiny Dry/Wet mix footer below the
-  // power button. The main row sits above it, the footer sits below it.
-  const float lowerMargin = Snap8(ClampValue(h * 0.03f, 8.f, 12.f));
-  const float dryWetFooterH = Snap8(ClampValue(h * 0.15f, 80.f, 88.f));
-  const float majorBottom = h - lowerMargin - dryWetFooterH;
+  const float lowerMargin = Snap8(ClampValue(h * 0.08f, 24.f, 36.f));
+  const float majorBottom = h - lowerMargin;
   const float majorHeight = std::max(152.f, majorBottom - majorTop);
 
   const float knobGap = Snap8(16.f);
@@ -2544,13 +2582,17 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const float powerPanelL = transportPanelBounds.R + powerGap;
   const IRECT powerBounds(powerPanelL, powerTop, powerPanelL + powerWidth, powerBottom);
 
-  // Dry/Wet mix footer — below the power button, slightly to the left of centre.
-  const float dryWetW = Snap8(ClampValue(powerWidth * 0.5f, 64.f, 72.f));
-  const float dryWetL = Snap8(powerBounds.L + (powerBounds.W() - dryWetW) * 0.3f);
-  const float dryWetFooterTop = majorBottom + Snap8(4.f);
-  const float dryWetFooterBot = majorBottom + dryWetFooterH - Snap8(4.f);
-  const IRECT dryWetBounds(dryWetL, dryWetFooterTop,
-                           dryWetL + dryWetW, dryWetFooterBot);
+  // Tiny Dry/Wet mix knob — fits in the lower-margin space below the power button.
+  // Diameter is 24-32 px (radius 12-16), positioned just below the power
+  // button and slightly to the left of its centre.  No height change.
+  const float dryWetR = ClampValue(h * 0.04f, 11.f, 15.f);   // radius, raw
+  const float dryWetD = dryWetR * 2.f;
+  const float dryWetCenterX = powerBounds.MW() - powerWidth * 0.08f;
+  const float dryWetCenterY = powerBounds.B + dryWetR + 2.f;
+  const float dryWetLeft = dryWetCenterX - dryWetR;
+  const float dryWetTop = dryWetCenterY - dryWetR;
+  const IRECT dryWetBounds(dryWetLeft, dryWetTop,
+                           dryWetLeft + dryWetD, dryWetTop + dryWetD);
 
   // Plates anchored to align exactly with inner bezels.
   const IRECT logoPlateBounds(chaosBounds.L, badgePlateTop,
@@ -2600,12 +2642,10 @@ void Freeze95::LayoutUI(IGraphics* g) {
     powerBounds,
     kParamPower, ""));
 
-  // Tiny Dry/Wet mix knob in the footer — below the power button, uses the same
-  // SpeakerKnobControl renderer as CHAOS/LO-FI but with a compact footer and no
-  // value readout, since the bound is smaller.
-  g->AttachControl(new SpeakerKnobControl(
-    dryWetBounds,
-    kParamDryWet, "MIX", 32.f, false));
+  // Tiny Dry/Wet mix knob — sits in the lower margin just below the power
+  // button.  Diameter is 22-30 px; the bound is large enough for the host
+  // to receive a click/drag, but the visual is a small disc.
+  g->AttachControl(new TinyKnobControl(dryWetBounds, kParamDryWet));
 
   // Bypass wash — covers the full panel so power-off reads like the monitor went dark
   const IRECT bypassCoverBounds(0.f, 0.f, w, h);
