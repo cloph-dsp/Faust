@@ -2634,9 +2634,11 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const float dryWetR = ClampValue(h * 0.0375f, 11.f, 12.f);   // radius, raw
   const float dryWetD = dryWetR * 2.f;
   const float labelBandH = 9.f;  // height reserved for the MIX label band
-  // Horizontal: right-edge align the knob with the power button's right edge
-  // (no extra gap — the power button's bezel draws up to powerBounds.R).
-  const float dryWetCenterX = powerBounds.R - dryWetR;
+  // Horizontal: place the knob at the bottom-left of the power button's
+  // bezel area (inside the power bounds, near the left edge).  This makes
+  // the tiny knob read as part of the same hardware group rather than a
+  // separate widget tacked on to the right.
+  const float dryWetCenterX = powerBounds.L + dryWetR + 18.f;
   // Vertical: knob top sits flush with the power button's bottom edge, so
   // the knob reads as attached to the power hardware rather than floating
   // in the lower margin.
