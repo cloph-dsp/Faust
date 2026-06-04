@@ -1578,7 +1578,7 @@ public:
                    0.7f);
 
     // Label — slightly larger so it's readable, aligned under the knob.
-    DrawUtilityText(g, 9.f, active ? kFieldText : kShellText,
+    DrawUtilityText(g, 10.f, active ? kFieldText : kShellText,
                     EAlign::Center, EVAlign::Middle, mLabel.Get(), labelRect);
   }
 
@@ -2643,14 +2643,11 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const float gapCenterX = 0.5f * (transportRight + powerLeft);
   // "Slightly to the right" → 60% across the gap from the transport side.
   const float dryWetCenterX = transportRight + 0.60f * (powerLeft - transportRight);
-  // Vertical: center the knob in the vertical gap between the transport
-  // panel's bottom (y=258) and the power button's bottom (y=274).  The
-  // knob's diameter is wider than this 16-px gap, so the knob naturally
-  // straddles both edges (no visual overlap because the knob sits in
-  // the horizontal gap between the two controls).  This puts the knob
-  // at the same vertical level as the gap itself — visually aligned
-  // with both the transport panel and the power button.
-  const float dryWetCenterY = 0.5f * (transportPanelBounds.B + powerBounds.B);
+  // Vertical: nudge the knob slightly above the gap's midpoint, toward
+  // the transport panel.  The knob's diameter exceeds the 16-px gap, so
+  // it straddles both panel edges (no visual overlap because the knob
+  // sits in the horizontal gap between the two controls).
+  const float dryWetCenterY = 260.f;
   const float dryWetLeft = dryWetCenterX - dryWetR;
   const float dryWetTop = dryWetCenterY - dryWetR;
   // The control's bounds include the knob and the label band.  The label
