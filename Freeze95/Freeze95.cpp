@@ -1777,8 +1777,7 @@ public:
     const IColor modeColor = (mVisualManual >= 0.5f)
       ? BlendColor(kFieldText, kCoolOn, 0.45f)
       : BlendColor(kFieldText, kShellMid, 0.45f);
-    IRECT textBounds = mButtonBounds.GetPadded(-2.f);
-    textBounds.T += 1.f;
+    const IRECT textBounds = mButtonBounds.GetPadded(-2.f);
     DrawUtilityText(g, 16.5f, modeColor, EAlign::Center, EVAlign::Middle,
                     modeGlyph, textBounds);
 
