@@ -2634,15 +2634,23 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const float dryWetR = ClampValue(h * 0.0375f, 11.f, 12.f);   // radius, raw
   const float dryWetD = dryWetR * 2.f;
   const float labelBandH = 9.f;  // height reserved for the MIX label band
-  // Horizontal: place the knob at the bottom-left of the power button's
-  // bezel area (inside the power bounds, near the left edge).  This makes
-  // the tiny knob read as part of the same hardware group rather than a
-  // separate widget tacked on to the right.
-  const float dryWetCenterX = powerBounds.L + dryWetR + 18.f;
-  // Vertical: knob top sits flush with the power button's bottom edge, so
-  // the knob reads as attached to the power hardware rather than floating
-  // in the lower margin.
-  const float dryWetCenterY = powerBounds.B + dryWetR;
+  // Horizontal: place the knob in the empty gap between the transport
+  // panel's right edge and the power button's left edge, nudged slightly
+  // to the right (toward the power button) so it reads as part of the
+  // power hardware group rather than drifting toward the transport.
+  const float transportRight = transportPanelBounds.R;
+  const float powerLeft = powerBounds.L;
+  const float gapCenterX = 0.5f * (transportRight + powerLeft);
+  // "Slightly to the right" → 60% across the gap from the transport side.
+  const float dryWetCenterX = transportRight + 0.60f * (powerLeft - transportRight);
+  // Vertical: align the knob's top with the bottom of the transport panel
+  // (the rectangular HOST/BPM panel to the left of the power button).  The
+  // knob's diameter is wider than the 16-px vertical gap between the
+  // transport panel bottom (y=258) and the power button bottom (y=274),
+  // so the knob naturally bridges the gap and extends into the lower
+  // margin.  This puts the knob at the same vertical level as the lower
+  // edge of the layout's hardware group, reading as part of the same row.
+  const float dryWetCenterY = transportPanelBounds.B + dryWetR;
   const float dryWetLeft = dryWetCenterX - dryWetR;
   const float dryWetTop = dryWetCenterY - dryWetR;
   // The control's bounds include the knob and the label band.  The label
