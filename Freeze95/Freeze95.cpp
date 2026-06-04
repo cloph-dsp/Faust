@@ -2643,14 +2643,13 @@ void Freeze95::LayoutUI(IGraphics* g) {
   const float gapCenterX = 0.5f * (transportRight + powerLeft);
   // "Slightly to the right" → 60% across the gap from the transport side.
   const float dryWetCenterX = transportRight + 0.60f * (powerLeft - transportRight);
-  // Vertical: align the knob's top with the bottom of the transport panel
-  // (the rectangular HOST/BPM panel to the left of the power button).  The
-  // knob's diameter is wider than the 16-px vertical gap between the
-  // transport panel bottom (y=258) and the power button bottom (y=274),
-  // so the knob naturally bridges the gap and extends into the lower
-  // margin.  This puts the knob at the same vertical level as the lower
-  // edge of the layout's hardware group, reading as part of the same row.
-  const float dryWetCenterY = transportPanelBounds.B + dryWetR;
+  // Vertical: align the knob's top edge with the bottom of the power
+  // button (the lower of the two adjacent hardware elements).  The
+  // transport panel ends higher up (y=258), so the power button's
+  // bottom (y=274) is the visual baseline of the row.  The knob sits
+  // just below that baseline, inside the lower margin, with the MIX
+  // label band fitting exactly in the remaining space.
+  const float dryWetCenterY = powerBounds.B + dryWetR;
   const float dryWetLeft = dryWetCenterX - dryWetR;
   const float dryWetTop = dryWetCenterY - dryWetR;
   // The control's bounds include the knob and the label band.  The label
