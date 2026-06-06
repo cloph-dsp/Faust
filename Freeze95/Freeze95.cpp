@@ -2646,7 +2646,7 @@ void Freeze95::LayoutUI(IGraphics* g) {
   // the transport panel.  The knob's diameter exceeds the 16-px gap, so
   // it straddles both panel edges (no visual overlap because the knob
   // sits in the horizontal gap between the two controls).
-  const float dryWetCenterY = 260.f;
+  const float dryWetCenterY = 252.f;
   const float dryWetLeft = dryWetCenterX - dryWetR;
   const float dryWetTop = dryWetCenterY - dryWetR;
   // The control's bounds include the knob and the label band.  The label
