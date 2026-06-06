@@ -2802,9 +2802,10 @@ void Freeze95::OnActivate(bool active) {
   DBGMSG("OnActivate: active=%d\n", active);
   if (active) {
     // When the plugin is reactivated (e.g., track re-enabled, session reopened),
-    // the GUI controls may show stale/zero values. Set a flag to trigger a GUI
-    // update on the next OnIdle call (which runs on the UI thread).
-    mSendUpdate = true;
+    // the VST3 parameter container (mParameters) may have stale values because
+    // setComponentState is a no-op in non-distributed VST3. Sync it here.
+    // This ensures the GUI controls show correct values when the UI opens.
+    UpdateParams(this, GetBypassed() ? 1 : 0);
     
     // Log current parameter values to help diagnose the issue
     for (int i = 0; i < kNumParams; ++i) {
@@ -2851,6 +2852,21 @@ void Freeze95::OnUIOpen() {
   IEditorDelegate::OnUIOpen();
   
   DBGMSG("OnUIOpen: Called base OnUIOpen (SendCurrentParamValuesFromDelegate)\n");
+}
+
+void Freeze95::OnRestoreState() {
+  DBGMSG("OnRestoreState: called\n");
+  
+  // Log parameter values before restoration
+  for (int i = 0; i < kNumParams; ++i) {
+    DBGMSG("  Before restore - Param %d: value=%.3f normalized=%.3f\n", 
+           i, GetParam(i)->Value(), GetParam(i)->GetNormalized());
+  }
+  
+  // Call base implementation which sends current parameter values to UI
+  IEditorDelegate::OnRestoreState();
+  
+  DBGMSG("OnRestoreState: Called base OnRestoreState (SendCurrentParamValuesFromDelegate)\n");
 }
 
 void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
@@ -2986,5 +3002,7 @@ int Freeze95::UnserializeState(const IByteChunk& chunk, int startPos) {
   if (GetUI()) GetUI()->SetAllControlsDirty();
   const int result = UnserializeParams(chunk, startPos);
   SyncParamsToDSP();
+  // Call OnRestoreState to send parameter values to UI controls
+  OnRestoreState();
   return result;
 }

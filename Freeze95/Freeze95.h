@@ -37,6 +37,7 @@ public:
   void OnActivate(bool active) override;
   void OnIdle() override;
   void OnUIOpen() override;
+  void OnRestoreState() override;
   void ProcessBlock(iplug::sample** inputs, iplug::sample** outputs, int nFrames) override;
 
   bool SerializeState(IByteChunk& chunk) const override;
