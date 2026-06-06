@@ -2801,11 +2801,13 @@ void Freeze95::OnReset() {
 void Freeze95::OnActivate(bool active) {
   DBGMSG("OnActivate: active=%d\n", active);
   if (active) {
+#if defined IPLUG_VST3
     // When the plugin is reactivated (e.g., track re-enabled, session reopened),
     // the VST3 parameter container (mParameters) may have stale values because
     // setComponentState is a no-op in non-distributed VST3. Sync it here.
     // This ensures the GUI controls show correct values when the UI opens.
     UpdateParams(this, GetBypassed() ? 1 : 0);
+#endif
     
     // Log current parameter values to help diagnose the issue
     for (int i = 0; i < kNumParams; ++i) {
