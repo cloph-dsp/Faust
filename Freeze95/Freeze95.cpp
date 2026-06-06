@@ -2739,17 +2739,6 @@ void Freeze95::OnParentWindowResize(int width, int height) {
   GetUI()->Resize(PLUG_WIDTH, PLUG_HEIGHT, scale, false);
   LayoutUI(GetUI());
 }
-
-void Freeze95::OnActivate(bool active) {
-  if (active) {
-    // When the plugin is reactivated (e.g., after bypass or session reload),
-    // the host may not resend parameter values, so the GUI controls stay at
-    // their default/initialized state. Force a sync by pushing current values
-    // to all controls, which triggers their SetValueFromDelegate methods and
-    // updates any custom visual state (power button animations, sync states, etc.).
-    SendCurrentParamValuesFromDelegate();
-  }
-}
 #endif
 
 void Freeze95::SetFaustParam(const char* label, float value) {
@@ -2807,6 +2796,15 @@ void Freeze95::OnReset() {
   mBufferSize = std::max(16384, GetBlockSize());
 
   SyncParamsToDSP();
+}
+
+void Freeze95::OnActivate(bool active) {
+  if (active) {
+    // When the plugin is reactivated (e.g., track re-enabled, session reopened),
+    // the GUI controls may show stale/zero values. Send the current parameter
+    // values from the processor to the GUI to restore the correct state.
+    SendCurrentParamValuesFromDelegate();
+  }
 }
 
 void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {

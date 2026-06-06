@@ -30,11 +30,11 @@ public:
 
 #if IPLUG_EDITOR
   void OnParentWindowResize(int width, int height) override;
-  void OnActivate(bool active) override;
 #endif
 
   void OnParamChange(int paramIdx) override;
   void OnReset() override;
+  void OnActivate(bool active) override;
   void ProcessBlock(iplug::sample** inputs, iplug::sample** outputs, int nFrames) override;
 
   bool SerializeState(IByteChunk& chunk) const override;
