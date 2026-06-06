@@ -2799,7 +2799,6 @@ void Freeze95::OnReset() {
 }
 
 void Freeze95::OnActivate(bool active) {
-  DBGMSG("OnActivate: active=%d\n", active);
   if (active) {
 #if defined IPLUG_VST3
     // When the plugin is reactivated (e.g., track re-enabled, session reopened),
@@ -2811,12 +2810,6 @@ void Freeze95::OnActivate(bool active) {
     
     // Signal OnIdle to update UI controls with current parameter values
     mSendUpdate = true;
-    
-    // Log current parameter values to help diagnose the issue
-    for (int i = 0; i < kNumParams; ++i) {
-      DBGMSG("  Param %d: value=%.3f normalized=%.3f\n", 
-             i, GetParam(i)->Value(), GetParam(i)->GetNormalized());
-    }
   }
 }
 
@@ -2830,16 +2823,6 @@ void Freeze95::OnIdle() {
     mSendUpdate = false;
   }
 #endif
-}
-
-void Freeze95::OnUIOpen() {
-  // Call base implementation which sends current parameter values to UI controls
-  IEditorDelegate::OnUIOpen();
-}
-
-void Freeze95::OnRestoreState() {
-  // Call base implementation which sends current parameter values to UI controls
-  IEditorDelegate::OnRestoreState();
 }
 
 void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {

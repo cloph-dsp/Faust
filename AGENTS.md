@@ -54,3 +54,17 @@ This repository contains **multiple independent VST3 plugin projects** using iPl
 - **Faust workflow** → `docs/FAUST_WORKFLOW.md`
 - **Project structure** → `docs/PROJECT_STRUCTURE.md`
 - **Main README** → Root `README.md` (Faust experiments overview)
+
+## Learned Workspace Facts
+
+- Grungr stomp plate cave-in: faceplate SVG clipped via StartLayer, shifted down by `caveOffset = mPressT * 3.0 + mVisualDown * 1.5`, dark fill at top creates separation gap; LED stays fixed on chassis, shoe sole follows offset
+- Grungr build_vst3.ps1 treats VST3 SDK header lookup failures (`string.h`, `stddef.h`, `windows.h`) as non-fatal when run from VS Build Tools without full Windows SDK — output VST3 is still produced
+- Freeze95's CI build workflow (`build.yml`) only triggers on push to `main` or PR to `main` with `Freeze95/**` path filter — branch pushes alone do NOT trigger CI; use a PR or `workflow_dispatch`
+- Freeze95 TinyKnobControl: custom `IKnobControlBase` subclass matching SpeakerKnobControl design language — `Lerp(135,405,value)` angle, kKnobTop fill, DrawRadialLine indicator, kCoolOn/kCoolGlow travel arc, faint full-range track, drop shadow, hover
+- Freeze95 Windows resize fix: `OnParentWindowResize` must call `RemoveAllControls()` before re-running `LayoutUI` — the framework passes a scale but stale bounds cause inconsistent visual scaling
+- Freeze95 macOS Catalina support: set `MACOSX_DEPLOYMENT_TARGET = 10.15` in xcconfig and `LSMinimumSystemVersion '10.15'` in Info.plist; iPlug2's `@available(macOS 10.14)` check is safe at 10.15
+- Freeze95 layout geometry: PLUG_HEIGHT=306, transport panel y=226..258, power button y=66..274, 16px gap between panel bottoms, 32px lower margin for extra controls
+- Freeze95 macOS CI artifact (ad-hoc signed, no hardened runtime) works for end users as-is — no local codesign/xattr commands needed; confirmed by beta tester download-and-load on real DAW
+- Freeze95 macOS CI codesign: `codesign --force --sign -` on both inner binary and .vst3 wrapper, WITHOUT `--options=runtime` (hardened runtime + ad-hoc + zero entitlements blocks dlopen); `codesign -vvv`/`-dvv` are verify-only commands
+- Freeze95 MiniManualToggleControl sync H/M glyph: draw with `EVAlign::Middle` in `mButtonBounds.GetPadded(-2.f)` — do NOT add vertical nudges (removed `textBounds.T += 1.f` that made "H"/"M" look off-center)
+- Freeze95 VST3 GUI parameter sync fix: `mSendUpdate = true` in OnActivate triggers OnIdle to call SendCurrentParamValuesFromDelegate(); UpdateParams syncs VST3 parameter container (mParameters) with iPlug parameters since setComponentState is no-op in non-distributed VST3
