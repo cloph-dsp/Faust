@@ -2809,6 +2809,9 @@ void Freeze95::OnActivate(bool active) {
     UpdateParams(this, GetBypassed() ? 1 : 0);
 #endif
     
+    // Signal OnIdle to update UI controls with current parameter values
+    mSendUpdate = true;
+    
     // Log current parameter values to help diagnose the issue
     for (int i = 0; i < kNumParams; ++i) {
       DBGMSG("  Param %d: value=%.3f normalized=%.3f\n", 
@@ -2820,21 +2823,9 @@ void Freeze95::OnActivate(bool active) {
 void Freeze95::OnIdle() {
 #if IPLUG_EDITOR
   if (mSendUpdate) {
-    DBGMSG("OnIdle: mSendUpdate=true, UI=%p\n", GetUI());
     if (GetUI()) {
-      // Log parameter values before sending
-      for (int i = 0; i < kNumParams; ++i) {
-        DBGMSG("  Before send - Param %d: value=%.3f normalized=%.3f\n", 
-               i, GetParam(i)->Value(), GetParam(i)->GetNormalized());
-      }
-      
-      // Force all controls to redraw with their current parameter values
-      GetUI()->SetAllControlsDirty();
-      // Also send the current parameter values from the delegate to ensure
-      // controls are synced with the processor state
+      // Send current parameter values to UI controls
       SendCurrentParamValuesFromDelegate();
-      
-      DBGMSG("OnIdle: Sent parameter values to UI\n");
     }
     mSendUpdate = false;
   }
@@ -2842,33 +2833,13 @@ void Freeze95::OnIdle() {
 }
 
 void Freeze95::OnUIOpen() {
-  DBGMSG("OnUIOpen called\n");
-  
-  // Log parameter values when UI opens
-  for (int i = 0; i < kNumParams; ++i) {
-    DBGMSG("  OnUIOpen - Param %d: value=%.3f normalized=%.3f\n", 
-           i, GetParam(i)->Value(), GetParam(i)->GetNormalized());
-  }
-  
-  // Call base implementation which sends current parameter values
+  // Call base implementation which sends current parameter values to UI controls
   IEditorDelegate::OnUIOpen();
-  
-  DBGMSG("OnUIOpen: Called base OnUIOpen (SendCurrentParamValuesFromDelegate)\n");
 }
 
 void Freeze95::OnRestoreState() {
-  DBGMSG("OnRestoreState: called\n");
-  
-  // Log parameter values before restoration
-  for (int i = 0; i < kNumParams; ++i) {
-    DBGMSG("  Before restore - Param %d: value=%.3f normalized=%.3f\n", 
-           i, GetParam(i)->Value(), GetParam(i)->GetNormalized());
-  }
-  
-  // Call base implementation which sends current parameter values to UI
+  // Call base implementation which sends current parameter values to UI controls
   IEditorDelegate::OnRestoreState();
-  
-  DBGMSG("OnRestoreState: Called base OnRestoreState (SendCurrentParamValuesFromDelegate)\n");
 }
 
 void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
@@ -3001,10 +2972,7 @@ bool Freeze95::SerializeState(IByteChunk& chunk) const {
 }
 
 int Freeze95::UnserializeState(const IByteChunk& chunk, int startPos) {
-  if (GetUI()) GetUI()->SetAllControlsDirty();
   const int result = UnserializeParams(chunk, startPos);
   SyncParamsToDSP();
-  // Call OnRestoreState to send parameter values to UI controls
-  OnRestoreState();
   return result;
 }
