@@ -2801,10 +2801,25 @@ void Freeze95::OnReset() {
 void Freeze95::OnActivate(bool active) {
   if (active) {
     // When the plugin is reactivated (e.g., track re-enabled, session reopened),
-    // the GUI controls may show stale/zero values. Send the current parameter
-    // values from the processor to the GUI to restore the correct state.
-    SendCurrentParamValuesFromDelegate();
+    // the GUI controls may show stale/zero values. Set a flag to trigger a GUI
+    // update on the next OnIdle call (which runs on the UI thread).
+    mSendUpdate = true;
   }
+}
+
+void Freeze95::OnIdle() {
+#if IPLUG_EDITOR
+  if (mSendUpdate) {
+    if (GetUI()) {
+      // Force all controls to redraw with their current parameter values
+      GetUI()->SetAllControlsDirty();
+      // Also send the current parameter values from the delegate to ensure
+      // controls are synced with the processor state
+      SendCurrentParamValuesFromDelegate();
+    }
+    mSendUpdate = false;
+  }
+#endif
 }
 
 void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {

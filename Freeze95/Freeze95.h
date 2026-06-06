@@ -35,6 +35,7 @@ public:
   void OnParamChange(int paramIdx) override;
   void OnReset() override;
   void OnActivate(bool active) override;
+  void OnIdle() override;
   void ProcessBlock(iplug::sample** inputs, iplug::sample** outputs, int nFrames) override;
 
   bool SerializeState(IByteChunk& chunk) const override;
@@ -70,4 +71,5 @@ private:
 
   bool mHasTransportState = false;
   bool mLastTransportRunning = false;
+  bool mSendUpdate = false;
 };
