@@ -2852,19 +2852,6 @@ void Freeze95::OnUIOpen() {
   
   DBGMSG("OnUIOpen: Called base OnUIOpen (SendCurrentParamValuesFromDelegate)\n");
 }
-      
-      // Force all controls to redraw with their current parameter values
-      GetUI()->SetAllControlsDirty();
-      // Also send the current parameter values from the delegate to ensure
-      // controls are synced with the processor state
-      SendCurrentParamValuesFromDelegate();
-      
-      DBGMSG("OnIdle: Sent parameter values to UI\n");
-    }
-    mSendUpdate = false;
-  }
-#endif
-}
 
 void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
   // FTZ/DAZ MUST be set BEFORE any early-return paths (host bypass, transport
