@@ -2799,23 +2799,67 @@ void Freeze95::OnReset() {
 }
 
 void Freeze95::OnActivate(bool active) {
+  DBGMSG("OnActivate: active=%d\n", active);
   if (active) {
     // When the plugin is reactivated (e.g., track re-enabled, session reopened),
     // the GUI controls may show stale/zero values. Set a flag to trigger a GUI
     // update on the next OnIdle call (which runs on the UI thread).
     mSendUpdate = true;
+    
+    // Log current parameter values to help diagnose the issue
+    for (int i = 0; i < kNumParams; ++i) {
+      DBGMSG("  Param %d: value=%.3f normalized=%.3f\n", 
+             i, GetParam(i)->Value(), GetParam(i)->GetNormalized());
+    }
   }
 }
 
 void Freeze95::OnIdle() {
 #if IPLUG_EDITOR
   if (mSendUpdate) {
+    DBGMSG("OnIdle: mSendUpdate=true, UI=%p\n", GetUI());
     if (GetUI()) {
+      // Log parameter values before sending
+      for (int i = 0; i < kNumParams; ++i) {
+        DBGMSG("  Before send - Param %d: value=%.3f normalized=%.3f\n", 
+               i, GetParam(i)->Value(), GetParam(i)->GetNormalized());
+      }
+      
       // Force all controls to redraw with their current parameter values
       GetUI()->SetAllControlsDirty();
       // Also send the current parameter values from the delegate to ensure
       // controls are synced with the processor state
       SendCurrentParamValuesFromDelegate();
+      
+      DBGMSG("OnIdle: Sent parameter values to UI\n");
+    }
+    mSendUpdate = false;
+  }
+#endif
+}
+
+void Freeze95::OnUIOpen() {
+  DBGMSG("OnUIOpen called\n");
+  
+  // Log parameter values when UI opens
+  for (int i = 0; i < kNumParams; ++i) {
+    DBGMSG("  OnUIOpen - Param %d: value=%.3f normalized=%.3f\n", 
+           i, GetParam(i)->Value(), GetParam(i)->GetNormalized());
+  }
+  
+  // Call base implementation which sends current parameter values
+  IEditorDelegate::OnUIOpen();
+  
+  DBGMSG("OnUIOpen: Called base OnUIOpen (SendCurrentParamValuesFromDelegate)\n");
+}
+      
+      // Force all controls to redraw with their current parameter values
+      GetUI()->SetAllControlsDirty();
+      // Also send the current parameter values from the delegate to ensure
+      // controls are synced with the processor state
+      SendCurrentParamValuesFromDelegate();
+      
+      DBGMSG("OnIdle: Sent parameter values to UI\n");
     }
     mSendUpdate = false;
   }
