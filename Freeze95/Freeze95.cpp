@@ -2825,6 +2825,18 @@ void Freeze95::OnIdle() {
 #endif
 }
 
+void Freeze95::OnUIOpen() {
+#if defined IPLUG_VST3
+  // When the UI opens, ensure VST3 parameter container is synced with iPlug parameters.
+  // In non-distributed VST3, setComponentState is a no-op, so mParameters can have
+  // stale values after session restore. Sync them before the base implementation
+  // sends values to UI controls.
+  UpdateParams(this, GetBypassed() ? 1 : 0);
+#endif
+  // Call base implementation which sends current parameter values to UI controls
+  IEditorDelegate::OnUIOpen();
+}
+
 void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
   // FTZ/DAZ MUST be set BEFORE any early-return paths (host bypass, transport
   // gate, null DSP) so denormals are flushed even when the DSP path is skipped.

@@ -30,6 +30,7 @@ public:
 
 #if IPLUG_EDITOR
   void OnParentWindowResize(int width, int height) override;
+  void OnUIOpen() override;
 #endif
 
   void OnParamChange(int paramIdx) override;
