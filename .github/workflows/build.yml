@@ -96,6 +96,19 @@ jobs:
         working-directory: Freeze95/iPlug2/Dependencies/IPlug
         run: bash download-iplug-sdks.sh
 
+      - name: Build VST3 SDK validator (official compliance tool)
+        working-directory: Freeze95/iPlug2/Dependencies/IPlug
+        run: |
+          # Build Steinberg's official vst3_validator from the already-downloaded SDK
+          bash download-vst3-sdk.sh master build-validator 2>&1 | tail -10
+          # Copy validator to /tmp for later use
+          if [ -f "VST3_SDK/validator/vst3_validator" ]; then
+            cp VST3_SDK/validator/vst3_validator /tmp/vst3_validator
+            echo "vst3_validator built successfully"
+          else
+            echo "WARNING: vst3_validator not found — skipping official validation"
+          fi
+
       - name: Setup Freeze95 resources
         run: |
           cd Freeze95
@@ -126,8 +139,8 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET = 10.15
           CODE_SIGNING_REQUIRED = YES
           CODE_SIGN_IDENTITY = -
-          // macOS 15+ ad-hoc cannot embed entitlements — skip CODE_SIGN_ENTITLEMENTS
-          // Hardened runtime without entitlements blocks dlopen in DAWs, so no --options=runtime
+          // macOS 15+ ad-hoc: CAN embed --options=runtime but CANNOT embed entitlements.
+          // hardened runtime + DAW's disable-library-validation is sufficient to load.
           EOF
 
       - name: Build VST3
@@ -150,14 +163,25 @@ jobs:
             BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac" \
             CLAP_PATH="${{ github.workspace }}/Freeze95/build-mac/Products"
 
+      - name: Build AUv2 (Audio Unit — native macOS format)
+        run: |
+          cd Freeze95/iPlug2/Examples/IPlugEffect
+          xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
+            -scheme "macOS-AUv2" \
+            -configuration Release \
+            -arch x86_64 -arch arm64 \
+            BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac" \
+            AU_PATH="${{ github.workspace }}/Freeze95/build-mac/Products"
+
       - name: Fix Info.plist — update all fields to Freeze95 branding
         run: |
+          # VST3 + CLAP: standard bundle keys
           for BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do
             PLIST="$BUNDLE/Contents/Info.plist"
             if [ -f "$PLIST" ]; then
               /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Freeze95" "$PLIST" || true
               /usr/libexec/PlistBuddy -c "Set :CFBundleName Freeze95" "$PLIST" || true
-              /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cloph.Freeze95" "$PLIST" || true
+              /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cloph-dsp.Freeze95" "$PLIST" || true
               /usr/libexec/PlistBuddy -c "Set :CFBundleGetInfoString 'Freeze95 v1.3.0 Copyright 2026 cloph'" "$PLIST" || true
               /usr/libexec/PlistBuddy -c "Set :CFBundleSignature 'Frz5'" "$PLIST" || true
               /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.3.0'" "$PLIST" || true
@@ -166,17 +190,41 @@ jobs:
             fi
           done
 
+          # AU (Audio Unit): has extra AudioComponents keys
+          AU_PLIST="Freeze95/build-mac/Products/Freeze95.component/Contents/Info.plist"
+          if [ -f "$AU_PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Freeze95" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleName Freeze95" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cloph-dsp.audiounit.Freeze95" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleGetInfoString 'Freeze95 v1.3.0 Copyright 2026 cloph'" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleSignature 'F95G'" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.3.0'" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '1.3.0'" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion '10.15'" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:subtype F95G" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:manufacturer Clph" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:factoryFunction Freeze95_Factory" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:name 'cloph-dsp: Freeze95'" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:description Freeze95" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :AudioUnit Version 0x00010300" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :NSPrincipalClass Freeze95_View" "$AU_PLIST" || true
+          fi
+
       - name: Ad-hoc sign bundles (re-sign after plist modification)
         run: |
-          for BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap; do
+          for BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap Freeze95/build-mac/Products/Freeze95.component; do
             if [ -d "$BUNDLE" ]; then
               BINARY="$BUNDLE/Contents/MacOS/Freeze95"
               echo "Signing binary: $BINARY"
-              # Ad-hoc sign WITHOUT hardened runtime — macOS 15+ ad-hoc cannot embed entitlements
-              # Hardened runtime + zero entitlements would break dlopen in DAWs, so skip --options=runtime
-              codesign --force --sign - "$BINARY"
+              # Ad-hoc sign with hardened runtime enabled. On macOS 15+, ad-hoc signing
+              # without --options=runtime can cause dyld to abort the process when loaded
+              # by a hardened DAW, even if the DAW has disable-library-validation.
+              # Entitlements cannot be embedded in ad-hoc signatures on macOS 15+ (no CMS
+              # wrapper), but hardened runtime + disable-library-validation (in the DAW)
+              # is sufficient for the plugin to load.
+              codesign --force --sign - --options=runtime "$BINARY"
               echo "Signing bundle wrapper: $BUNDLE"
-              codesign --force --sign - "$BUNDLE"
+              codesign --force --sign - --options=runtime "$BUNDLE"
               codesign -vvv --deep "$BUNDLE" || echo "Warning: signature verification had issues"
             fi
           done
@@ -197,12 +245,12 @@ jobs:
           }
           JSONEOF
           # Re-sign VST3 binary (moduleinfo.json addition invalidated the bundle)
-          # WARNING: macOS 15+ ad-hoc CANNOT embed entitlements. Don't use --options=runtime
-          # or --entitlements — hardened runtime without entitlements blocks dlopen in DAWs.
+          # Must use --options=runtime to match the initial signing above; otherwise
+          # dyld rejects the bundle as inconsistently signed on macOS 15+.
           VST3_BIN="Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95"
-          codesign --force --sign - "$VST3_BIN"
+          codesign --force --sign - --options=runtime "$VST3_BIN"
           # Then re-sign bundle wrapper
-          codesign --force --sign - Freeze95/build-mac/Products/Freeze95.vst3
+          codesign --force --sign - --options=runtime Freeze95/build-mac/Products/Freeze95.vst3
 
       - name: Validate code signatures
         run: |
@@ -296,7 +344,7 @@ jobs:
             BUNDLE_PKG_TYPE=$(/usr/libexec/PlistBuddy -c "Print :CFBundlePackageType" "$PLIST" 2>/dev/null || echo "")
 
             [ "$BUNDLE_EXEC" = "Freeze95" ] || error "CFBundleExecutable mismatch in $(basename $BUNDLE): got '$BUNDLE_EXEC', expected 'Freeze95'"
-            [ "$BUNDLE_ID" = "com.cloph.Freeze95" ] || error "CFBundleIdentifier mismatch in $(basename $BUNDLE): got '$BUNDLE_ID'"
+            [ "$BUNDLE_ID" = "com.cloph-dsp.Freeze95" ] || error "CFBundleIdentifier mismatch in $(basename $BUNDLE): got '$BUNDLE_ID'"
             [ "$BUNDLE_NAME" = "Freeze95" ] || error "CFBundleName mismatch in $(basename $BUNDLE): got '$BUNDLE_NAME'"
             [ "$BUNDLE_VER" = "1.3.0" ] || error "CFBundleShortVersionString mismatch in $(basename $BUNDLE): got '$BUNDLE_VER', expected '1.3.0'"
             [ "$BUNDLE_PKG_TYPE" = "BNDL" ] || error "CFBundlePackageType must be BNDL, got '$BUNDLE_PKG_TYPE'"
@@ -806,6 +854,71 @@ jobs:
             echo "CLAP bundle not found, skipping"
           fi
 
+      - name: Run VST3 SDK official validator
+        if: always()
+        run: |
+          VST3_BUNDLE="Freeze95/build-mac/Products/Freeze95.vst3"
+          if [ -x "/tmp/vst3_validator" ] && [ -d "$VST3_BUNDLE" ]; then
+            echo "Running vst3_validator on $VST3_BUNDLE..."
+            /tmp/vst3_validator "$VST3_BUNDLE" 2>&1
+            # validator returns 0 on pass, non-zero on failure
+            if [ $? -eq 0 ]; then
+              echo ""
+              echo "VST3 VALIDATOR: PASSED"
+            else
+              echo ""
+              echo "VST3 VALIDATOR: FAILED — check output above"
+              exit 1
+            fi
+          else
+            echo "SKIP: vst3_validator not available or bundle missing"
+          fi
+
+      - name: Install AU component + run auval validation
+        if: always()
+        run: |
+          AU_BUNDLE="Freeze95/build-mac/Products/Freeze95.component"
+          if [ -d "$AU_BUNDLE" ]; then
+            # Install to user's Audio Unit components folder for validation
+            mkdir -p ~/Library/Audio/Plug-Ins/Components
+            cp -Rf "$AU_BUNDLE" ~/Library/Audio/Plug-Ins/Components/
+
+            # Register with the Audio Component Manager
+            echo "Registering AU component..."
+            /System/Library/Frameworks/AudioUnit.framework/Versions/A/Resources/auvaltool -register 2>&1 || true
+
+            # Validate with auval — checks open/close, parameter access, rendering
+            echo ""
+            echo "================================================"
+            echo "  auval VALIDATION - aufx F95G Clph"
+            echo "================================================"
+            auval -v aufx F95G Clph 2>&1
+            AUVAL_EXIT=$?
+            echo ""
+            if [ $AUVAL_EXIT -ne 0 ]; then
+              echo "auval VALIDATION: FAILED (exit=$AUVAL_EXIT)"
+              echo "This may indicate AU compatibility issues"
+              # Don't fail the build — AU is secondary to VST3/CLAP
+            else
+              echo "auval VALIDATION: PASSED"
+            fi
+          else
+            echo "SKIP: AU bundle not found at $AU_BUNDLE"
+          fi
+
+      - name: Strip quarantine xattrs from bundles
+        if: always()
+        run: |
+          # Remove quarantine xattrs so Gatekeeper doesn't block on first load.
+          # GitHub artifact download adds quarantine to the zip; stripping before
+          # upload ensures the extracted bundle has no quarantine.
+          for BUNDLE in Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/Products/Freeze95.clap Freeze95/build-mac/Products/Freeze95.component; do
+            if [ -d "$BUNDLE" ]; then
+              echo "Stripping xattrs: $BUNDLE"
+              xattr -rc "$BUNDLE" 2>/dev/null || true
+            fi
+          done
+
       - name: Stage VST3 artifact
         if: always()
         run: |
@@ -831,3 +944,19 @@ jobs:
         with:
           name: Freeze95-macOS-CLAP
           path: Freeze95/build-mac/stage-clap/
+
+      - name: Stage AU artifact
+        if: always()
+        run: |
+          AU_BUNDLE="Freeze95/build-mac/Products/Freeze95.component"
+          if [ -d "$AU_BUNDLE" ]; then
+            mkdir -p Freeze95/build-mac/stage-au
+            cp -R "$AU_BUNDLE" Freeze95/build-mac/stage-au/
+          fi
+
+      - name: Upload AU artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Freeze95-macOS-AU
+          path: Freeze95/build-mac/stage-au/

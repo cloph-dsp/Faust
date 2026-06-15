@@ -2725,8 +2725,15 @@ void Freeze95::OnParentWindowResize(int width, int height) {
     return;
   }
 
-  const float scaleX = static_cast<float>(width) / static_cast<float>(PLUG_WIDTH);
-  const float scaleY = static_cast<float>(height) / static_cast<float>(PLUG_HEIGHT);
+  // The host provides the window size in physical pixels (already
+  // DPI-scaled when DPI Awareness is ON).  Divide out the screen DPI
+  // scale so mDrawScale only reflects the user resize factor.  Without
+  // this, GetTotalScale() = mDrawScale * mScreenScale double-counts
+  // the DPI and the window balloons ~2× on a 150 % display.
+  const float screenScale = GetUI()->GetScreenScale();
+
+  const float scaleX = static_cast<float>(width) / static_cast<float>(PLUG_WIDTH) / screenScale;
+  const float scaleY = static_cast<float>(height) / static_cast<float>(PLUG_HEIGHT) / screenScale;
   const float scale = ClampValue(std::min(scaleX, scaleY), 0.65f, 2.0f);
 
   // Strip and re-layout at the new scale so every control keeps its
