@@ -12,7 +12,7 @@
 #define PLUG_CLASS_NAME Freeze95
 
 #define BUNDLE_NAME "Freeze95"
-#define BUNDLE_MFR "cloph"
+#define BUNDLE_MFR "cloph-dsp"
 #define BUNDLE_DOMAIN "com"
 
 #define SHARED_RESOURCES_SUBPATH "Freeze95"

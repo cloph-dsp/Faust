@@ -1503,6 +1503,94 @@ private:
   std::chrono::steady_clock::time_point mReadoutPulseStart;
 };
 
+// Compact circular knob for the Dry/Wet mix control.  Same visual language
+// as SpeakerKnobControl (kKnobTop fill, radial indicator, travel arc,
+// full-range track) but scaled down to ~16-20 px diameter so it fits in
+// the lower margin below the power button.  A small "MIX" label is drawn
+// below the knob using DrawUtilityText.
+class TinyKnobControl final : public IKnobControlBase {
+public:
+  TinyKnobControl(const IRECT& bounds, int paramIdx, const char* label)
+    : IKnobControlBase(bounds, paramIdx)
+    , mLabel((label && label[0]) ? label : "MIX") {
+    mDblAsSingleClick = true;
+  }
+
+  void OnResize() override {
+    // Reserve a small band at the bottom of mRECT for the label, and let
+    // the IKnobControlBase hit-test cover the whole rect so clicks are easy.
+    SetTargetRECT(mRECT);
+  }
+
+  void Draw(IGraphics& g) override {
+    const float value = static_cast<float>(GetValue());
+
+    // Knob area = square at the top of the control, with a label band at the bottom.
+    // The label rect is aligned to the knob rect (not the full control) so the
+    // "MIX" caption sits directly under the disc, matching the SpeakerKnob layout.
+    const float knobH = std::max(10.f, mRECT.H() * (2.f / 3.f));
+    const IRECT knobRect(mRECT.L, mRECT.T, mRECT.R, mRECT.T + knobH);
+    const IRECT labelRect(mRECT.L, mRECT.T + knobH, mRECT.R, mRECT.B);
+
+    const float cx = knobRect.MW();
+    const float cy = knobRect.MH();
+    const float r = 0.5f * std::min(knobRect.W(), knobRect.H()) - 1.5f;
+    if (r < 3.f) return;
+
+    const bool hover = GetMouseIsOver();
+    const bool captured = GetUI() && GetUI()->ControlIsCaptured(this);
+    const bool active = (hover || captured || mMouseDown) && !IsDisabled();
+
+    // Faint full-range track (225° → 495° = 270° of travel).
+    g.DrawArc(WithAlpha(IColor(65, 250, 245, 230), 75),
+              cx, cy, r + 1.8f, 225.f, 495.f, nullptr, 1.1f);
+
+    // Travel arc — shows consumed range, brightens on hover/active.
+    if (value > 0.002f) {
+      const float lineAngle = Lerp(135.f, 405.f, value);
+      g.DrawArc(active ? WithAlpha(kCoolGlow, 180) : WithAlpha(kCoolOn, 140),
+                cx, cy, r + 1.8f, 225.f, lineAngle + 90.f, nullptr, 1.1f);
+    }
+
+    // Drop shadow under the knob for depth.
+    g.FillCircle(WithAlpha(kShellDeep, 22), cx + 0.7f, cy + 1.1f, r + 0.5f);
+
+    // Knob body — same kKnobTop → kShellLight blend as the main knobs.
+    const IColor knobFill = BlendColor(kKnobTop, kShellLight, active ? 0.32f : 0.22f);
+    g.FillCircle(knobFill, cx, cy, r);
+
+    // Subtle highlight rim on hover.
+    if (active) {
+      g.DrawCircle(WithAlpha(kShellLight, 120), cx, cy, r + 0.4f, nullptr, 0.8f);
+    }
+
+    // Position indicator — same formula as SpeakerKnobControl (135°→405°).
+    const float lineAngle = Lerp(135.f, 405.f, value);
+    DrawRadialLine(g,
+                   WithAlpha(BlendColor(kKnobPointerDark, kShellDeep, 0.5f), 235),
+                   cx, cy, lineAngle,
+                   r * 0.30f, r * 0.86f,
+                   std::max(1.1f, r * 0.18f));
+    DrawRadialLine(g,
+                   WithAlpha(kShellLight, 95),
+                   cx - 0.18f, cy - 0.18f, lineAngle,
+                   r * 0.32f, r * 0.78f,
+                   0.7f);
+
+    // Label — slightly larger so it's readable, aligned under the knob.
+    DrawUtilityText(g, 10.f, active ? kFieldText : kShellText,
+                    EAlign::Center, EVAlign::Middle, mLabel.Get(), labelRect);
+  }
+
+protected:
+  IRECT GetKnobDragBounds() override {
+    return mRECT.GetPadded(-1.f);
+  }
+
+private:
+  WDL_String mLabel;
+};
+
 class TransportGroupPanelControl final : public IControl {
 public:
   TransportGroupPanelControl(const IRECT& bounds, int syncParamIdx)
@@ -1689,8 +1777,7 @@ public:
     const IColor modeColor = (mVisualManual >= 0.5f)
       ? BlendColor(kFieldText, kCoolOn, 0.45f)
       : BlendColor(kFieldText, kShellMid, 0.45f);
-    IRECT textBounds = mButtonBounds.GetPadded(-2.f);
-    textBounds.T += 1.f;
+    const IRECT textBounds = mButtonBounds.GetPadded(-2.f);
     DrawUtilityText(g, 16.5f, modeColor, EAlign::Center, EVAlign::Middle,
                     modeGlyph, textBounds);
 
@@ -2358,6 +2445,8 @@ Freeze95::Freeze95(const InstanceInfo& info)
   GetParam(kParamLoFi)->InitDouble("Lo-Fi Amount", 0.30, 0.0, 1.0, 0.01, "%");
   GetParam(kParamBpm)->InitDouble("Tempo (BPM)", 120.0, 20.0, 300.0, 0.1, "bpm");
   GetParam(kParamSync)->InitBool("Sync to Host", true);
+  // Dry/Wet is applied in C++ ProcessBlock (post-Faust mix), not in the Faust DSP itself.
+  GetParam(kParamDryWet)->InitDouble("Dry/Wet", 100.0, 0.0, 100.0, 1.0, "%");
 
   // Factory presets - these work with iPlug2's MakePreset API.
   // NOTE: Some DAWs (e.g., certain VST3 hosts) do not expose factory presets in their
@@ -2433,7 +2522,7 @@ void Freeze95::LayoutUI(IGraphics* g) {
 
   const float knobGap = Snap8(16.f);
   const float transportGap = Snap8(24.f);
-  const float powerGap = Snap8(40.f);
+  const float powerGap = Snap8(40.f);  // Restored to original — the Dry/Wet knob lives in the footer now
 
   // Equal raw gaps looked uneven because the knob faces occupy much less of
   // their bounds than the transport panel and power button. Weight the row by
@@ -2529,8 +2618,41 @@ void Freeze95::LayoutUI(IGraphics* g) {
 
   const float powerTop = majorTop + macroTopInset;
   const float powerBottom = majorBottom - macroBottomInset;
+
   const float powerPanelL = transportPanelBounds.R + powerGap;
   const IRECT powerBounds(powerPanelL, powerTop, powerPanelL + powerWidth, powerBottom);
+
+  // Tiny Dry/Wet mix knob — fits in the lower-margin space below the power
+  // button.  Diameter ~23 px (radius ~11.5).  Right-edge aligned with the
+  // power button so it reads as a continuation of the power hardware.
+  // Slightly up (knob top sits at the power button's bottom edge).  A
+  // "MIX" label sits in the same control's bounds, below the knob, aligned
+  // to the knob's width (not the full control rect).
+  // Geometry: lower margin is 32 px (PLUG_HEIGHT - powerBounds.B).  We budget
+  // it as 2 * radius for the knob + 9 px for the label band = exactly 32 px.
+  const float dryWetR = ClampValue(h * 0.0375f, 11.f, 12.f);   // radius, raw
+  const float dryWetD = dryWetR * 2.f;
+  const float labelBandH = 9.f;  // height reserved for the MIX label band
+  // Horizontal: place the knob in the empty gap between the transport
+  // panel's right edge and the power button's left edge, nudged slightly
+  // to the right (toward the power button) so it reads as part of the
+  // power hardware group rather than drifting toward the transport.
+  const float transportRight = transportPanelBounds.R;
+  const float powerLeft = powerBounds.L;
+  const float gapCenterX = 0.5f * (transportRight + powerLeft);
+  // "Slightly to the right" → 60% across the gap from the transport side.
+  const float dryWetCenterX = transportRight + 0.60f * (powerLeft - transportRight);
+  // Vertical: nudge the knob slightly above the gap's midpoint, toward
+  // the transport panel.  The knob's diameter exceeds the 16-px gap, so
+  // it straddles both panel edges (no visual overlap because the knob
+  // sits in the horizontal gap between the two controls).
+  const float dryWetCenterY = 252.f;
+  const float dryWetLeft = dryWetCenterX - dryWetR;
+  const float dryWetTop = dryWetCenterY - dryWetR;
+  // The control's bounds include the knob and the label band.  The label
+  // rect inside the control is aligned to the knob's width (see Draw()).
+  const IRECT dryWetBounds(dryWetLeft, dryWetTop,
+                           dryWetLeft + dryWetD, dryWetTop + dryWetD + labelBandH);
 
   // Plates anchored to align exactly with inner bezels.
   const IRECT logoPlateBounds(chaosBounds.L, badgePlateTop,
@@ -2580,6 +2702,11 @@ void Freeze95::LayoutUI(IGraphics* g) {
     powerBounds,
     kParamPower, ""));
 
+  // Tiny Dry/Wet mix knob — sits in the lower margin just below the power
+  // button.  Same design language as SpeakerKnobControl, just much smaller,
+  // with a "MIX" label drawn inside the same control's bounds.
+  g->AttachControl(new TinyKnobControl(dryWetBounds, kParamDryWet, "MIX"));
+
   // Bypass wash — covers the full panel so power-off reads like the monitor went dark
   const IRECT bypassCoverBounds(0.f, 0.f, w, h);
   g->AttachControl(new BypassOverlayControl(bypassCoverBounds, kParamPower));
@@ -2598,11 +2725,26 @@ void Freeze95::OnParentWindowResize(int width, int height) {
     return;
   }
 
-  const float scaleX = static_cast<float>(width) / static_cast<float>(PLUG_WIDTH);
-  const float scaleY = static_cast<float>(height) / static_cast<float>(PLUG_HEIGHT);
+  // The host provides the window size in physical pixels (already
+  // DPI-scaled when DPI Awareness is ON).  Divide out the screen DPI
+  // scale so mDrawScale only reflects the user resize factor.  Without
+  // this, GetTotalScale() = mDrawScale * mScreenScale double-counts
+  // the DPI and the window balloons ~2× on a 150 % display.
+  const float screenScale = GetUI()->GetScreenScale();
+
+  const float scaleX = static_cast<float>(width) / static_cast<float>(PLUG_WIDTH) / screenScale;
+  const float scaleY = static_cast<float>(height) / static_cast<float>(PLUG_HEIGHT) / screenScale;
   const float scale = ClampValue(std::min(scaleX, scaleY), 0.65f, 2.0f);
 
+  // Strip and re-layout at the new scale so every control keeps its
+  // proportional relationship to the others.  Without this, the canvas
+  // is scaled but the control bounds are stale, so different controls
+  // (text, knobs, SVGs that were rasterised at the old scale) end up
+  // at different visual scales.  LayoutUI's early-return-on-non-empty
+  // guard is satisfied because we just cleared the controls above.
+  GetUI()->RemoveAllControls();
   GetUI()->Resize(PLUG_WIDTH, PLUG_HEIGHT, scale, false);
+  LayoutUI(GetUI());
 }
 #endif
 
@@ -2661,6 +2803,45 @@ void Freeze95::OnReset() {
   mBufferSize = std::max(16384, GetBlockSize());
 
   SyncParamsToDSP();
+}
+
+void Freeze95::OnActivate(bool active) {
+  if (active) {
+#if defined IPLUG_VST3
+    // When the plugin is reactivated (e.g., track re-enabled, session reopened),
+    // the VST3 parameter container (mParameters) may have stale values because
+    // setComponentState is a no-op in non-distributed VST3. Sync it here.
+    // This ensures the GUI controls show correct values when the UI opens.
+    UpdateParams(this, GetBypassed() ? 1 : 0);
+#endif
+    
+    // Signal OnIdle to update UI controls with current parameter values
+    mSendUpdate = true;
+  }
+}
+
+void Freeze95::OnIdle() {
+#if IPLUG_EDITOR
+  if (mSendUpdate) {
+    if (GetUI()) {
+      // Send current parameter values to UI controls
+      SendCurrentParamValuesFromDelegate();
+    }
+    mSendUpdate = false;
+  }
+#endif
+}
+
+void Freeze95::OnUIOpen() {
+#if defined IPLUG_VST3
+  // When the UI opens, ensure VST3 parameter container is synced with iPlug parameters.
+  // In non-distributed VST3, setComponentState is a no-op, so mParameters can have
+  // stale values after session restore. Sync them before the base implementation
+  // sends values to UI controls.
+  UpdateParams(this, GetBypassed() ? 1 : 0);
+#endif
+  // Call base implementation which sends current parameter values to UI controls
+  IEditorDelegate::OnUIOpen();
 }
 
 void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
@@ -2749,18 +2930,29 @@ void Freeze95::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
   // The Faust DSP already has an 8 ms internal smooth, but a longer C++ ramp
   // prevents discontinuities when the host bypasses or the user toggles rapidly.
   mTargetPowerGain = GetParam(kParamPower)->Value() > 0.5f ? 1.0f : 0.0f;
+  // Dry/Wet: param range 0..100, normalised to 0..1 here.
+  mTargetDryWet = static_cast<float>(GetParam(kParamDryWet)->Value() / 100.0);
   const float gainRamp = 0.04f; // ~25 samples to converge
+  const float dryWetRamp = 0.02f; // ~50 samples — gentler for smooth knob tweaks
 
   if (nOut >= 2) {
     for (int s = 0; s < nFrames; ++s) {
       mPowerGain += (mTargetPowerGain - mPowerGain) * gainRamp;
-      outputs[0][s] = static_cast<sample>(mOutL[s] * mPowerGain + inputs[0][s] * (1.0f - mPowerGain));
-      outputs[1][s] = static_cast<sample>(mOutR[s] * mPowerGain + inputs[1][s] * (1.0f - mPowerGain));
+      mDryWet += (mTargetDryWet - mDryWet) * dryWetRamp;
+      // Power scales how much of the processed signal is heard; dry/wet then
+      // blends that with the unprocessed input.  Net gain is wet = mPowerGain*mDryWet.
+      const float wet = mPowerGain * mDryWet;
+      const float dry = 1.0f - wet;
+      outputs[0][s] = static_cast<sample>(mOutL[s] * wet + inputs[0][s] * dry);
+      outputs[1][s] = static_cast<sample>(mOutR[s] * wet + inputs[1][s] * dry);
     }
   } else if (nOut == 1) {
     for (int s = 0; s < nFrames; ++s) {
       mPowerGain += (mTargetPowerGain - mPowerGain) * gainRamp;
-      outputs[0][s] = static_cast<sample>(mOutL[s] * mPowerGain + inputs[0][s] * (1.0f - mPowerGain));
+      mDryWet += (mTargetDryWet - mDryWet) * dryWetRamp;
+      const float wet = mPowerGain * mDryWet;
+      const float dry = 1.0f - wet;
+      outputs[0][s] = static_cast<sample>(mOutL[s] * wet + inputs[0][s] * dry);
     }
   }
 
@@ -2782,7 +2974,6 @@ bool Freeze95::SerializeState(IByteChunk& chunk) const {
 }
 
 int Freeze95::UnserializeState(const IByteChunk& chunk, int startPos) {
-  if (GetUI()) GetUI()->SetAllControlsDirty();
   const int result = UnserializeParams(chunk, startPos);
   SyncParamsToDSP();
   return result;

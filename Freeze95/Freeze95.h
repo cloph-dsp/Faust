@@ -20,6 +20,7 @@ enum EParams {
   kParamLoFi,
   kParamBpm,
   kParamSync,
+  kParamDryWet,
   kNumParams
 };
 
@@ -29,10 +30,13 @@ public:
 
 #if IPLUG_EDITOR
   void OnParentWindowResize(int width, int height) override;
+  void OnUIOpen() override;
 #endif
 
   void OnParamChange(int paramIdx) override;
   void OnReset() override;
+  void OnActivate(bool active) override;
+  void OnIdle() override;
   void ProcessBlock(iplug::sample** inputs, iplug::sample** outputs, int nFrames) override;
 
   bool SerializeState(IByteChunk& chunk) const override;
@@ -62,6 +66,11 @@ private:
   float mPowerGain = 1.0f;
   float mTargetPowerGain = 1.0f;
 
+  // Smoothed dry/wet mix (0..1) for click-free knob tweaks
+  float mDryWet = 1.0f;
+  float mTargetDryWet = 1.0f;
+
   bool mHasTransportState = false;
   bool mLastTransportRunning = false;
+  bool mSendUpdate = false;
 };
