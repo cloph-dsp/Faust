@@ -49,9 +49,10 @@ jobs:
       - name: Build VST3
         working-directory: Freeze95
         run: |
-          $msbuild = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe"
-          if (!(Test-Path $msbuild)) {
-            $msbuild = Resolve-Path "${env:ProgramFiles}\Microsoft Visual Studio\*\MSBuild\Current\Bin\MSBuild.exe" | Select-Object -First 1
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if (-not $msbuild) {
+            $msbuild = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\*\MSBuild\Current\Bin\MSBuild.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
           }
           $solutionDir = (Resolve-Path ".").Path + "\"
           & $msbuild "iPlug2/Examples/IPlugEffect/projects/IPlugEffect-vst3.vcxproj" "/p:Configuration=Release" "/p:Platform=x64" "/p:SolutionDir=$solutionDir" /v:m
@@ -59,9 +60,10 @@ jobs:
       - name: Build CLAP
         working-directory: Freeze95
         run: |
-          $msbuild = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe"
-          if (!(Test-Path $msbuild)) {
-            $msbuild = Resolve-Path "${env:ProgramFiles}\Microsoft Visual Studio\*\MSBuild\Current\Bin\MSBuild.exe" | Select-Object -First 1
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if (-not $msbuild) {
+            $msbuild = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\*\MSBuild\Current\Bin\MSBuild.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
           }
           $solutionDir = (Resolve-Path ".").Path + "\"
           & $msbuild "iPlug2/Examples/IPlugEffect/projects/IPlugEffect-clap.vcxproj" "/p:Configuration=Release" "/p:Platform=x64" "/p:SolutionDir=$solutionDir" /v:m
@@ -100,13 +102,19 @@ jobs:
         working-directory: Freeze95/iPlug2/Dependencies/IPlug
         run: |
           # Build Steinberg's official vst3_validator from the already-downloaded SDK
+          # NOTE: download-vst3-sdk.sh names the built binary "validator" (not "vst3_validator")
+          # and places it at VST3_SDK/validator/validator
           bash download-vst3-sdk.sh master build-validator 2>&1 | tail -10
-          # Copy validator to /tmp for later use
+          # Copy validator to /tmp for later use (try both naming conventions)
           if [ -f "VST3_SDK/validator/vst3_validator" ]; then
             cp VST3_SDK/validator/vst3_validator /tmp/vst3_validator
             echo "vst3_validator built successfully"
+          elif [ -f "VST3_SDK/validator/validator" ]; then
+            cp VST3_SDK/validator/validator /tmp/vst3_validator
+            echo "vst3_validator built successfully"
           else
             echo "WARNING: vst3_validator not found — skipping official validation"
+            find VST3_SDK -name "validator" -type f 2>/dev/null || echo "  (no validator binary found anywhere in VST3_SDK)"
           fi
 
       - name: Setup Freeze95 resources
@@ -166,10 +174,15 @@ jobs:
       - name: Build AUv2 (Audio Unit — native macOS format)
         run: |
           cd Freeze95/iPlug2/Examples/IPlugEffect
+          # Disable codesign during build — Xcode 16.4+ tries to sign the bundle
+          # wrapper (with --generate-entitlement-der) before the inner binary
+          # is signed, causing "code object is not signed at all" errors.
+          # Manual signing is handled in the "Ad-hoc sign bundles" step below.
           xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
             -scheme "macOS-AUv2" \
             -configuration Release \
             -arch x86_64 -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" \
             BUILD_DIR="${{ github.workspace }}/Freeze95/build-mac" \
             AU_PATH="${{ github.workspace }}/Freeze95/build-mac/Products"
 
@@ -884,8 +897,19 @@ jobs:
             cp -Rf "$AU_BUNDLE" ~/Library/Audio/Plug-Ins/Components/
 
             # Register with the Audio Component Manager
+            # Note: auvaltool was removed from AudioUnit.framework on macOS 15+.
+            # On modern macOS, auval registers components automatically when they're
+            # copied to ~/Library/Audio/Plug-Ins/Components/. We touch coreaudiod
+            # to force a rescan.
             echo "Registering AU component..."
-            /System/Library/Frameworks/AudioUnit.framework/Versions/A/Resources/auvaltool -register 2>&1 || true
+            if [ -x "/System/Library/Frameworks/AudioUnit.framework/Versions/A/Resources/auvaltool" ]; then
+              /System/Library/Frameworks/AudioUnit.framework/Versions/A/Resources/auvaltool -register 2>&1 || true
+            else
+              # macOS 15+: force coreaudiod to rescan Audio Unit components
+              launchctl kickstart -k system/com.apple.audio.coreaudiod 2>/dev/null || \
+                sudo killall coreaudiod 2>/dev/null || true
+              sleep 1
+            fi
 
             # Validate with auval — checks open/close, parameter access, rendering
             echo ""
