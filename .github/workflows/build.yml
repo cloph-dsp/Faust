@@ -956,6 +956,7 @@ jobs:
         run: |
           mkdir -p Freeze95/build-mac/stage-vst3
           cp -R Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/stage-vst3/
+          cp Freeze95/resources/INSTALL_MACOS.md Freeze95/build-mac/stage-vst3/
 
       - name: Upload VST3 artifact
         if: always()
@@ -969,6 +970,7 @@ jobs:
         run: |
           mkdir -p Freeze95/build-mac/stage-clap
           cp -R Freeze95/build-mac/Products/Freeze95.clap Freeze95/build-mac/stage-clap/
+          cp Freeze95/resources/INSTALL_MACOS.md Freeze95/build-mac/stage-clap/
 
       - name: Upload CLAP artifact
         if: always()
@@ -984,6 +986,7 @@ jobs:
           if [ -d "$AU_BUNDLE" ]; then
             mkdir -p Freeze95/build-mac/stage-au
             cp -R "$AU_BUNDLE" Freeze95/build-mac/stage-au/
+            cp Freeze95/resources/INSTALL_MACOS.md Freeze95/build-mac/stage-au/
           fi
 
       - name: Upload AU artifact

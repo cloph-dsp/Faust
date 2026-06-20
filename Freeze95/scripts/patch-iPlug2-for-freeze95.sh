@@ -14,6 +14,9 @@
 #      - nil guard for MTLCreateSystemDefaultDevice()
 #      - nil guard for NSOpenGLPixelFormat/NSOpenGLContext
 #      - graceful CVDisplayLink fallback to NSTimer (no assert crash)
+#   3. IGraphicsCoreText.mm: null guard for CTFontDescriptorCreateMatchingFontDescriptors
+#      returning NULL (crashes CFArrayGetCount). Triggered when a requested system font
+#      is not installed on the system.
 # ============================================================================
 
 set -euo pipefail
@@ -39,6 +42,7 @@ fi
 mkdir -p "$BACKUP_DIR"
 cp "$IPLUG2_DIR/IGraphics/Platforms/IGraphicsMac.mm" "$BACKUP_DIR/IGraphicsMac.mm.bak"
 cp "$IPLUG2_DIR/IGraphics/Platforms/IGraphicsMac_view.mm" "$BACKUP_DIR/IGraphicsMac_view.mm.bak"
+cp "$IPLUG2_DIR/IGraphics/Platforms/IGraphicsCoreText.mm" "$BACKUP_DIR/IGraphicsCoreText.mm.bak"
 
 # === PATCH 1: IGraphicsMac.mm — OpenWindow with @try/@catch + nil screen guard ===
 # The upstream file has OpenWindow at the same location. We use the pre-patched file.
@@ -68,9 +72,19 @@ else
   # Patch 2d: Graceful CVDisplayLink errors
 fi
 
+# === PATCH 3: IGraphicsCoreText.mm — null guard for CTFontDescriptorCreateMatchingFontDescriptors ===
+if [ -f "$PATCHED_DIR/IGraphics/Platforms/IGraphicsCoreText.mm" ]; then
+  cp "$PATCHED_DIR/IGraphics/Platforms/IGraphicsCoreText.mm" \
+     "$IPLUG2_DIR/IGraphics/Platforms/IGraphicsCoreText.mm"
+  echo "  ✓ Patched IGraphicsCoreText.mm (from patched-iPlug2/)"
+else
+  echo "  WARNING: patched IGraphicsCoreText.mm not found, skipping CoreText patch"
+fi
+
 echo ""
 echo "=== Patching complete ==="
 echo "  Backups saved to: $BACKUP_DIR"
 echo "  Patched files:"
 echo "    IGraphicsMac.mm"  
 echo "    IGraphicsMac_view.mm"
+echo "    IGraphicsCoreText.mm"
