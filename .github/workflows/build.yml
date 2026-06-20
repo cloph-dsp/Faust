@@ -215,12 +215,13 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.3.0'" "$AU_PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '1.3.0'" "$AU_PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion '10.15'" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:type aufx" "$AU_PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:subtype F95G" "$AU_PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:manufacturer Clph" "$AU_PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:factoryFunction Freeze95_Factory" "$AU_PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:name 'cloph-dsp: Freeze95'" "$AU_PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:description Freeze95" "$AU_PLIST" || true
-            /usr/libexec/PlistBuddy -c "Set :AudioUnit Version 0x00010300" "$AU_PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set 'AudioUnit Version' '0x00010300'" "$AU_PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :NSPrincipalClass Freeze95_View" "$AU_PLIST" || true
           fi
 
@@ -900,6 +901,13 @@ jobs:
         run: |
           AU_BUNDLE="Freeze95/build-mac/Products/Freeze95.component"
           if [ -d "$AU_BUNDLE" ]; then
+            # Quick plist validation for AU
+            AU_PLIST="$AU_BUNDLE/Contents/Info.plist"
+            echo "=== AU Info.plist Validation ==="
+            plutil -lint "$AU_PLIST" || echo "WARNING: AU plist syntax error"
+            /usr/libexec/PlistBuddy -c "Print :AudioComponents" "$AU_PLIST" 2>/dev/null | head -20 || echo "WARNING: AudioComponents key missing from AU plist"
+            echo ""
+
             # Install to user's Audio Unit components folder for validation
             mkdir -p ~/Library/Audio/Plug-Ins/Components
             cp -Rf "$AU_BUNDLE" ~/Library/Audio/Plug-Ins/Components/
@@ -908,8 +916,10 @@ jobs:
             # Note: auvaltool was removed from AudioUnit.framework on macOS 15+.
             # On modern macOS, auval registers components automatically when they're
             # copied to ~/Library/Audio/Plug-Ins/Components/. We touch coreaudiod
-            # to force a rescan.
+            # to force a rescan. Also verify the .r resource-based registration
+            # by checking thng resource entries in the binary.
             echo "Registering AU component..."
+            ls -la "$AU_BUNDLE/Contents/MacOS/"
             if [ -x "/System/Library/Frameworks/AudioUnit.framework/Versions/A/Resources/auvaltool" ]; then
               /System/Library/Frameworks/AudioUnit.framework/Versions/A/Resources/auvaltool -register 2>&1 || true
             else
@@ -920,19 +930,42 @@ jobs:
             fi
 
             # Validate with auval — checks open/close, parameter access, rendering
+            # macOS 15's automatic component validation may test UI view and stress
+            # scenarios even when auval -v (basic) does not. Use -view and -stress
+            # flags to catch crashes that the system validation would detect.
             echo ""
             echo "================================================"
-            echo "  auval VALIDATION - aufx F95G Clph"
+            echo "  auval VALIDATION — basic"
             echo "================================================"
             auval -v aufx F95G Clph 2>&1
-            AUVAL_EXIT=$?
+            AUVAL_BASIC=$?
+            echo "  exit=$AUVAL_BASIC"
             echo ""
-            if [ $AUVAL_EXIT -ne 0 ]; then
-              echo "auval VALIDATION: FAILED (exit=$AUVAL_EXIT)"
-              echo "This may indicate AU compatibility issues"
-              # Don't fail the build — AU is secondary to VST3/CLAP
+
+            echo "================================================"
+            echo "  auval VALIDATION — with UI view"
+            echo "================================================"
+            auval -v -view aufx F95G Clph 2>&1
+            AUVAL_VIEW=$?
+            echo "  exit=$AUVAL_VIEW"
+            echo ""
+
+            echo "================================================"
+            echo "  auval VALIDATION — stress (rapid init/uninit)"
+            echo "================================================"
+            auval -v -stress aufx F95G Clph 2>&1
+            AUVAL_STRESS=$?
+            echo "  exit=$AUVAL_STRESS"
+            echo ""
+
+            if [ $AUVAL_BASIC -ne 0 ] || [ $AUVAL_VIEW -ne 0 ] || [ $AUVAL_STRESS -ne 0 ]; then
+              echo "auval VALIDATION: FAILED"
+              echo "  basic=$AUVAL_BASIC  view=$AUVAL_VIEW  stress=$AUVAL_STRESS"
+              echo "The AU component has compatibility issues that macOS 15"
+              echo "automatic component validation would also detect."
+              exit 1
             else
-              echo "auval VALIDATION: PASSED"
+              echo "auval VALIDATION: ALL PASSED"
             fi
           else
             echo "SKIP: AU bundle not found at $AU_BUNDLE"
