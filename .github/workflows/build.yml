@@ -148,8 +148,9 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET = 10.15
           CODE_SIGNING_REQUIRED = YES
           CODE_SIGN_IDENTITY = -
-          // macOS 15+ ad-hoc: CAN embed --options=runtime but CANNOT embed entitlements.
-          // hardened runtime + DAW's disable-library-validation is sufficient to load.
+          // macOS 15.0-15.6: ad-hoc WITH --options=runtime causes dyld rejection
+          // because ad-hoc can't embed entitlements. Sign WITHOUT hardened runtime.
+          // DAW's disable-library-validation covers loading ad-hoc signed plugins.
           EOF
 
       - name: Build VST3
@@ -231,15 +232,14 @@ jobs:
             if [ -d "$BUNDLE" ]; then
               BINARY="$BUNDLE/Contents/MacOS/Freeze95"
               echo "Signing binary: $BINARY"
-              # Ad-hoc sign with hardened runtime enabled. On macOS 15+, ad-hoc signing
-              # without --options=runtime can cause dyld to abort the process when loaded
-              # by a hardened DAW, even if the DAW has disable-library-validation.
-              # Entitlements cannot be embedded in ad-hoc signatures on macOS 15+ (no CMS
-              # wrapper), but hardened runtime + disable-library-validation (in the DAW)
-              # is sufficient for the plugin to load.
-              codesign --force --sign - --options=runtime "$BINARY"
+              # Ad-hoc sign WITHOUT hardened runtime. macOS 15.0-15.6 hardened DAWs
+              # reject ad-hoc binaries WITH --options=runtime because ad-hoc can't
+              # embed entitlements — dyld sees a hardened binary with no entitlements
+              # and refuses to load it. The DAW's disable-library-validation covers
+              # loading non-hardened code.
+              codesign --force --sign - "$BINARY"
               echo "Signing bundle wrapper: $BUNDLE"
-              codesign --force --sign - --options=runtime "$BUNDLE"
+              codesign --force --sign - "$BUNDLE"
               codesign -vvv --deep "$BUNDLE" || echo "Warning: signature verification had issues"
             fi
           done
@@ -260,12 +260,12 @@ jobs:
           }
           JSONEOF
           # Re-sign VST3 binary (moduleinfo.json addition invalidated the bundle)
-          # Must use --options=runtime to match the initial signing above; otherwise
-          # dyld rejects the bundle as inconsistently signed on macOS 15+.
+          # Ad-hoc without hardened runtime — consistent with initial signing.
+          # See "Ad-hoc sign bundles" step for rationale.
           VST3_BIN="Freeze95/build-mac/Products/Freeze95.vst3/Contents/MacOS/Freeze95"
-          codesign --force --sign - --options=runtime "$VST3_BIN"
+          codesign --force --sign - "$VST3_BIN"
           # Then re-sign bundle wrapper
-          codesign --force --sign - --options=runtime Freeze95/build-mac/Products/Freeze95.vst3
+          codesign --force --sign - Freeze95/build-mac/Products/Freeze95.vst3
 
       - name: Validate code signatures
         run: |
@@ -414,16 +414,18 @@ jobs:
             # Strict signature verification (no --deep here, check bundle itself)
             codesign -vvv "$BUNDLE" || error "Signature verification failed for $(basename $BUNDLE)"
 
-            # Verify signature is ad-hoc
+            # Verify signature is ad-hoc without hardened runtime
+            # macOS 15.0-15.6 hardened DAWs reject ad-hoc binaries with
+            # hardened runtime because ad-hoc can't embed entitlements.
+            # We sign WITHOUT --options=runtime (just ad-hoc).
             CS_INFO=$(codesign -dvv "$BUNDLE" 2>&1)
             echo "$CS_INFO"
             echo "$CS_INFO" | grep -q "Signature=adhoc" || error "Not ad-hoc signed: $(basename $BUNDLE)"
-              # Allow either adhoc,runtime or just adhoc (macOS 15+ can't embed entitlements ad-hoc)
-              if echo "$CS_INFO" | grep -q "adhoc,runtime"; then
-                echo "  Hardened runtime: enabled"
-              else
-                echo "  Hardened runtime: disabled (expected — ad-hoc on macOS 15+ can't embed entitlements)"
-              fi
+            if echo "$CS_INFO" | grep -q "adhoc,runtime"; then
+              echo "  Hardened runtime: enabled (expected for developer-signed builds)"
+            else
+              echo "  Hardened runtime: disabled (ad-hoc, no hardened runtime flag)"
+            fi
 
             # Verify CodeDirectory exists and is sealed
             echo "$CS_INFO" | grep -q "Sealed Resources" || error "Sealed Resources missing: $(basename $BUNDLE)"
@@ -448,12 +450,12 @@ jobs:
             local NAME="$2"
             local CS_INFO=$(codesign -dvv "$BIN" 2>&1 || echo "")
             if echo "$CS_INFO" | grep -q "Signature=adhoc"; then
-              # Ad-hoc signatures cannot embed entitlements on macOS 15+ (no CMS
-              # wrapper). The hardened runtime flag is still set (adhoc,runtime),
-              # but entitlements are impossible to embed without a real identity.
-              # The DAW's disable-library-validation covers the hardened runtime
-              # requirements. Skip entitlements check for ad-hoc signed binaries.
-              echo "SKIP: $NAME is ad-hoc signed — entitlements cannot be embedded ad-hoc"
+              # Ad-hoc signed without hardened runtime (no --options=runtime).
+              # On macOS 15.0-15.6, ad-hoc WITH hardened runtime causes dyld
+              # rejection because ad-hoc can't embed entitlements. Without it,
+              # the DAW's disable-library-validation is sufficient to load
+              # ad-hoc signed plugins. Skip entitlements check for ad-hoc.
+              echo "SKIP: $NAME is ad-hoc signed (no hardened runtime) — check not applicable"
             elif echo "$CS_INFO" | grep -q "runtime"; then
               # Hardened runtime with proper signing identity — check entitlements
               local ENTITLEMENTS=$(codesign -d --entitlements - "$BIN" 2>/dev/null || echo "")
