@@ -740,8 +740,12 @@ Tuner::Tuner(const InstanceInfo& info)
   // smoother (and any future accumulator that risks producing denormals).
   // 0x8040 = _MM_FLUSH_ZERO_ON (0x8000) | _MM_DENORMALS_ZERO_ON (0x0040).
   // Set once at construction; the thread-affinity guarantees from iPlug2
-  // mean this sticks across the lifetime of the process.
+  // mean this sticks across the lifetime of the process.  Gated by
+  // TUNER_HAS_SSE_DENORMALS -- the intrinsics are x86-only; on ARM64 we
+  // rely on the math library's default denormal handling.
+#if TUNER_HAS_SSE_DENORMALS
   _mm_setcsr(_mm_getcsr() | 0x8040);
+#endif
 
   // ST-1: factory presets.  Enum indices for A4: 0=415,1=430,2=432,3=440,4=442,5=444.
   MakePreset("Standard A=440",  55.0, 3.0);

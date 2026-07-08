@@ -12,17 +12,24 @@
 #include <chrono>
 
 // FTZ/DAZ intrinsics for real-time denormal protection.
-//   - On MSVC: <intrin.h> provides _mm_setcsr / _mm_getcsr.
-//   - On GCC/Clang: <xmmintrin.h> does the same.
-// The numeric values 0x8040 are _MM_FLUSH_ZERO_ON | _MM_DENORMALS_ZERO_ON
-// which are identical on all x86/x64 platforms.
-#ifdef _MSC_VER
+//   - On MSVC x86/x64: <intrin.h> provides _mm_setcsr / _mm_getcsr.
+//   - On GCC/Clang x86/x64: <xmmintrin.h> does the same.
+//   - On ARM64 (macOS Apple Silicon, Linux aarch64): NEON uses FPCR/FPSCR
+//     instead, and the math library handles denormals at the OS level --
+//     no runtime flush is needed.  We skip the include + call entirely.
+// TUNER_HAS_SSE_DENORMALS gates the call site at the constructor so the
+// binary compiles cleanly on every host arch, not just x86.
+#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
   #include <intrin.h>
+  #define TUNER_HAS_SSE_DENORMALS 1
 #elif defined(__SSE__)
   // GCC/Clang need the explicit SSE intrinsic header; MSVC pulls them
   // in via <intrin.h> above.  Without this, _mm_getcsr/_mm_setcsr are
   // undeclared on macOS Clang (and any non-MSVC x64 toolchain).
   #include <xmmintrin.h>
+  #define TUNER_HAS_SSE_DENORMALS 1
+#else
+  #define TUNER_HAS_SSE_DENORMALS 0
 #endif
 
 #include "IPlug_include_in_plug_hdr.h"

@@ -133,19 +133,47 @@ jobs:
           else
               echo "  SKIP: dumpbin not found, export check skipped"
           fi
-          # PowerShell LoadLibraryW test -- definitive load check.  We
-          # disable -e around the call so a PowerShell parse error doesn't
-          # silently abort bash (exit 2 from a misuse-of-builtin rather
-          # than the real failure).  Anything other than exit 0 here is
-          # a hard fail.
+          # PowerShell LoadLibraryW test -- definitive load check.  Round-5
+          # fix: write the script to a .ps1 file rather than passing the
+          # whole thing as `-Command "..."`.  The inline form tripped bash's
+          # misuse-of-builtin detection when Git Bash mangled the embedded
+          # \$h / \$p escapes, surfacing as opaque `exit 2`.  A heredoc'd
+          # script file avoids all the quoting tangles.
+          ps_script='Tuner VST/_vst3_loadtest.ps1'
+          dll_full="$(cd "$(dirname "$dll")" && pwd)/$(basename "$dll")"
+          cat > "$ps_script" <<'PSEOF'
+          $ErrorActionPreference = 'Stop'
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public class L {
+              [DllImport("kernel32", SetLastError=true)]
+              public static extern IntPtr LoadLibraryW([MarshalAs(UnmanagedType.LPWStr)]string p);
+              [DllImport("kernel32")]
+              public static extern IntPtr GetProcAddress(IntPtr h, string n);
+          }
+          '@
+          $h = [L]::LoadLibraryW('__DLL_PATH__')
+          if ($h -eq [IntPtr]::Zero) { Write-Error 'LoadLibraryW FAILED'; exit 1 }
+          $p = [L]::GetProcAddress($h, 'GetPluginFactory')
+          if ($p -eq [IntPtr]::Zero) { Write-Error 'GetProcAddress(GetPluginFactory) FAILED'; exit 1 }
+          Write-Host 'LoadLibraryW + GetPluginFactory: OK'
+          exit 0
+          PSEOF
+          # Substitute the bash-resolved DLL path into the placeholder.  Done
+          # after heredoc creation so the heredoc can stay single-quoted and
+          # leave the PowerShell $h / $p variables unescaped.
+          sed -i "s|__DLL_PATH__|$dll_full|g" "$ps_script"
+          # Disable -e around the call so a real PowerShell failure surfaces
+          # as the actual exit code, not as bash's misuse-of-builtin `exit 2`.
           set +e
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
-              "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class L { [DllImport(\"kernel32\",SetLastError=true)] public static extern IntPtr LoadLibraryW([MarshalAs(UnmanagedType.LPWStr)]string p); [DllImport(\"kernel32\")] public static extern IntPtr GetProcAddress(IntPtr h,string n); }'; \$h = [L]::LoadLibraryW((Resolve-Path 'Tuner VST/build-win/vst3/x64/Release/Tuner.vst3').Path); if (\$h -eq [IntPtr]::Zero) { Write-Error 'LoadLibraryW FAILED'; exit 1 } else { \$p = [L]::GetProcAddress(\$h, 'GetPluginFactory'); if (\$p -eq [IntPtr]::Zero) { Write-Error 'GetProcAddress(GetPluginFactory) FAILED'; exit 1 } else { Write-Host 'LoadLibraryW + GetPluginFactory: OK' } }"
+          pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "$ps_script"
           ps_exit=$?
           set -e
-          if [ $ps_exit -ne 0 ]; then
+          rm -f "$ps_script"
+          if [ "$ps_exit" -ne 0 ]; then
               echo "FAIL: PowerShell LoadLibraryW exited $ps_exit"
-              exit $ps_exit
+              exit "$ps_exit"
           fi
 
       - name: Stage VST3 artifact
@@ -210,15 +238,46 @@ jobs:
             echo "SKIP: dumpbin not found, export check skipped"
           fi
 
-          # LoadLibraryW test -- definitive load check.
-          powershell.exe -NoProfile -Command "
-            Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class L { [DllImport(\"kernel32\",SetLastError=true)] public static extern IntPtr LoadLibraryW([MarshalAs(UnmanagedType.LPWStr)]string p); [DllImport(\"kernel32\")] public static extern IntPtr GetProcAddress(IntPtr h,string n); }';
-            \$h = [L]::LoadLibraryW((Resolve-Path 'Tuner VST/build-win/clap/x64/Release/Tuner.clap'));
-            if (\$h -eq [IntPtr]::Zero) { Write-Error 'LoadLibraryW FAILED'; exit 1 }
-            \$p = [L]::GetProcAddress(\$h, 'clap_entry');
-            if (\$p -eq [IntPtr]::Zero) { Write-Error 'GetProcAddress(clap_entry) FAILED'; exit 1 }
-            Write-Host 'LoadLibraryW + clap_entry: OK'
-          "
+          # LoadLibraryW test -- definitive load check.  Round-5 fix: write
+          # the script to a .ps1 file rather than passing the whole thing
+          # as `-Command "..."`.  The inline form tripped bash's misuse-of-
+          # builtin detection when Git Bash mangled the embedded \$h / \$p
+          # escapes, surfacing as opaque `exit 2`.
+          clap_dll="Tuner VST/build-win/clap/x64/Release/Tuner.clap"
+          clap_full="$(cd "$(dirname "$clap_dll")" && pwd)/$(basename "$clap_dll")"
+          ps_script='Tuner VST/_clap_loadtest.ps1'
+          cat > "$ps_script" <<'PSEOF'
+          $ErrorActionPreference = 'Stop'
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public class L {
+              [DllImport("kernel32", SetLastError=true)]
+              public static extern IntPtr LoadLibraryW([MarshalAs(UnmanagedType.LPWStr)]string p);
+              [DllImport("kernel32")]
+              public static extern IntPtr GetProcAddress(IntPtr h, string n);
+          }
+          '@
+          $h = [L]::LoadLibraryW('__DLL_PATH__')
+          if ($h -eq [IntPtr]::Zero) { Write-Error 'LoadLibraryW FAILED'; exit 1 }
+          $p = [L]::GetProcAddress($h, 'clap_entry')
+          if ($p -eq [IntPtr]::Zero) { Write-Error 'GetProcAddress(clap_entry) FAILED'; exit 1 }
+          Write-Host 'LoadLibraryW + clap_entry: OK'
+          exit 0
+          PSEOF
+          # Substitute the bash-resolved DLL path into the placeholder.  Done
+          # after heredoc creation so the heredoc can stay single-quoted and
+          # leave the PowerShell $h / $p variables unescaped.
+          sed -i "s|__DLL_PATH__|$clap_full|g" "$ps_script"
+          set +e
+          pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "$ps_script"
+          ps_exit=$?
+          set -e
+          rm -f "$ps_script"
+          if [ "$ps_exit" -ne 0 ]; then
+              echo "FAIL: PowerShell LoadLibraryW exited $ps_exit"
+              exit "$ps_exit"
+          fi
 
       - name: Stage CLAP artifact
         if: always()
