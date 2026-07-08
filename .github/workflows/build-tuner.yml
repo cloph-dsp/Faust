@@ -88,8 +88,6 @@ jobs:
           name: Tuner-Windows-VST3
           path: Tuner VST/build-win/vst3/x64/Release/Tuner.vst3
           if-no-files-found: error
-          path: Tuner VST/build-win/stage-vst3/
-          if-no-files-found: error
 
       # ---------------------------------------------------------------------
       # CLAP build -- same iPlug2 example tree, different vcxproj.  CLAP is a
