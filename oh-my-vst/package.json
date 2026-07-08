@@ -1,0 +1,46 @@
+{
+  "name": "oh-my-vst",
+  "version": "1.0.0",
+  "description": "Progressive VST plugin development agents for OpenCode — Spec → Architect → DSP → GUI → Validate",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "oh-my-vst": "dist/cli/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun run build:ts && bun run build:types",
+    "build:ts": "bun build --outdir=dist ./src/index.ts && bun build --outdir=dist/cli ./src/cli/index.ts",
+    "build:types": "tsc --project tsconfig.json --emitDeclarationOnly --declarationDir dist",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "vst",
+    "vst3",
+    "audio",
+    "plugin",
+    "dsp",
+    "opencode",
+    "iplug2",
+    "juce",
+    "faust",
+    "cmajor"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.17.15"
+  }
+}
