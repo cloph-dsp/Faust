@@ -86,19 +86,23 @@ jobs:
         run: |
           $bundle = "Tuner VST\build-win\vst3\x64\Release\Tuner.vst3"
           if (-not (Test-Path $bundle)) {
-              Write-Error "VST3 bundle not found at $bundle"
+              Write-Error "VST3 binary not found at $bundle"
               exit 1
           }
-          if (-not (Test-Path "$bundle\Contents\x86_64-win\Tuner.vst3")) {
-              Write-Error "VST3 bundle missing Contents\x86_64-win\Tuner.vst3"
+          # Single-file format: iPlug2's postbuild wraps the DLL into the
+          # .vst3 extension.  No Contents/x86_64-win/ subfolder -- the file
+          # IS the plugin.  Treat the .vst3 as a file, not a bundle.
+          $item = Get-Item $bundle
+          if ($item.PSIsContainer) {
+              Write-Error "Tuner.vst3 is a directory, expected single-file DLL"
               exit 1
           }
-          $size = (Get-Item "$bundle\Contents\x86_64-win\Tuner.vst3").Length
+          $size = $item.Length
           if ($size -lt 1MB) {
               Write-Error "VST3 binary suspiciously small ($size bytes)"
               exit 1
           }
-          Write-Host "VST3 bundle OK: $bundle ($size bytes binary)"
+          Write-Host "VST3 binary OK: $bundle ($size bytes)"
 
       - name: VST3 binary load test
         if: always()
@@ -107,7 +111,7 @@ jobs:
           # Mirrors the Freeze95 dlopen-equivalent sanity check: confirm
           # the binary exports GetPluginFactory and loads without missing
           # symbols.  Catch issues early before shipping the artifact.
-          dll="Tuner VST/build-win/vst3/x64/Release/Tuner.vst3/Contents/x86_64-win/Tuner.vst3"
+          dll="Tuner VST/build-win/vst3/x64/Release/Tuner.vst3"
           test -f "$dll" || { echo "FAIL: $dll missing"; exit 1; }
           # dumpbin /exports is part of the VS toolchain.  Locate it the
           # same way msbuild is located.
@@ -126,7 +130,7 @@ jobs:
           # PowerShell LoadLibraryW test -- definitive load check.
           powershell.exe -NoProfile -Command "
             Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class L { [DllImport(\"kernel32\",SetLastError=true)] public static extern IntPtr LoadLibraryW([MarshalAs(UnmanagedType.LPWStr)]string p); [DllImport(\"kernel32\")] public static extern IntPtr GetProcAddress(IntPtr h,string n); }';
-            \$h = [L]::LoadLibraryW((Resolve-Path 'Tuner VST/build-win/vst3/x64/Release/Tuner.vst3/Contents/x86_64-win/Tuner.vst3'));
+            \$h = [L]::LoadLibraryW((Resolve-Path 'Tuner VST/build-win/vst3/x64/Release/Tuner.vst3'));
             if (\$h -eq [IntPtr]::Zero) { Write-Error 'LoadLibraryW FAILED'; exit 1 }
             \$p = [L]::GetProcAddress(\$h, 'GetPluginFactory');
             if (\$p -eq [IntPtr]::Zero) { Write-Error 'GetProcAddress(GetPluginFactory) FAILED'; exit 1 }
@@ -138,7 +142,8 @@ jobs:
         run: |
           $stage = "Tuner VST\build-win\stage-vst3"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item -Recurse -Force "Tuner VST\build-win\vst3\x64\Release\Tuner.vst3" "$stage\"
+          # Single-file: copy the .vst3 DLL directly (no -Recurse).
+          Copy-Item -Force "Tuner VST\build-win\vst3\x64\Release\Tuner.vst3" "$stage\Tuner.vst3"
 
       - name: Upload VST3 artifact
         if: always()

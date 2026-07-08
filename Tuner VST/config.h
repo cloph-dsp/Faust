@@ -8,16 +8,16 @@
 // the Tuner code, distinct from L-R8 (LR81), Freeze95 (F951) and the others.
 // =============================================================================
 
-#define PLUG_NAME             "Tuner"
-#define PLUG_MFR              "CLOPH"
+#define PLUG_NAME "Tuner"
+#define PLUG_MFR "CLOPH"
 #define PLUG_VERSION_HEX      0x00010100
-#define PLUG_VERSION_STR      "1.1.0"
+#define PLUG_VERSION_STR "1.1.0"
 #define PLUG_UNIQUE_ID        'TnR1'
 #define PLUG_MFR_ID           'CLPH'
 
 // I/O.  A tuner is stereo input (we don't have to be, but matches the
 // source Cmajor patch which was stereo-in / stereo-out pass-through).
-#define PLUG_CHANNEL_IO       "2-2"
+#define PLUG_CHANNEL_IO "2-2"
 #define PLUG_LATENCY          0
 
 // Plugin class / behaviour.
@@ -49,10 +49,10 @@
 // `<Name>_View`.  PLUG_ENTRY above is the iPlug class symbol, not the
 // AUv2 component entry, so we duplicate the suffix pattern here.
 #define AUV2_ENTRY            Tuner_Entry
-#define AUV2_ENTRY_STR        "Tuner_Entry"
+#define AUV2_ENTRY_STR "Tuner_Entry"
 #define AUV2_FACTORY          Tuner_Factory
 #define AUV2_VIEW_CLASS       Tuner_View
-#define AUV2_VIEW_CLASS_STR   "Tuner_View"
+#define AUV2_VIEW_CLASS_STR "Tuner_View"
 
 // AU AudioComponent identifiers.  Mirrors Freeze95's AAX/PLUG_NAME macros.
 // `manufacturer` is a 4-char code that the system registry keys on; we
@@ -61,9 +61,9 @@
 // code, distinct from any other CLPH plugin.  The CI macOS job rewrites
 // the same keys inside the .component/Contents/Info.plist at build time
 // (the iPlug2 template uses placeholder values).
-#define AUV2_MANUFACTURER     "Clph"
-#define AUV2_SUBTYPE          "TnR1"
-#define AUV2_DESCRIPTION      "Tuner"
+#define AUV2_MANUFACTURER "Clph"
+#define AUV2_SUBTYPE "TnR1"
+#define AUV2_DESCRIPTION "Tuner"
 
 // AAX identity codes (split to avoid commas in RC preprocessor).
 #define AAX_TYPE_ID_1         'TnR1'
@@ -75,7 +75,7 @@
 #define AAX_PLUGIN_ID         'CLPT'
 
 // VST3 category.  Fx|Tools is the right slot for a tuner.
-#define VST3_SUBCATEGORY      "Fx|Tools"
+#define VST3_SUBCATEGORY "Fx|Tools"
 
 // iPlug2 internals.
 #define APP_NUM_CHANNELS      2
@@ -84,7 +84,7 @@
 #define APP_SIGNAL_VECTOR_SIZE 64
 
 // Plugin description string surfaced to the host.
-#define PLUG_DESCRIPTION      "High-precision YIN+MPM chromatic tuner with 4-point Neville interpolation and adaptive asymmetric smoothing."
+#define PLUG_DESCRIPTION "High-precision YIN+MPM chromatic tuner with 4-point Neville interpolation and adaptive asymmetric smoothing."
 
 // Entry point symbol (matches the AUV2_ENTRY above).
 #define PLUG_ENTRY            Tuner
@@ -94,14 +94,14 @@
 #define PLUG_CLASS_NAME       Tuner
 
 // Bundle name -- used in CFBundleIdentifier on macOS / iOS.
-#define BUNDLE_NAME           "Tuner"
-#define BUNDLE_MFR            "CLOPH"
-#define BUNDLE_DOMAIN         "com.cloph"
+#define BUNDLE_NAME "Tuner"
+#define BUNDLE_MFR "CLOPH"
+#define BUNDLE_DOMAIN "com.cloph"
 
 #define PLUG_SHARED_RESOURCES 0
 #define PLUG_URL_STR          ""
 #define PLUG_EMAIL_STR        ""
-#define PLUG_COPYRIGHT_STR    "Copyright (C) CLOPH"
+#define PLUG_COPYRIGHT_STR "Copyright (C) CLOPH"
 #define SHARED_RESOURCES_SUBPATH PLUG_NAME
 
 // Resource compiler substitution.  resources/main.rc contains lines like
