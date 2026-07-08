@@ -79,7 +79,7 @@ jobs:
             $msbuild = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\*\MSBuild\Current\Bin\MSBuild.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
           }
           $solutionDir = (Resolve-Path ".").Path + "\"
-          & $msbuild "iPlug2/Examples/IPlugEffect/projects/IPlugEffect-vst3.vcxproj" "/p:Configuration=Release" "/p:Platform=x64" "/p:SolutionDir=$solutionDir" /v:m
+          & $msbuild "../iPlug2/Examples/IPlugEffect/projects/IPlugEffect-vst3.vcxproj" "/p:Configuration=Release" "/p:Platform=x64" "/p:SolutionDir=$solutionDir" /v:m
 
       - name: Verify Windows VST3 bundle
         if: always()
@@ -161,7 +161,7 @@ jobs:
             $msbuild = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\*\MSBuild\Current\Bin\MSBuild.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
           }
           $solutionDir = (Resolve-Path ".").Path + "\"
-          & $msbuild "iPlug2/Examples/IPlugEffect/projects/IPlugEffect-clap.vcxproj" "/p:Configuration=Release" "/p:Platform=x64" "/p:SolutionDir=$solutionDir" /v:m
+          & $msbuild "../iPlug2/Examples/IPlugEffect/projects/IPlugEffect-clap.vcxproj" "/p:Configuration=Release" "/p:Platform=x64" "/p:SolutionDir=$solutionDir" /v:m
 
       - name: Verify Windows CLAP
         if: always()

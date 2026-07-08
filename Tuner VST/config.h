@@ -21,7 +21,7 @@
 #define PLUG_LATENCY          0
 
 // Plugin class / behaviour.
-#define PLUG_TYPE             0          // 0 = kPlugTypeUnknown / kPlugType_Fx
+#define PLUG_TYPE             0
 #define PLUG_DOES_MIDI_IN     0
 #define PLUG_DOES_MIDI_OUT    0
 #define PLUG_DOES_MPE         0
@@ -32,7 +32,7 @@
 // meter and controls breathing room.  540 wide stays comfortable in any DAW.
 #define PLUG_WIDTH            540
 #define PLUG_HEIGHT           300
-#define PLUG_FPS              30   // 30 Hz -- readable for a 7-segment readout
+#define PLUG_FPS              30
 
 // Host resize support.  We don't shrink/grow dynamically -- fixed size keeps
 // the UI layout simple -- but we report the canonical size.
