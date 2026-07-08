@@ -148,6 +148,77 @@ jobs:
           path: Tuner VST/build-win/stage-vst3/
           if-no-files-found: error
 
+      # ---------------------------------------------------------------------
+      # CLAP build -- same iPlug2 example tree, different vcxproj.  CLAP is a
+      # single-file format (.clap DLL, not a bundle) and ships as-is.
+      # ---------------------------------------------------------------------
+      - name: Build CLAP
+        working-directory: Tuner VST
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if (-not $msbuild) {
+            $msbuild = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\*\MSBuild\Current\Bin\MSBuild.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          }
+          $solutionDir = (Resolve-Path ".").Path + "\"
+          & $msbuild "iPlug2/Examples/IPlugEffect/projects/IPlugEffect-clap.vcxproj" "/p:Configuration=Release" "/p:Platform=x64" "/p:SolutionDir=$solutionDir" /v:m
+
+      - name: Verify Windows CLAP
+        if: always()
+        shell: bash
+        run: |
+          # iPlug2's CLAP build emits Tuner.clap directly (postbuild
+          # wrapper).  Verify the entry point exports `clap_entry`
+          # (NOT GetPluginFactory, which is VST3-specific).
+          CLAP="Tuner VST/build-win/clap/x64/Release/Tuner.clap"
+          test -f "$CLAP" || { echo "FAIL: $CLAP missing"; exit 1; }
+          SIZE=$(stat -c%s "$CLAP")
+          if [ "$SIZE" -lt 1MB ]; then
+            echo "FAIL: CLAP suspiciously small ($SIZE bytes)"
+            exit 1
+          fi
+          echo "CLAP OK: $CLAP ($SIZE bytes)"
+
+          # Export check -- CLAP spec requires the binary to expose
+          # `clap_entry` as the plugin descriptor accessor.
+          dumpbin=$(ls "${ProgramFiles}/Microsoft Visual Studio/"*/BuildTools/VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe 2>/dev/null | head -1)
+          if [ -z "$dumpbin" ]; then
+            dumpbin=$(ls "${ProgramFiles}/Microsoft Visual Studio/"*/Community/VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe 2>/dev/null | head -1)
+          fi
+          if [ -n "$dumpbin" ]; then
+            "$dumpbin" /exports "$CLAP" | grep -q "clap_entry" || {
+              echo "FAIL: clap_entry not exported"; exit 1;
+            }
+            echo "clap_entry: FOUND"
+          else
+            echo "SKIP: dumpbin not found, export check skipped"
+          fi
+
+          # LoadLibraryW test -- definitive load check.
+          powershell.exe -NoProfile -Command "
+            Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class L { [DllImport(\"kernel32\",SetLastError=true)] public static extern IntPtr LoadLibraryW([MarshalAs(UnmanagedType.LPWStr)]string p); [DllImport(\"kernel32\")] public static extern IntPtr GetProcAddress(IntPtr h,string n); }';
+            \$h = [L]::LoadLibraryW((Resolve-Path 'Tuner VST/build-win/clap/x64/Release/Tuner.clap'));
+            if (\$h -eq [IntPtr]::Zero) { Write-Error 'LoadLibraryW FAILED'; exit 1 }
+            \$p = [L]::GetProcAddress(\$h, 'clap_entry');
+            if (\$p -eq [IntPtr]::Zero) { Write-Error 'GetProcAddress(clap_entry) FAILED'; exit 1 }
+            Write-Host 'LoadLibraryW + clap_entry: OK'
+          "
+
+      - name: Stage CLAP artifact
+        if: always()
+        run: |
+          $stage = "Tuner VST\build-win\stage-clap"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Force "Tuner VST\build-win\clap\x64\Release\Tuner.clap" "$stage\"
+
+      - name: Upload CLAP artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tuner-Windows-CLAP
+          path: Tuner VST/build-win/stage-clap/
+          if-no-files-found: error
+
   # ===========================================================================
   # macOS build -- xcodebuild produces a VST3 universal (x86_64 + arm64)
   # bundle.  Verify Mach-O universality + codesign ad-hoc without hardened
@@ -366,3 +437,264 @@ jobs:
           name: Tuner-macOS-VST3
           path: Tuner VST/build-mac/stage-vst3/
           if-no-files-found: error
+
+      # ---------------------------------------------------------------------
+      # CLAP build -- same xcodeproj, different scheme.  macOS-CLAP writes a
+      # bundle at <BIN>/Tuner.clap with the same layout as the VST3 one
+      # (Contents/Info.plist + Contents/MacOS/Tuner).  The CLAP spec is
+      # happy with the macOS bundle form (any host that scans standard
+      # bundle dirs will pick it up).
+      # ---------------------------------------------------------------------
+      - name: Build CLAP
+        run: |
+          cd iPlug2/Examples/IPlugEffect
+          xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
+            -scheme "macOS-CLAP" \
+            -configuration Release \
+            -arch x86_64 -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="-" \
+            BUILD_DIR="${{ github.workspace }}/Tuner VST/build-mac" \
+            CLAP_PATH="${{ github.workspace }}/Tuner VST/build-mac/Products"
+
+      - name: Fix CLAP Info.plist
+        run: |
+          CLAP="Tuner VST/build-mac/Products/Tuner.clap"
+          PLIST="$CLAP/Contents/Info.plist"
+          if [ -f "$PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Tuner" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleName Tuner" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cloph-dsp.clap.Tuner" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleGetInfoString 'Tuner v1.1.0 Copyright 2026 cloph'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleSignature 'TnR1'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.1.0'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '1.1.0'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion '10.15'" "$PLIST" || true
+          fi
+
+      - name: Ad-hoc sign CLAP bundle
+        run: |
+          BUNDLE="Tuner VST/build-mac/Products/Tuner.clap"
+          BINARY="$BUNDLE/Contents/MacOS/Tuner"
+          if [ -d "$BUNDLE" ] && [ -f "$BINARY" ]; then
+            codesign --force --sign - "$BINARY"
+            codesign --force --sign - "$BUNDLE"
+            codesign -vvv "$BUNDLE" || echo "Warning: signature verification had issues"
+          else
+            echo "WARNING: CLAP bundle or binary missing -- $BUNDLE / $BINARY"
+          fi
+
+      - name: Verify macOS CLAP bundle
+        if: always()
+        run: |
+          CLAP="Tuner VST/build-mac/Products/Tuner.clap"
+          CLAP_BIN="$CLAP/Contents/MacOS/Tuner"
+          ERRORS=0
+          error() { echo "ERROR: $1"; ERRORS=$((ERRORS + 1)); }
+
+          test -d "$CLAP" || error "CLAP bundle missing"
+          test -d "$CLAP/Contents" || error "Contents/ missing"
+          test -d "$CLAP/Contents/MacOS" || error "Contents/MacOS/ missing"
+          test -f "$CLAP/Contents/Info.plist" || error "Contents/Info.plist missing"
+          test -x "$CLAP_BIN" || error "Binary missing or not executable"
+
+          if file "$CLAP_BIN" | grep -q "Mach-O universal binary"; then
+            echo "Mach-O universal: OK"
+          else
+            error "Not a Mach-O universal binary"
+          fi
+          LIPO_OUT=$(lipo -info "$CLAP_BIN" 2>&1)
+          echo "$LIPO_OUT"
+          echo "$LIPO_OUT" | grep -q "x86_64" || error "Missing x86_64"
+          echo "$LIPO_OUT" | grep -q "arm64"  || error "Missing arm64"
+
+          PLIST="$CLAP/Contents/Info.plist"
+          plutil -lint "$PLIST" >/dev/null || error "Invalid plist syntax"
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$PLIST" 2>/dev/null || echo "")
+          [ "$BUNDLE_ID" = "com.cloph-dsp.clap.Tuner" ] || error "CFBundleIdentifier mismatch: $BUNDLE_ID"
+
+          if grep -qi "IPlugEffect\|Acme Inc\|Acme" "$PLIST"; then
+            error "Info.plist still contains template values"
+          fi
+          BAD=$(strings "$CLAP_BIN" | grep -ciE "IPlugEffect|AcmeInc|com\.AcmeInc" || true)
+          if [ "$BAD" -gt 0 ]; then
+            error "Found $BAD template string(s) in binary"
+          fi
+
+          if [ "$ERRORS" -ne 0 ]; then
+            echo "CLAP VERIFICATION FAILED: $ERRORS error(s)"
+            exit 1
+          fi
+          echo "CLAP VERIFICATION PASSED"
+
+      - name: CLAP binary load test
+        if: always()
+        run: |
+          CLAP_BIN="Tuner VST/build-mac/Products/Tuner.clap/Contents/MacOS/Tuner"
+          if [ ! -f "$CLAP_BIN" ]; then echo "SKIP: CLAP binary not present"; exit 0; fi
+          EXPORTS=$(nm -gU "$CLAP_BIN" 2>&1)
+          echo "$EXPORTS" | grep -q "clap_entry" || { echo "FAIL: clap_entry not exported"; exit 1; }
+          echo "  clap_entry: FOUND"
+
+      - name: Strip CLAP quarantine xattrs
+        if: always()
+        run: |
+          BUNDLE="Tuner VST/build-mac/Products/Tuner.clap"
+          if [ -d "$BUNDLE" ]; then xattr -rc "$BUNDLE" 2>/dev/null || true; fi
+
+      - name: Stage CLAP artifact
+        if: always()
+        run: |
+          STAGE="Tuner VST/build-mac/stage-clap"
+          mkdir -p "$STAGE"
+          if [ -d "Tuner VST/build-mac/Products/Tuner.clap" ]; then
+            cp -R "Tuner VST/build-mac/Products/Tuner.clap" "$STAGE/"
+          fi
+
+      - name: Upload CLAP artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tuner-macOS-CLAP
+          path: Tuner VST/build-mac/stage-clap/
+          if-no-files-found: warn
+
+      # ---------------------------------------------------------------------
+      # AUv2 build -- macOS-only native format.  The bundle is named
+      # Tuner.component (not Tuner.au).  Xcode 16.4+ tries to sign the bundle
+      # wrapper during the build, which fails for ad-hoc; we disable signing
+      # during xcodebuild and re-sign afterwards.
+      # ---------------------------------------------------------------------
+      - name: Build AUv2
+        run: |
+          cd iPlug2/Examples/IPlugEffect
+          xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
+            -scheme "macOS-AUv2" \
+            -configuration Release \
+            -arch x86_64 -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" \
+            BUILD_DIR="${{ github.workspace }}/Tuner VST/build-mac" \
+            AU_PATH="${{ github.workspace }}/Tuner VST/build-mac/Products"
+
+      - name: Fix AU Info.plist
+        run: |
+          AU="Tuner VST/build-mac/Products/Tuner.component"
+          PLIST="$AU/Contents/Info.plist"
+          if [ ! -f "$PLIST" ]; then echo "SKIP: AU not built"; exit 0; fi
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Tuner" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName Tuner" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cloph-dsp.audiounit.Tuner" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleGetInfoString 'Tuner v1.1.0 Copyright 2026 cloph'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleSignature 'TnR1'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.1.0'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '1.1.0'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion '10.15'" "$PLIST" || true
+          # AudioComponents registration -- the values the Audio Component
+          # Manager uses to look up the plugin (type, subtype, manufacturer).
+          /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:type aufx" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:subtype TnR1" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:manufacturer Clph" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:factoryFunction Tuner_Factory" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:name 'cloph-dsp: Tuner'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:description 'High-precision YIN+MPM chromatic tuner'" "$PLIST" || true
+          # AudioUnit Version has a SPACE in the key name.  Use the
+          # -c "Set 'Key With Space' 'value'" form to avoid PlistBuddy
+          # creating a new "AudioUnit" key by accident.
+          /usr/libexec/PlistBuddy -c "Set 'AudioUnit Version' '0x00010100'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :NSPrincipalClass Tuner_View" "$PLIST" || true
+
+      - name: Ad-hoc sign AU bundle
+        run: |
+          BUNDLE="Tuner VST/build-mac/Products/Tuner.component"
+          BINARY="$BUNDLE/Contents/MacOS/Tuner"
+          if [ -d "$BUNDLE" ] && [ -f "$BINARY" ]; then
+            codesign --force --sign - "$BINARY"
+            codesign --force --sign - "$BUNDLE"
+            codesign -vvv "$BUNDLE" || echo "Warning: signature verification had issues"
+          else
+            echo "WARNING: AU bundle or binary missing -- $BUNDLE / $BINARY"
+          fi
+
+      - name: Verify macOS AU bundle
+        if: always()
+        run: |
+          AU="Tuner VST/build-mac/Products/Tuner.component"
+          if [ ! -d "$AU" ]; then echo "SKIP: AU not built"; exit 0; fi
+          AU_BIN="$AU/Contents/MacOS/Tuner"
+          ERRORS=0
+          error() { echo "ERROR: $1"; ERRORS=$((ERRORS + 1)); }
+
+          test -d "$AU/Contents" || error "Contents/ missing"
+          test -d "$AU/Contents/MacOS" || error "Contents/MacOS/ missing"
+          test -f "$AU/Contents/Info.plist" || error "Info.plist missing"
+          test -x "$AU_BIN" || error "Binary missing or not executable"
+
+          if file "$AU_BIN" | grep -q "Mach-O universal binary"; then
+            echo "Mach-O universal: OK"
+          else
+            error "Not a Mach-O universal binary"
+          fi
+          LIPO_OUT=$(lipo -info "$AU_BIN" 2>&1)
+          echo "$LIPO_OUT"
+          echo "$LIPO_OUT" | grep -q "x86_64" || error "Missing x86_64"
+          echo "$LIPO_OUT" | grep -q "arm64"  || error "Missing arm64"
+
+          PLIST="$AU/Contents/Info.plist"
+          plutil -lint "$PLIST" >/dev/null || error "Invalid plist syntax"
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$PLIST" 2>/dev/null || echo "")
+          [ "$BUNDLE_ID" = "com.cloph-dsp.audiounit.Tuner" ] || error "CFBundleIdentifier mismatch: $BUNDLE_ID"
+          # AudioComponents registration
+          AC_TYPE=$(/usr/libexec/PlistBuddy -c "Print :AudioComponents:0:type" "$PLIST" 2>/dev/null || echo "")
+          AC_SUBTYPE=$(/usr/libexec/PlistBuddy -c "Print :AudioComponents:0:subtype" "$PLIST" 2>/dev/null || echo "")
+          AC_MFR=$(/usr/libexec/PlistBuddy -c "Print :AudioComponents:0:manufacturer" "$PLIST" 2>/dev/null || echo "")
+          [ "$AC_TYPE" = "aufx" ] || error "AudioComponents:0:type != aufx (got $AC_TYPE)"
+          [ "$AC_SUBTYPE" = "TnR1" ] || error "AudioComponents:0:subtype != TnR1 (got $AC_SUBTYPE)"
+          [ "$AC_MFR" = "Clph" ] || error "AudioComponents:0:manufacturer != Clph (got $AC_MFR)"
+
+          if grep -qi "IPlugEffect\|Acme Inc\|Acme" "$PLIST"; then
+            error "Info.plist still contains template values"
+          fi
+          BAD=$(strings "$AU_BIN" | grep -ciE "IPlugEffect|AcmeInc|com\.AcmeInc" || true)
+          if [ "$BAD" -gt 0 ]; then
+            error "Found $BAD template string(s) in binary"
+          fi
+
+          if [ "$ERRORS" -ne 0 ]; then
+            echo "AU VERIFICATION FAILED: $ERRORS error(s)"
+            exit 1
+          fi
+          echo "AU VERIFICATION PASSED"
+
+      - name: AU binary load test
+        if: always()
+        run: |
+          AU_BIN="Tuner VST/build-mac/Products/Tuner.component/Contents/MacOS/Tuner"
+          if [ ! -f "$AU_BIN" ]; then echo "SKIP: AU binary not present"; exit 0; fi
+          # AU uses IPlugAUFactory<Tuner_Factory> -- the entry symbol
+          # matches AUV2_FACTORY (Tuner_Factory) from config.h.
+          EXPORTS=$(nm -gU "$AU_BIN" 2>&1)
+          echo "$EXPORTS" | grep -q "Tuner_Factory" || {
+            echo "WARN: Tuner_Factory symbol not exported by name (AUV2_FACTORY may be inlined)"
+          }
+
+      - name: Strip AU quarantine xattrs
+        if: always()
+        run: |
+          BUNDLE="Tuner VST/build-mac/Products/Tuner.component"
+          if [ -d "$BUNDLE" ]; then xattr -rc "$BUNDLE" 2>/dev/null || true; fi
+
+      - name: Stage AU artifact
+        if: always()
+        run: |
+          STAGE="Tuner VST/build-mac/stage-au"
+          mkdir -p "$STAGE"
+          if [ -d "Tuner VST/build-mac/Products/Tuner.component" ]; then
+            cp -R "Tuner VST/build-mac/Products/Tuner.component" "$STAGE/"
+          fi
+
+      - name: Upload AU artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tuner-macOS-AU
+          path: Tuner VST/build-mac/stage-au/
+          if-no-files-found: warn

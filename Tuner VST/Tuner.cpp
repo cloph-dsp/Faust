@@ -670,7 +670,7 @@ void TunerReadoutControl::OnMouseDblClick(float x, float y, const IMouseMod& mod
 // =============================================================================
 
 Tuner::Tuner(const InstanceInfo& info)
-  : Plugin(info, MakeConfig(kNumParams, kNumPresets))
+  : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
   , mDSP(std::make_unique<TunerDSPWrapper>())
 {
   GetParam(kParamSmoothing)->InitDouble(

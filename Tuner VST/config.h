@@ -42,8 +42,28 @@
 #define PLUG_MAX_WIDTH        PLUG_WIDTH
 #define PLUG_MAX_HEIGHT       PLUG_HEIGHT
 
-// AUv2 entry point symbol (compiled by iPlug2).
-#define AUV2_ENTRY            Tuner_ENTRY
+// AUv2 entry points (compiled by iPlug2).  The first three are required
+// by IPlug_include_in_plug_hdr.h -- without AUV2_FACTORY and AUV2_VIEW_CLASS
+// the AU build fails with `#error AUV2_FACTORY not defined`.  The naming
+// convention matches Freeze95's config.h: `<Name>_Entry`, `<Name>_Factory`,
+// `<Name>_View`.  PLUG_ENTRY above is the iPlug class symbol, not the
+// AUv2 component entry, so we duplicate the suffix pattern here.
+#define AUV2_ENTRY            Tuner_Entry
+#define AUV2_ENTRY_STR        "Tuner_Entry"
+#define AUV2_FACTORY          Tuner_Factory
+#define AUV2_VIEW_CLASS       Tuner_View
+#define AUV2_VIEW_CLASS_STR   "Tuner_View"
+
+// AU AudioComponent identifiers.  Mirrors Freeze95's AAX/PLUG_NAME macros.
+// `manufacturer` is a 4-char code that the system registry keys on; we
+// reuse `CLPH` (the iPlug MFR id) so AudioComponents matches what the host
+// sees when scanning VST3 bundles.  `subtype` is the per-plugin 4-char
+// code, distinct from any other CLPH plugin.  The CI macOS job rewrites
+// the same keys inside the .component/Contents/Info.plist at build time
+// (the iPlug2 template uses placeholder values).
+#define AUV2_MANUFACTURER     "Clph"
+#define AUV2_SUBTYPE          "TnR1"
+#define AUV2_DESCRIPTION      "Tuner"
 
 // AAX identity codes (split to avoid commas in RC preprocessor).
 #define AAX_TYPE_ID_1         'TnR1'

@@ -191,7 +191,7 @@ enum EParams {
 };
 
 
-class Tuner final : public Plugin {
+class Tuner final : public iplug::Plugin {
 public:
   explicit Tuner(const InstanceInfo& info);
 
