@@ -1,0 +1,16 @@
+# Tuner VST - local-only artifacts (per-subtree .gitignore)
+
+# npm tooling used for SVG rasterization during logo work
+node_modules/
+
+# Faust-generated SVG block diagrams (debug output from the .dsp compiler)
+TunerDSP-svg/
+
+# One-off logo rendering / normalization test artifacts
+_logo_render.png
+_new_logo_render.png
+_normalized_render.png
+_extracted_test.svg
+_test_normalized.svg
+_normalize_svg.js
+_render_svg.js

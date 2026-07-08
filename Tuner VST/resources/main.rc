@@ -1,0 +1,29 @@
+// Resource file for Tuner VST3
+// Embeds the CLOPH brand logo SVG and the TexasLED display TTF directly
+// into the DLL so the .vst3 single-file deploys self-contained -- no
+// sidecar TEXASLED.TTF / CLOPH.svg next to the .vst3 is required.
+//
+// Matches the Freeze95/resources/main.rc pattern exactly:
+//   <NAME>  <TYPE>  <NAME>
+// where the resource NAME and the embedded FILENAME are the SAME macro
+// (both expand to the bare filename).  Tuner.cpp::LayoutUI calls
+// g.LoadSVG(name) / g.LoadFont(id, name) -- iPlug2's LocateResource
+// chain (EnumResourceNamesW -> quote-strip -> strcmp) finds the
+// embedded resource by the bare filename.
+//
+// (The RCDATA-blob detour was a workaround for an unrelated bug: the
+// real cause was a wrong 2-arg LoadSVG call signature -- reverted.)
+//
+#include "winres.h"
+
+#ifndef APSTUDIO_INVOKED
+
+#include "..\config.h"
+
+// ── Brand logo ──────────────────────────────────────────────────────────────
+CLOPH_LOGO_FN  SVG  CLOPH_LOGO_FN
+
+// ── Display font (7-segment style from intodotmatrix.ttf) ──────────────────
+TEXASLED_FN  TTF  TEXASLED_FN
+
+#endif    // not APSTUDIO_INVOKED

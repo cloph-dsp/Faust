@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    Tuner VST - per-platform build properties (Windows).
+
+    This file is imported by iPlug2/Examples/IPlugEffect/projects/IPlugEffect-vst3.vcxproj
+    via the line <Import Project="$(SolutionDir)\config\IPlugEffect-win.props" />.
+
+    SolutionDir is set by build_vst3.ps1 to the directory containing THIS
+    props file (i.e. Tuner VST/).
+
+    Modeled exactly on Freeze95/config/IPlugEffect-win.props so the CI
+    convention matches.
+  -->
+  <PropertyGroup Label="UserMacros">
+    <IPLUG2_ROOT>$(ProjectDir)..\..\..</IPLUG2_ROOT>
+    <BINARY_NAME>Tuner</BINARY_NAME>
+    <EXTRA_ALL_DEFS>IGRAPHICS_NANOVG;IGRAPHICS_GL2</EXTRA_ALL_DEFS>
+    <EXTRA_INC_PATHS></EXTRA_INC_PATHS>
+    <EXTRA_LINK_LIBS></EXTRA_LINK_LIBS>
+    <BUILD_DIR>$(SolutionDir)build-win</BUILD_DIR>
+    <CREATE_BUNDLE_SCRIPT>$(IPLUG2_ROOT)\Scripts\create_bundle.bat</CREATE_BUNDLE_SCRIPT>
+    <COPY_VST2>0</COPY_VST2>
+  </PropertyGroup>
+
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(IPLUG2_ROOT)\common-win.props" />
+  </ImportGroup>
+
+  <PropertyGroup>
+    <TargetName>$(BINARY_NAME)</TargetName>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(EXTRA_INC_PATHS);$(IPLUG_INC_PATHS);$(IGRAPHICS_INC_PATHS);$(GLAD_GL2_PATHS);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>$(EXTRA_ALL_DEFS);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>wininet.lib;comctl32.lib;Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <!--
+        /DYNAMICBASE + /NXCOMPAT are the modern defaults that Bitwig's
+        VST3 module loader checks for.  /SAFESEH is x86-only and not
+        applicable to x64 targets.  Note: freeze95 has a .fptable section
+        generated automatically by x64 MSVC because the codebase uses
+        __try/__except SEH handlers in IGraphics macOS view files; we
+        don't, so no .fptable is generated.  That's a content difference,
+        not a crash cause.
+      -->
+      <RandomizedBaseAddress>true</RandomizedBaseAddress>
+    </Link>
+    <PostBuildEvent>
+      <Command>CALL "$(SolutionDir)scripts\postbuild-win.bat" VST3 $(BINARY_NAME) x64 0 "$(TargetPath)" "C:\VST2" "C:\VST2" "C:\VST3" "C:\VST3" "C:\VST3" "C:\VST3" "$(BUILD_DIR)" "" "" "$(CREATE_BUNDLE_SCRIPT)"
+echo PostBuild done</Command>
+    </PostBuildEvent>
+    <PreBuildEvent>
+      <Command>CALL "$(SolutionDir)scripts\prebuild-win.bat" "$(TargetPath)"</Command>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+
+  <PropertyGroup>
+    <OutDir>$(BUILD_DIR)\</OutDir>
+    <IntDir>$(BUILD_DIR)\obj\</IntDir>
+  </PropertyGroup>
+</Project>

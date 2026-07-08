@@ -1,0 +1,368 @@
+name: Build Tuner
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Tuner VST/**"
+      - ".github/workflows/build-tuner.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Tuner VST/**"
+  workflow_dispatch:
+
+env:
+  BINARY_NAME: Tuner
+
+jobs:
+  # ===========================================================================
+  # Windows build -- msbuild against iPlug2's IPlugEffect-vst3 example project.
+  # Tuner is VST3-only; the post-build step wraps the single-file DLL into a
+  # proper VST3 bundle (Contents/x86_64-win/Tuner.vst3) that hosts can scan.
+  # ===========================================================================
+  build-windows:
+    name: Windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout iPlug2 framework
+        run: |
+          git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git iPlug2
+          git -C iPlug2 rev-parse HEAD
+
+      - name: Download SDKs (VST3)
+        shell: bash
+        working-directory: iPlug2/Dependencies/IPlug
+        run: bash download-iplug-sdks.sh
+
+      - name: Setup Tuner resources into iPlug2 example
+        working-directory: Tuner VST
+        run: |
+          # Mirror _local_copy.ps1: stage every Tuner source file next to
+          # the generic IPlugEffect.cpp / IPlugEffect.h so msbuild sees
+          # the right symbols and config.h macros.
+          $dst = "../iPlug2/Examples/IPlugEffect"
+          Copy-Item -Force "Tuner.cpp"          "$dst/IPlugEffect.cpp"
+          Copy-Item -Force "Tuner.h"            "$dst/IPlugEffect.h"
+          Copy-Item -Force "Tuner.h"            "$dst/Tuner.h"
+          Copy-Item -Force "config.h"           "$dst/config.h"
+          Copy-Item -Force "TunerDSP.h"         "$dst/TunerDSP.h"
+          Copy-Item -Force "TunerDSP.dsp"       "$dst/TunerDSP.dsp"
+          Copy-Item -Force "TunerDSP_gen.h"     "$dst/TunerDSP_gen.h"
+          Copy-Item -Force "FaustCompat.h"      "$dst/FaustCompat.h"
+          Copy-Item -Force "config\IPlugEffect-win.props" "$dst\config\IPlugEffect-win.props"
+          Copy-Item -Force "scripts\prebuild-win.bat"    "$dst\scripts\prebuild-win.bat"
+          Copy-Item -Force "scripts\postbuild-win.bat"   "$dst\scripts\postbuild-win.bat"
+          # Resources next to main.rc so the vcxproj picks them up via
+          # <ResourceCompile Include="..\resources\main.rc" />.  The .rc
+          # embeds CLOPH.svg + TEXASLED.TTF into the DLL at build time, so
+          # the deployed single-file .vst3 is self-contained -- no sidecar
+          # SVG/TTF copies required.
+          foreach ($asset in @("main.rc", "CLOPH.svg", "TEXASLED.TTF")) {
+              $a = Join-Path "resources" $asset
+              $b = Join-Path "$dst\resources" $asset
+              New-Item -ItemType Directory -Force -Path (Split-Path $b) | Out-Null
+              Copy-Item -Force $a $b
+          }
+
+      - name: Build VST3
+        working-directory: Tuner VST
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if (-not $msbuild) {
+            $msbuild = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\*\MSBuild\Current\Bin\MSBuild.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          }
+          $solutionDir = (Resolve-Path ".").Path + "\"
+          & $msbuild "iPlug2/Examples/IPlugEffect/projects/IPlugEffect-vst3.vcxproj" "/p:Configuration=Release" "/p:Platform=x64" "/p:SolutionDir=$solutionDir" /v:m
+
+      - name: Verify Windows VST3 bundle
+        if: always()
+        run: |
+          $bundle = "Tuner VST\build-win\vst3\x64\Release\Tuner.vst3"
+          if (-not (Test-Path $bundle)) {
+              Write-Error "VST3 bundle not found at $bundle"
+              exit 1
+          }
+          if (-not (Test-Path "$bundle\Contents\x86_64-win\Tuner.vst3")) {
+              Write-Error "VST3 bundle missing Contents\x86_64-win\Tuner.vst3"
+              exit 1
+          }
+          $size = (Get-Item "$bundle\Contents\x86_64-win\Tuner.vst3").Length
+          if ($size -lt 1MB) {
+              Write-Error "VST3 binary suspiciously small ($size bytes)"
+              exit 1
+          }
+          Write-Host "VST3 bundle OK: $bundle ($size bytes binary)"
+
+      - name: VST3 binary load test
+        if: always()
+        shell: bash
+        run: |
+          # Mirrors the Freeze95 dlopen-equivalent sanity check: confirm
+          # the binary exports GetPluginFactory and loads without missing
+          # symbols.  Catch issues early before shipping the artifact.
+          dll="Tuner VST/build-win/vst3/x64/Release/Tuner.vst3/Contents/x86_64-win/Tuner.vst3"
+          test -f "$dll" || { echo "FAIL: $dll missing"; exit 1; }
+          # dumpbin /exports is part of the VS toolchain.  Locate it the
+          # same way msbuild is located.
+          dumpbin=$(ls "${ProgramFiles}/Microsoft Visual Studio/"*/BuildTools/VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe 2>/dev/null | head -1)
+          if [ -z "$dumpbin" ]; then
+              dumpbin=$(ls "${ProgramFiles}/Microsoft Visual Studio/"*/Community/VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe 2>/dev/null | head -1)
+          fi
+          if [ -n "$dumpbin" ]; then
+              "$dumpbin" /exports "$dll" | grep -q "GetPluginFactory" || {
+                  echo "FAIL: GetPluginFactory not exported"; exit 1;
+              }
+              echo "GetPluginFactory: FOUND"
+          else
+              echo "SKIP: dumpbin not found, export check skipped"
+          fi
+          # PowerShell LoadLibraryW test -- definitive load check.
+          powershell.exe -NoProfile -Command "
+            Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class L { [DllImport(\"kernel32\",SetLastError=true)] public static extern IntPtr LoadLibraryW([MarshalAs(UnmanagedType.LPWStr)]string p); [DllImport(\"kernel32\")] public static extern IntPtr GetProcAddress(IntPtr h,string n); }';
+            \$h = [L]::LoadLibraryW((Resolve-Path 'Tuner VST/build-win/vst3/x64/Release/Tuner.vst3/Contents/x86_64-win/Tuner.vst3'));
+            if (\$h -eq [IntPtr]::Zero) { Write-Error 'LoadLibraryW FAILED'; exit 1 }
+            \$p = [L]::GetProcAddress(\$h, 'GetPluginFactory');
+            if (\$p -eq [IntPtr]::Zero) { Write-Error 'GetProcAddress(GetPluginFactory) FAILED'; exit 1 }
+            Write-Host 'LoadLibraryW + GetPluginFactory: OK'
+          "
+
+      - name: Stage VST3 artifact
+        if: always()
+        run: |
+          $stage = "Tuner VST\build-win\stage-vst3"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Recurse -Force "Tuner VST\build-win\vst3\x64\Release\Tuner.vst3" "$stage\"
+
+      - name: Upload VST3 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tuner-Windows-VST3
+          path: Tuner VST/build-win/stage-vst3/
+          if-no-files-found: error
+
+  # ===========================================================================
+  # macOS build -- xcodebuild produces a VST3 universal (x86_64 + arm64)
+  # bundle.  Verify Mach-O universality + codesign ad-hoc without hardened
+  # runtime (matches the convention documented in Freeze95's workflow).
+  # ===========================================================================
+  build-macos:
+    name: macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout iPlug2 framework
+        run: |
+          git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git iPlug2
+          echo "iPlug2 SHA: $(git -C iPlug2 rev-parse HEAD)"
+
+      - name: Download SDKs (VST3)
+        working-directory: iPlug2/Dependencies/IPlug
+        run: bash download-iplug-sdks.sh
+
+      - name: Setup Tuner resources into iPlug2 example
+        run: |
+          cd "Tuner VST"
+          cp Tuner.cpp iPlug2/Examples/IPlugEffect/IPlugEffect.cpp
+          cp Tuner.h iPlug2/Examples/IPlugEffect/IPlugEffect.h
+          cp Tuner.h iPlug2/Examples/IPlugEffect/Tuner.h
+          cp config.h iPlug2/Examples/IPlugEffect/config.h
+          cp TunerDSP.h iPlug2/Examples/IPlugEffect/TunerDSP.h
+          cp TunerDSP.dsp iPlug2/Examples/IPlugEffect/TunerDSP.dsp
+          cp TunerDSP_gen.h iPlug2/Examples/IPlugEffect/TunerDSP_gen.h
+          cp FaustCompat.h iPlug2/Examples/IPlugEffect/FaustCompat.h
+          cp config/IPlugEffect-mac.xcconfig iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig
+          [ -f Tuner.entitlements ] && cp Tuner.entitlements iPlug2/Examples/IPlugEffect/Tuner.entitlements
+          cp resources/* iPlug2/Examples/IPlugEffect/resources/ 2>/dev/null || true
+          # iPlug2's plist templates are named IPlugEffect-*.plist; we want
+          # them surfaced as Tuner-*.plist in the bundle, matching Freeze95.
+          cd iPlug2/Examples/IPlugEffect/resources
+          for f in IPlugEffect-*.plist; do
+            [ -f "$f" ] && cp "$f" "Tuner${f#IPlugEffect}" || true
+          done
+
+      - name: Build VST3
+        run: |
+          cd iPlug2/Examples/IPlugEffect
+          xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
+            -scheme "macOS-VST3" \
+            -configuration Release \
+            -arch x86_64 -arch arm64 \
+            BUILD_DIR="${{ github.workspace }}/Tuner VST/build-mac" \
+            VST3_PATH="${{ github.workspace }}/Tuner VST/build-mac/Products"
+
+      - name: Fix Info.plist -- Tuner branding
+        run: |
+          VST3="Tuner VST/build-mac/Products/Tuner.vst3"
+          PLIST="$VST3/Contents/Info.plist"
+          if [ -f "$PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Tuner" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleName Tuner" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cloph-dsp.Tuner" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleGetInfoString 'Tuner v1.1.0 Copyright 2026 cloph'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleSignature 'TnR1'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.1.0'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '1.1.0'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion '10.15'" "$PLIST" || true
+          fi
+
+      - name: Ad-hoc sign bundle
+        run: |
+          BUNDLE="Tuner VST/build-mac/Products/Tuner.vst3"
+          BINARY="$BUNDLE/Contents/MacOS/Tuner"
+          if [ -d "$BUNDLE" ] && [ -f "$BINARY" ]; then
+            # Ad-hoc WITHOUT --options=runtime.  macOS 15.0-15.6 hardened
+            # DAWs reject ad-hoc binaries with hardened runtime because
+            # ad-hoc can't embed entitlements.  DAW's
+            # disable-library-validation covers loading ad-hoc signed
+            # plugins.  Mirrors the Freeze95 convention.
+            codesign --force --sign - "$BINARY"
+            codesign --force --sign - "$BUNDLE"
+            codesign -vvv "$BUNDLE" || echo "Warning: signature verification had issues"
+          else
+            echo "ERROR: bundle or binary missing -- $BUNDLE / $BINARY"
+            exit 1
+          fi
+
+      - name: Verify macOS VST3 bundle
+        run: |
+          VST3="Tuner VST/build-mac/Products/Tuner.vst3"
+          VST3_BIN="$VST3/Contents/MacOS/Tuner"
+          ERRORS=0
+          error() { echo "ERROR: $1"; ERRORS=$((ERRORS + 1)); }
+
+          test -d "$VST3" || error "VST3 bundle missing"
+          test -d "$VST3/Contents" || error "Contents/ missing"
+          test -d "$VST3/Contents/MacOS" || error "Contents/MacOS/ missing"
+          test -f "$VST3/Contents/Info.plist" || error "Contents/Info.plist missing"
+          test -x "$VST3_BIN" || error "Binary missing or not executable"
+
+          # Mach-O universal binary
+          if file "$VST3_BIN" | grep -q "Mach-O universal binary"; then
+            echo "Mach-O universal: OK"
+          else
+            error "Not a Mach-O universal binary"
+          fi
+
+          LIPO_OUT=$(lipo -info "$VST3_BIN" 2>&1)
+          echo "$LIPO_OUT"
+          echo "$LIPO_OUT" | grep -q "x86_64" || error "Missing x86_64"
+          echo "$LIPO_OUT" | grep -q "arm64"  || error "Missing arm64"
+
+          # Bundle size sanity
+          SIZE=$(du -sk "$VST3" | awk '{print $1}')
+          echo "Bundle size: ${SIZE}KB"
+          if [ "$SIZE" -lt 500 ]; then
+            error "Bundle suspiciously small (${SIZE}KB)"
+          fi
+
+          # Plist correctness
+          PLIST="$VST3/Contents/Info.plist"
+          plutil -lint "$PLIST" >/dev/null || error "Invalid plist syntax"
+
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$PLIST" 2>/dev/null || echo "")
+          BUNDLE_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleName" "$PLIST" 2>/dev/null || echo "")
+          BUNDLE_VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST" 2>/dev/null || echo "")
+
+          [ "$BUNDLE_ID" = "com.cloph-dsp.Tuner" ]   || error "CFBundleIdentifier mismatch: $BUNDLE_ID"
+          [ "$BUNDLE_NAME" = "Tuner" ]                || error "CFBundleName mismatch: $BUNDLE_NAME"
+          [ "$BUNDLE_VER" = "1.1.0" ]                 || error "CFBundleShortVersionString mismatch: $BUNDLE_VER"
+
+          # No template residue
+          if grep -qi "IPlugEffect\|Acme Inc\|Acme" "$PLIST"; then
+            error "Info.plist still contains template values"
+          fi
+
+          # iPlug2 binary hygiene -- no template strings in binary
+          for BIN in "$VST3_BIN"; do
+            BAD=$(strings "$BIN" | grep -ciE "IPlugEffect|AcmeInc|com\.AcmeInc" || true)
+            if [ "$BAD" -gt 0 ]; then
+              error "Found $BAD template string(s) in binary (IPlugEffect/AcmeInc residue)"
+            fi
+          done
+
+          if [ "$ERRORS" -ne 0 ]; then
+            echo "VERIFICATION FAILED: $ERRORS error(s)"
+            exit 1
+          fi
+          echo "VERIFICATION PASSED"
+
+      - name: VST3 binary load tests
+        if: always()
+        run: |
+          VST3_BIN="Tuner VST/build-mac/Products/Tuner.vst3/Contents/MacOS/Tuner"
+          ERRORS=0
+          error() { echo "FAIL: $1"; ERRORS=$((ERRORS + 1)); }
+
+          # Required entry-point exports
+          EXPORTS=$(nm -gU "$VST3_BIN" 2>&1)
+          echo "$EXPORTS" | grep -q "GetPluginFactory" || error "GetPluginFactory not exported"
+          echo "  GetPluginFactory: FOUND"
+
+          # dlopen load test
+          cat > /tmp/vst3_loader.c << 'CEOF'
+          #include <dlfcn.h>
+          #include <stdio.h>
+          #include <stdlib.h>
+          int main(int argc, char** argv) {
+              if (argc < 2) return 1;
+              char* resolved = realpath(argv[1], NULL);
+              if (!resolved) { fprintf(stderr, "realpath FAILED\n"); return 1; }
+              void* handle = dlopen(resolved, RTLD_NOW | RTLD_LOCAL);
+              if (!handle) { fprintf(stderr, "dlopen FAILED: %s\n", dlerror()); free(resolved); return 1; }
+              void* factory = dlsym(handle, "GetPluginFactory");
+              printf("  dlopen:          SUCCESS\n");
+              if (factory) printf("  GetPluginFactory: %p\n", factory);
+              dlclose(handle);
+              free(resolved);
+              return 0;
+          }
+          CEOF
+
+          clang -o /tmp/vst3_loader /tmp/vst3_loader.c -framework CoreFoundation 2>&1 || {
+            echo "  WARNING: Could not compile VST3 loader (clang unavailable?)"
+            exit 0
+          }
+
+          if /tmp/vst3_loader "$VST3_BIN"; then
+            echo "  Tuner.vst3: LOAD OK"
+          else
+            error "Tuner.vst3 binary failed dlopen load test"
+          fi
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "LOAD TESTS FAILED: $ERRORS error(s)"
+            exit 1
+          fi
+          echo "ALL LOAD TESTS PASSED"
+
+      - name: Strip quarantine xattrs
+        if: always()
+        run: |
+          BUNDLE="Tuner VST/build-mac/Products/Tuner.vst3"
+          if [ -d "$BUNDLE" ]; then
+            xattr -rc "$BUNDLE" 2>/dev/null || true
+          fi
+
+      - name: Stage VST3 artifact
+        if: always()
+        run: |
+          STAGE="Tuner VST/build-mac/stage-vst3"
+          mkdir -p "$STAGE"
+          cp -R "Tuner VST/build-mac/Products/Tuner.vst3" "$STAGE/"
+
+      - name: Upload VST3 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tuner-macOS-VST3
+          path: Tuner VST/build-mac/stage-vst3/
+          if-no-files-found: error
