@@ -1,38 +1,18 @@
-import type { Plugin, Config, Hooks } from "@opencode-ai/plugin";
-import type { AgentConfig } from "@opencode-ai/sdk";
-import { createAgents } from "./agents/index.js";
+import { define } from "@opencode-ai/plugin/v2/promise";
+import type { Plugin } from "@opencode-ai/plugin/v2/promise";
 
 /**
- * oh-my-vst — Progressive VST plugin development agents for OpenCode.
+ * oh-my-vst — VST/Audio plugin development tools for OpenCode.
  *
- * Registers 6 specialized agents:
- *   vst-orchestrator  — workflow manager (primary)
- *   vst-spec          — product brief & requirements
- *   vst-architect     — framework selection & architecture
- *   vst-dsp           — DSP algorithm implementation
- *   vst-gui           — UI design & implementation
- *   vst-validate      — quality validation
+ * Provides:
+ * - Framework presets (iPlug2, JUCE, Faust, Cmajor, Rust)
+ * - CLI installer for workspace configuration
  *
- * Usage: add "oh-my-vst" to opencode.json's plugin array.
+ * Note: VST subagents (vst-spec, vst-architect, vst-dsp, vst-gui, vst-validate)
+ * are registered via .opencode/opencode.json (config-based), not via plugin hooks.
+ * Plugin hooks (@opencode-ai/plugin v1/v2) do not register agents at runtime.
  */
-const plugin: Plugin = async (_input, _options): Promise<Hooks> => {
-  return {
-    config: async (config: Config): Promise<void> => {
-      const agents = createAgents();
-      const agent: Record<string, AgentConfig | undefined> = config.agent ??= {};
-
-      for (const entry of agents) {
-        agent[entry.name] = {
-          ...(agent[entry.name] ?? {}),
-          ...entry.config,
-        };
-      }
-    },
-  };
-};
+const plugin: Plugin = define({ id: "oh-my-vst" });
 
 export default plugin;
-export type { Plugin } from "@opencode-ai/plugin";
-export type { AgentConfig, Preset } from "./types.js";
-export { createAgents } from "./agents/index.js";
 export { presets } from "./presets.js";

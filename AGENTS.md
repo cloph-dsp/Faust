@@ -59,28 +59,32 @@ This repository contains **multiple independent VST3 plugin projects** using iPl
 
 ## oh-my-vst Plugin
 
-`oh-my-vst/` is an **OpenCode plugin** (`@opencode-ai/plugin`) that registers 6 specialized VST development agents:
+`oh-my-vst/` is an **OpenCode plugin** (`@opencode-ai/plugin`) that provides framework presets, embedded agent prompts, and a CLI installer.
 
-| Agent | Role | Mode | Description |
-|-------|------|------|-------------|
-| `vst-orchestrator` | Workflow manager | primary | Drives progressive Spec→Architect→DSP→GUI→Validate pipeline |
-| `vst-spec` | Requirements | subagent | Defines product brief, feature scope, control layout, I/O spec |
-| `vst-architect` | Architecture | subagent | Selects framework (iPlug2/JUCE/Faust/Cmajor/Rust), designs signal flow |
-| `vst-dsp` | DSP implementation | subagent | Implements algorithms, numerical validation, real-time safety |
-| `vst-gui` | UI/UX design | subagent | Designs and implements plugin GUI with responsive layouts |
-| `vst-validate` | Quality | subagent | Tests, benchmarks, host compatibility, release checklist |
+> ⚠️ Agent registration happens via `opencode.json`'s `agent` field, not via plugin hooks. The plugin provides prompt content (in `src/agents/`) but doesn't register agents at runtime.
 
-**Usage**: Add `"oh-my-vst"` to `opencode.json`'s `plugin` array, or run `bunx oh-my-vst install`.
+**5 VST subagents** are registered in `.opencode/opencode.json`:
 
-**Framework presets** (bundled): iPlug2, JUCE, Faust, Cmajor, Rust — each specifies agent skills, MCPs, and prompt additions.
+| Agent | @mention | Role |
+|-------|----------|------|
+| `vst-spec` | `@vst-spec` | Defines product brief, feature scope, control layout, I/O spec |
+| `vst-architect` | `@vst-architect` | Selects framework (iPlug2/JUCE/Faust/Cmajor/Rust), designs signal flow |
+| `vst-dsp` | `@vst-dsp` | Implements algorithms, numerical validation, real-time safety |
+| `vst-gui` | `@vst-gui` | Designs and implements plugin GUI with responsive layouts |
+| `vst-validate` | `@vst-validate` | Tests, benchmarks, host compatibility, release checklist |
 
-> ⚠️ The old `.agents/skills/vst3-skills/` (21 skills) has been replaced by this plugin. The agent prompts and knowledge are now embedded in TypeScript agent modules within `oh-my-vst/src/agents/`.
+**audio-dev skill**: `.opencode/skills/audio-dev/SKILL.md` tells the orchestrator (Sisyphus) which subagent to delegate to and when, with full prompts for each phase.
+
+**Framework presets** (bundled in plugin): iPlug2, JUCE, Faust, Cmajor, Rust — each specifies agent skills, MCPs, and prompt additions.
+
+> ⚠️ The old `.agents/skills/vst3-skills/` (21 skills) has been deleted. VST domain knowledge now lives in the audio-dev skill (orchestrator-facing) and the oh-my-vst plugin presets.
 
 ## Learned User Preferences
 
 - User prefers **single-file VST3** (loose DLL with `.vst3` extension) over iPlug2's bundle wrapper — confirmed working in Bitwig alongside Freeze95's single-file deploy
 - When asked "is this valid?" or asked to identify an unknown asset, verify against evidence rather than guessing — **browse online** (webfetch/context7/websearch) to confirm specs, identity, or behaviour before acting
-- Prefer **TypeScript-based OpenCode plugins** (via `@opencode-ai/plugin` config hook) over standalone markdown skill files — the plugin pattern registers agents directly in `config.agent` instead of loading skills at runtime
+- **Config-based agent registration** over plugin-based hooks — `@opencode-ai/plugin` v1 config hook / v2 `define()` API both fail to register agents at runtime. Agents must be defined directly in `opencode.json`'s `agent` field
+- **audio-dev keyword** activates a skill at `.opencode/skills/audio-dev/SKILL.md` that tells the orchestrator about available VST subagents and when to delegate to them
 - User uses **CLOPH** as the manufacturer prefix for new plugins (TnR1, F951, etc.)
 - Multi-line PowerShell one-liners via the `bash` tool often fail because `snip` parses `if`, `;`, and backticks; write a `.ps1` file and run `powershell -ExecutionPolicy Bypass -File <path>` instead
 - Custom SVG knob caps (ISVGKnobControl) for every knob — static body + rotating pointer indicator (not full-cap rotation), never ship stock IVectorBase dots as the final look
@@ -105,3 +109,5 @@ This repository contains **multiple independent VST3 plugin projects** using iPl
 - **Custom controls used as header member types must not live in anonymous namespaces**: `class IOMeterControl;` forward decl in the public header is at file scope, but defining the class in an anonymous namespace in the .cpp creates a different type → `C2872 ambiguous symbol`. Either move the class to file scope, store as `IControl*` in the header, or wrap in a named namespace.
 - **Windows x64 denormal protection**: Set `_mm_setcsr(_mm_getcsr() | 0x8040)` in ProcessBlock to enable FTZ (bit 15) + DAZ (bit 6) for SSE/AVX. Required in iPlug2 plugins with heavy IIR/ADAA Faust processing to prevent denormal stalls.
 - **Faust ADAA startup NaN**: ADAA divided-difference `(G(x[n]) - G(x[n-1])) / (x[n] - x[n-1])` produces NaN when both filter state and input are zero at init (delta=0 → 0/0). Fix with a warm-up `compute(8, tiny_ramp_signal)` in OnReset() after init() + param sync. Keep NaN clamp in ProcessBlock as safety net.
+- **iPlug2 z-order**: Controls render in attachment order — last-attached paints on top. If a control's Draw() fills its bounding rect with opaque content (e.g. faceplate SVG redraw on stomp engagement), it covers earlier-attached controls in the overlapping area. Attach overlays (logos, badges) AFTER the control that redraws behind them.
+- **Grungr build setup**: MSBuild at `C:\Program Files\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe`. VS BuildTools `vswhere` returns empty array — cannot rely on `vswhere` for this edition. Build vcxproj without .sln needs explicit `/p:SolutionDir="<Grungr_dir>\\"`. Postbuild script always fails on AAX icon/ARM64EC paths (exit 255) but VST3 binary is compiled before postbuild runs — ignore postbuild errors. Grungr authoritative Faust header is `Grungr/DSP/GrungrFaustDSP.h`; `Grungr/DSPGrungrFaustDSP.h` at root is stale duplicate.

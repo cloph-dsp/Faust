@@ -1,3 +1,7 @@
+// node_modules/@opencode-ai/plugin/dist/v2/promise/plugin.js
+function define(plugin) {
+  return plugin;
+}
 // src/agents/orchestrator.ts
 var orchestratorPrompt = `# VST Development Orchestrator
 
@@ -470,68 +474,49 @@ If any test fails:
 - [ ] Host integration verified`;
 
 // src/agents/index.ts
-function createAgents(options) {
-  const model = options?.model;
+function createAgentDefs() {
   return [
     {
-      name: "vst-orchestrator",
-      config: {
-        model,
-        prompt: orchestratorPrompt,
-        description: "VST plugin development orchestrator managing progressive workflow phases",
-        mode: "primary",
-        temperature: 0.3
-      }
+      id: "vst-orchestrator",
+      prompt: orchestratorPrompt,
+      description: "VST plugin development orchestrator managing progressive workflow phases",
+      mode: "primary",
+      temperature: 0.3
     },
     {
-      name: "vst-spec",
-      config: {
-        model,
-        prompt: specPrompt,
-        description: "Define VST plugin specification and requirements",
-        mode: "subagent",
-        temperature: 0.3
-      }
+      id: "vst-spec",
+      prompt: specPrompt,
+      description: "Define VST plugin specification and requirements",
+      mode: "subagent",
+      temperature: 0.3
     },
     {
-      name: "vst-architect",
-      config: {
-        model,
-        prompt: architectPrompt,
-        description: "Design VST plugin architecture and choose framework",
-        mode: "subagent",
-        temperature: 0.3
-      }
+      id: "vst-architect",
+      prompt: architectPrompt,
+      description: "Design VST plugin architecture and choose framework",
+      mode: "subagent",
+      temperature: 0.3
     },
     {
-      name: "vst-dsp",
-      config: {
-        model,
-        prompt: dspPrompt,
-        description: "Implement VST plugin DSP algorithms with numerical validation",
-        mode: "subagent",
-        temperature: 0.2
-      }
+      id: "vst-dsp",
+      prompt: dspPrompt,
+      description: "Implement VST plugin DSP algorithms with numerical validation",
+      mode: "subagent",
+      temperature: 0.2
     },
     {
-      name: "vst-gui",
-      config: {
-        model,
-        prompt: guiPrompt,
-        description: "Design and implement VST plugin GUI with responsive layouts",
-        mode: "subagent",
-        temperature: 0.3
-      }
+      id: "vst-gui",
+      prompt: guiPrompt,
+      description: "Design and implement VST plugin GUI with responsive layouts",
+      mode: "subagent",
+      temperature: 0.3
     },
     {
-      name: "vst-validate",
-      config: {
-        model,
-        prompt: validatePrompt,
-        description: "Quality validation and testing for VST plugins",
-        mode: "subagent",
-        temperature: 0.2
-      }
+      id: "vst-validate",
+      prompt: validatePrompt,
+      description: "Quality validation and testing for VST plugins",
+      mode: "subagent",
+      temperature: 0.2
     }
   ];
 }
@@ -603,23 +588,28 @@ var presets = {
 };
 
 // src/index.ts
-var plugin = async (_input, _options) => {
-  return {
-    config: async (config) => {
-      const agents = createAgents();
-      const agent = config.agent ??= {};
-      for (const entry of agents) {
-        agent[entry.name] = {
-          ...agent[entry.name] ?? {},
-          ...entry.config
-        };
+var plugin = define({
+  id: "oh-my-vst",
+  setup: async (ctx) => {
+    const defs = createAgentDefs();
+    await ctx.agent.transform(async (draft) => {
+      for (const def of defs) {
+        draft.update(def.id, (agent) => {
+          agent.system = def.prompt;
+          agent.description = def.description;
+          agent.mode = def.mode;
+          agent.hidden = false;
+          if (def.temperature !== undefined) {
+            agent.request.body.temperature = def.temperature;
+          }
+        });
       }
-    }
-  };
-};
+    });
+  }
+});
 var src_default = plugin;
 export {
   presets,
   src_default as default,
-  createAgents
+  createAgentDefs
 };

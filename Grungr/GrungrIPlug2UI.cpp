@@ -50,6 +50,7 @@ static constexpr float kDesignWidth = static_cast<float>(PLUG_WIDTH);
 static constexpr float kDesignHeight = static_cast<float>(PLUG_HEIGHT);
 static constexpr float kMinInteractiveTargetPx = 44.f;
 static constexpr float kClophLogoAspect = 1461.f / 569.f;
+static constexpr float kTitleLogoAspect = 2072.f / 512.f;
 
 // Single-theme design tokens for Grungr.
 static const igraphics::IColor kTokenFallbackBackground(255, 124, 96, 106);
@@ -78,6 +79,12 @@ static const igraphics::IColor kTokenRawHardwareSlotHighlight(158, 184, 145, 132
 static const igraphics::IColor kTokenRawHardwareHandleFill(255, 95, 84, 82);
 static const igraphics::IColor kTokenRawHardwareHandleEdge(250, 224, 198, 202);
 static const igraphics::IColor kTokenRawHardwareHandleGrip(200, 44, 37, 38);
+// LCD readout theme — black panel + red 7-segment style digits + subtle red glow.
+static const igraphics::IColor kTokenLcdBackground(255, 8, 4, 4);
+static const igraphics::IColor kTokenLcdBorder(255, 26, 8, 8);
+static const igraphics::IColor kTokenLcdText(255, 255, 60, 36);
+static const igraphics::IColor kTokenLcdGlow(110, 255, 40, 24);
+static const igraphics::IColor kTokenLcdHighlight(120, 210, 150, 130);
 static constexpr float kTokenUnderlayContrast = -0.08f;
 static constexpr float kRippleDecayRate = 0.045f;
 static constexpr float kKeyboardFocusDecayRate = 0.085f;
@@ -98,11 +105,10 @@ static constexpr const char* kTooltipButt = "Body (Butt): Adds low-end weight an
 static constexpr const char* kTooltipFace = "Bite (Face): Adds upper-mid cut and presence.";
 static constexpr const char* kTooltipLoud = "Level (Loud): Sets the pedal output volume.";
 static constexpr const char* kTooltipStomp = "Stomp: Turns the effect on/off. Click or Space. Press M to reduce motion.";
-static constexpr const char* kTooltipRaw = "RAW voicing: Choose RAW for an open, gritty tone or MOD for a tighter, smoother tone.";
-static constexpr const char* kRawStateOnText = "RAW";
-static constexpr const char* kRawStateEnhancedText = "MOD";
-static constexpr const char* kRawTrackLeftText = "RAW";
-static constexpr const char* kRawTrackRightText = "ENH";
+static constexpr const char* kTooltipRaw = "Voicing: RAW for open/gritty, MOD for tight/smooth, BASS for bass guitar voicing.";
+static constexpr const char* kVoicingRawText = "RAW";
+static constexpr const char* kVoicingModText = "MOD";
+static constexpr const char* kVoicingBassText = "BASS";
 
 bool DetectReducedMotionPreference()
 {
@@ -150,6 +156,11 @@ struct ThemePalette {
   igraphics::IColor rawHardwareHandleGrip;
   igraphics::IColor focusRing;
   igraphics::IColor ripple;
+  igraphics::IColor lcdBackground;
+  igraphics::IColor lcdBorder;
+  igraphics::IColor lcdText;
+  igraphics::IColor lcdGlow;
+  igraphics::IColor lcdHighlight;
 };
 
 // A simple solid rounded-rect panel, used for the rubber knob stripe.
@@ -528,14 +539,14 @@ private:
   const char* mFontID = "Roboto-Regular";
 };
 
-class RawModeToggleControl final : public igraphics::IControl
+class VoicingSelectControl final : public igraphics::IControl
 {
 public:
-  RawModeToggleControl(const igraphics::IRECT& bounds,
-                       int rawVoicingParamIdx,
+  VoicingSelectControl(const igraphics::IRECT& bounds,
+                       int voicingParamIdx,
                        const ThemePalette& palette,
                        const char* textFontID)
-  : IControl(bounds, rawVoicingParamIdx)
+  : IControl(bounds, voicingParamIdx)
   , mFontID((textFontID && textFontID[0] != '\0') ? textFontID : "Roboto-Regular")
   {
     mDblAsSingleClick = true;
@@ -558,7 +569,7 @@ public:
 
   void Draw(igraphics::IGraphics& g) override
   {
-    const bool rawOn = IsRawOn();
+    const int mode = GetMode();
     const float labelW = std::clamp(mRECT.W() * 0.38f, 48.f, 108.f);
     const float sideGap = std::max(6.f, mRECT.W() * 0.045f);
     const igraphics::IRECT labelRect(mRECT.L, mRECT.T, mRECT.L + labelW, mRECT.B);
@@ -606,7 +617,6 @@ public:
                     std::max(1.0f, slotRect.H() * 0.45f),
                     &mBlend);
 
-    // Muted/removed harsh horizontal highlight on the toggle slot.
     g.DrawRoundRect(mSlotHighlight.WithOpacity(0.3f),
                     slotRect,
                     std::max(1.0f, slotRect.H() * 0.45f),
@@ -615,7 +625,15 @@ public:
 
     const float sliderSize = std::clamp(insetPlate.H() * 0.46f, 12.f, 20.f);
     const float travel = (slotRect.W() - sliderSize) * 0.5f;
-    const float sliderX = slotRect.MW() + (rawOn ? -travel : travel);
+    float sliderX;
+    // 3 positions: left=RAW(0), center=MOD(1), right=BASS(2)
+    if (mode == 0)
+      sliderX = slotRect.MW() - travel;
+    else if (mode == 1)
+      sliderX = slotRect.MW();
+    else
+      sliderX = slotRect.MW() + travel;
+
     const igraphics::IRECT sliderRect(sliderX - sliderSize * 0.5f,
                                       insetPlate.MH() - sliderSize * 0.5f,
                                       sliderX + sliderSize * 0.5f,
@@ -639,18 +657,21 @@ public:
     g.FillRect(mHandleGrip, leftGrip, &mBlend);
     g.FillRect(mHandleGrip, rightGrip, &mBlend);
 
-    const char* stateLabel = rawOn ? kRawStateOnText : kRawStateEnhancedText;
+    const char* stateLabel = (mode == 0) ? kVoicingRawText
+                            : (mode == 1) ? kVoicingModText
+                            : kVoicingBassText;
     const float maxStateWidth = labelRect.W() * 0.92f;
 
-    // Size the text to fill the label, using the longer string as reference.
     igraphics::IRECT measureRect = labelRect;
     igraphics::IText testText(16.f, mLabelColor.WithOpacity(0.90f), mFontID, igraphics::EAlign::Center, igraphics::EVAlign::Middle);
-    g.MeasureText(testText, kRawStateOnText, measureRect);
+    g.MeasureText(testText, kVoicingRawText, measureRect);
     float rawW = measureRect.W();
-    g.MeasureText(testText, kRawStateEnhancedText, measureRect);
-    float enhancedW = measureRect.W();
+    g.MeasureText(testText, kVoicingModText, measureRect);
+    float modW = measureRect.W();
+    g.MeasureText(testText, kVoicingBassText, measureRect);
+    float bassW = measureRect.W();
 
-    float maxStrW = std::max(rawW, enhancedW);
+    float maxStrW = std::max({rawW, modW, bassW});
     float stateSize = 16.f;
     if (maxStrW > maxStateWidth && maxStrW > 0.001f) {
       stateSize = std::clamp(16.f * (maxStateWidth / maxStrW), 10.f, 16.f);
@@ -687,7 +708,7 @@ public:
     if (mod.R)
       return;
 
-    ToggleRawMode(false);
+    CycleMode(false);
   }
 
   bool OnKeyDown(float x, float y, const iplug::IKeyPress& key) override
@@ -696,7 +717,7 @@ public:
       return false;
 
     if (key.VK == iplug::kVK_SPACE || key.VK == iplug::kVK_RETURN) {
-      ToggleRawMode(true);
+      CycleMode(true);
       return true;
     }
 
@@ -716,24 +737,30 @@ public:
   }
 
 private:
-  bool IsRawOn() const
+  int GetMode() const
   {
-    // RAW voicing is stored in the Faust "Enhanced" switch.
-    // raw=true  => enhanced=false (0)
-    // raw=false => enhanced=true  (1)
-    return GetValue() < 0.5;
+    // 0 = RAW, 1 = MOD, 2 = BASS
+    // InitEnum maps indices to normalized values: 0→0.0, 1→0.5, 2→1.0
+    const double val = GetValue();
+    if (val < 1.0 / 3.0) return 0;
+    if (val < 2.0 / 3.0) return 1;
+    return 2;
   }
 
-  void ToggleRawMode(bool keyboardInitiated)
+  void CycleMode(bool keyboardInitiated)
   {
-    const bool nextRawOn = !IsRawOn();
-    const double nextRawVoicingValue = nextRawOn ? 0.0 : 1.0;
+    const int currentMode = GetMode();
+    // Cycle: RAW(0) -> MOD(1) -> BASS(2) -> RAW(0)
+    // Use normalized values for 3-value InitEnum: 0→0.0, 1→0.5, 2→1.0
+    const double nextValue = (currentMode == 0) ? 0.5
+                           : (currentMode == 1) ? 1.0
+                           : 0.0;
 
     if (keyboardInitiated)
       mKeyboardFocus = 1.f;
 
-    SetValueFromUserInput(nextRawVoicingValue);
-    SetDirty(false);
+    SetValueFromUserInput(nextValue);
+    SetDirty(true);
   }
 
   const char* mFontID = "Roboto-Regular";
@@ -748,6 +775,114 @@ private:
   igraphics::IColor mHandleGrip;
   igraphics::IColor mFocusRing;
   float mKeyboardFocus = 0.f;
+};
+
+// LCD-style value readout: black rounded rectangle with red 7-segment style
+// digits, a subtle inner bevel, and a soft red glow.
+class LcdValueControl final : public igraphics::IControl
+{
+public:
+  LcdValueControl(const igraphics::IRECT& bounds,
+                  int paramIdx,
+                  const ThemePalette& palette,
+                  const char* fontID,
+                  float fontSize)
+  : IControl(bounds, paramIdx)
+  , mFontID((fontID && fontID[0] != '\0') ? fontID : "Roboto-Regular")
+  , mFontSize(fontSize)
+  {
+    mIgnoreMouse = true;
+    SetPalette(palette);
+  }
+
+  void SetPalette(const ThemePalette& palette)
+  {
+    mBgColor = palette.lcdBackground;
+    mBorderColor = palette.lcdBorder;
+    mTextColor = palette.lcdText;
+    mGlowColor = palette.lcdGlow;
+    mHighlightColor = palette.lcdHighlight;
+    mText = igraphics::IText(mFontSize,
+                              mTextColor,
+                              mFontID,
+                              igraphics::EAlign::Center,
+                              igraphics::EVAlign::Middle);
+  }
+
+  void SetFontSize(float fontSize)
+  {
+    if (std::fabs(fontSize - mFontSize) < 0.01f)
+      return;
+
+    mFontSize = fontSize;
+    mText.mSize = fontSize;
+    SetDirty(false);
+  }
+
+  void Draw(igraphics::IGraphics& g) override
+  {
+    const float cornerRadius = std::clamp(mRECT.H() * 0.22f, 3.f, 7.f);
+
+    // Outer black panel.
+    g.FillRoundRect(mBgColor, mRECT, cornerRadius, &mBlend);
+
+    // Inner beveled edge — gives the LCD a slight inset look.
+    const igraphics::IRECT innerRect(mRECT.L + 1.0f, mRECT.T + 1.0f,
+                                     mRECT.R - 1.0f, mRECT.B - 1.0f);
+    g.DrawRoundRect(mBorderColor, innerRect,
+                    std::max(1.f, cornerRadius - 1.f),
+                    &mBlend, 1.f);
+
+    // Subtle top highlight (1px) for a glassy LCD edge.
+    const float hiY = mRECT.T + 1.5f;
+    const igraphics::IRECT topHi(mRECT.L + cornerRadius, hiY,
+                                 mRECT.R - cornerRadius, hiY + 1.f);
+    g.FillRect(mHighlightColor, topHi, &mBlend);
+
+    // Text rect — padding keeps digits off the LCD bezel.
+    const float padX = std::clamp(mRECT.W() * 0.06f, 3.f, 8.f);
+    const float padY = std::clamp(mRECT.H() * 0.12f, 2.f, 5.f);
+    const igraphics::IRECT textRect(mRECT.L + padX,
+                                    mRECT.T + padY,
+                                    mRECT.R - padX,
+                                    mRECT.B - padY);
+
+    // Fetch the param's display string (formatted by Grungr.cpp SetDisplayFunc).
+    const iplug::IParam* pParam = GetParam();
+    WDL_String displayStr;
+    if (pParam) {
+      pParam->GetDisplay(GetValue(), true, displayStr, true);
+    }
+    const char* txt = displayStr.Get();
+    if (!txt || !txt[0]) {
+      txt = "0";
+    }
+
+    // Soft red glow — two passes with increasing offset and decreasing opacity.
+    igraphics::IText glowOuter = mText;
+    glowOuter.mFGColor = mGlowColor.WithOpacity(0.30f);
+    g.DrawText(glowOuter, txt, textRect.GetTranslated(-1.f, 0.f), &mBlend);
+    g.DrawText(glowOuter, txt, textRect.GetTranslated(1.f, 0.f), &mBlend);
+    g.DrawText(glowOuter, txt, textRect.GetTranslated(0.f, -1.f), &mBlend);
+    g.DrawText(glowOuter, txt, textRect.GetTranslated(0.f, 1.f), &mBlend);
+
+    igraphics::IText glowInner = mText;
+    glowInner.mFGColor = mGlowColor.WithOpacity(0.55f);
+    g.DrawText(glowInner, txt, textRect, &mBlend);
+
+    // Main bright red digits.
+    g.DrawText(mText, txt, textRect, &mBlend);
+  }
+
+private:
+  const char* mFontID;
+  float mFontSize;
+  igraphics::IColor mBgColor;
+  igraphics::IColor mBorderColor;
+  igraphics::IColor mTextColor;
+  igraphics::IColor mGlowColor;
+  igraphics::IColor mHighlightColor;
+  igraphics::IText mText;
 };
 
 class StrokedTitleControl final : public igraphics::IControl
@@ -994,7 +1129,7 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
   const float labelH = knobSize * 0.22f;
   const float valueH = knobSize * 0.34f;
   r.knobLabelFontSize = knobSize * 0.19f;
-  r.knobValueFontSize = knobSize * 0.27f;
+  r.knobValueFontSize = knobSize * 0.28f;
 
   auto knobRectFromNorm = [&](size_t idx) {
     const float cx = backgroundBounds.L + (backgroundBounds.W() * kKnobCentersXNorm[idx]);
@@ -1008,7 +1143,7 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
   r.loudKnob = knobRectFromNorm(3);
 
   const float labelW = knobSize * 1.18f;
-  const float valueW = knobSize * 0.96f;
+  const float valueW = knobSize * 0.90f;
 
   // Labels are placed BELOW the knob, value text above the knob.
   auto makeLabel = [&](const igraphics::IRECT& knob) {
@@ -1046,7 +1181,7 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
   const float titleH = r.titleFontSize * 1.16f;
   const float ledStripY = backgroundBounds.T + backgroundBounds.H() * kLedYNorm;
 
-  const float rawToggleW = knobSize * 1.29f;
+  const float rawToggleW = knobSize * ((variant == LayoutVariant::Compact) ? 1.45f : 1.29f);
   const float rawToggleH = knobSize * 0.51f;
   const float rawCenterX = backgroundBounds.L + (backgroundBounds.W() * 0.17f);
   const float rawCenterY = ledStripY - 4.f;
@@ -1063,12 +1198,18 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
                                   titleMinY,
                                   titleMaxY);
 
-  const float titleHalfWidth = backgroundBounds.W() * 0.50f;
   const float titleCenterX = backgroundBounds.MW();
-  r.title = igraphics::IRECT(titleCenterX - titleHalfWidth,
-                             titleY - (titleH * 0.5f),
-                             titleCenterX + titleHalfWidth,
-                             titleY + (titleH * 0.5f));
+  float titleLogoH = titleH;
+  float titleLogoW = titleLogoH * kTitleLogoAspect;
+  const float maxTitleW = backgroundBounds.W() * 0.92f;
+  if (titleLogoW > maxTitleW) {
+    titleLogoW = maxTitleW;
+    titleLogoH = titleLogoW / kTitleLogoAspect;
+  }
+  r.title = igraphics::IRECT(titleCenterX - (titleLogoW * 0.5f),
+                             titleY - (titleLogoH * 0.5f),
+                             titleCenterX + (titleLogoW * 0.5f),
+                             titleY + (titleLogoH * 0.5f));
 
   const float logoH = std::clamp(rawToggleH * 0.95f, knobSize * 0.43f, knobSize * 0.53f);
   const float logoW = logoH * kClophLogoAspect;
@@ -1202,6 +1343,11 @@ ThemePalette BuildThemePalette()
   palette.rawHardwareHandleGrip = kTokenRawHardwareHandleGrip;
   palette.focusRing = kTokenFocusRing;
   palette.ripple = kTokenRipple;
+  palette.lcdBackground = kTokenLcdBackground;
+  palette.lcdBorder = kTokenLcdBorder;
+  palette.lcdText = kTokenLcdText;
+  palette.lcdGlow = kTokenLcdGlow;
+  palette.lcdHighlight = kTokenLcdHighlight;
 
   return palette;
 }
@@ -1242,6 +1388,20 @@ void SetTextStyleIfPresent(igraphics::IGraphics& g,
   }
 }
 
+void SetLCDValueStyleIfPresent(igraphics::IGraphics& g,
+                               int tag,
+                               const ThemePalette& palette,
+                               float fontSize)
+{
+  if (auto* pControl = g.GetControlWithTag(tag)) {
+    if (auto* pLcd = dynamic_cast<LcdValueControl*>(pControl)) {
+      pLcd->SetPalette(palette);
+      pLcd->SetFontSize(fontSize);
+      pControl->SetDirty(false);
+    }
+  }
+}
+
 void SetVectorStyleIfPresent(igraphics::IGraphics& g, int tag, const igraphics::IVStyle& style)
 {
   if (auto* pControl = g.GetControlWithTag(tag)) {
@@ -1276,13 +1436,13 @@ void SetStompStyleIfPresent(igraphics::IGraphics& g,
   }
 }
 
-void SetRawToggleStyleIfPresent(igraphics::IGraphics& g,
-                                int tag,
-                                const ThemePalette& palette)
+void SetVoicingStyleIfPresent(igraphics::IGraphics& g,
+                              int tag,
+                              const ThemePalette& palette)
 {
   if (auto* pControl = g.GetControlWithTag(tag)) {
-    if (auto* pRawToggle = dynamic_cast<RawModeToggleControl*>(pControl)) {
-      pRawToggle->SetPalette(palette);
+    if (auto* pVoicing = dynamic_cast<VoicingSelectControl*>(pControl)) {
+      pVoicing->SetPalette(palette);
       pControl->SetDirty(false);
     }
   }
@@ -1318,7 +1478,7 @@ void ApplyRuntimeStyle(igraphics::IGraphics& g)
 
   SetPanelColorIfPresent(g, kTagUnderlay, palette.underlayBackground);
   SetStompStyleIfPresent(g, kTagBypassToggle, palette, gRuntimeBehavior.reduceMotion);
-  SetRawToggleStyleIfPresent(g, kTagRawToggle, palette);
+  SetVoicingStyleIfPresent(g, kTagRawToggle, palette);
 
   SetVectorStyleIfPresent(g, kTagGrungeKnob, vectorKnobStyle);
   SetVectorStyleIfPresent(g, kTagButtKnob, vectorKnobStyle);
@@ -1330,10 +1490,10 @@ void ApplyRuntimeStyle(igraphics::IGraphics& g)
   SetTextStyleIfPresent(g, kTagButtLabel, palette.knobLabelText, layout.knobLabelFontSize);
   SetTextStyleIfPresent(g, kTagFaceLabel, palette.knobLabelText, layout.knobLabelFontSize);
   SetTextStyleIfPresent(g, kTagLoudLabel, palette.knobLabelText, layout.knobLabelFontSize);
-  SetTextStyleIfPresent(g, kTagGrungeValue, palette.knobValueText, layout.knobValueFontSize);
-  SetTextStyleIfPresent(g, kTagButtValue, palette.knobValueText, layout.knobValueFontSize);
-  SetTextStyleIfPresent(g, kTagFaceValue, palette.knobValueText, layout.knobValueFontSize);
-  SetTextStyleIfPresent(g, kTagLoudValue, palette.knobValueText, layout.knobValueFontSize);
+  SetLCDValueStyleIfPresent(g, kTagGrungeValue, palette, layout.knobValueFontSize);
+  SetLCDValueStyleIfPresent(g, kTagButtValue, palette, layout.knobValueFontSize);
+  SetLCDValueStyleIfPresent(g, kTagFaceValue, palette, layout.knobValueFontSize);
+  SetLCDValueStyleIfPresent(g, kTagLoudValue, palette, layout.knobValueFontSize);
 }
 
 void AttachKnobWithText(igraphics::IGraphics& g,
@@ -1355,7 +1515,7 @@ void AttachKnobWithText(igraphics::IGraphics& g,
 {
   using namespace igraphics;
 
-  auto* pKnob = new ConfiguredSVGKnobControl(knobRect, knobSVG, paramIdx);
+auto* pKnob = new ConfiguredSVGKnobControl(knobRect, knobSVG, paramIdx);
   pKnob->SetAngles(0.f, 300.f);
   pKnob->SetTooltip((tooltip && tooltip[0] != '\0') ? tooltip : label);
   g.AttachControl(pKnob, knobTag);
@@ -1366,14 +1526,8 @@ void AttachKnobWithText(igraphics::IGraphics& g,
                         EAlign::Center,
                         EVAlign::Middle);
 
-  const IText valueText(valueFontSize,
-                        palette.knobValueText,
-                        valueFontID,
-                        EAlign::Center,
-                        EVAlign::Middle);
-
   g.AttachControl(new ITextControl(labelRect, label, labelText, COLOR_TRANSPARENT), labelTag);
-  g.AttachControl(new ICaptionControl(valueRect, paramIdx, valueText, COLOR_TRANSPARENT, false), valueTag);
+  g.AttachControl(new LcdValueControl(valueRect, paramIdx, palette, valueFontID, valueFontSize), valueTag);
 }
 
 void AttachVectorKnobWithText(igraphics::IGraphics& g,
@@ -1405,14 +1559,8 @@ void AttachVectorKnobWithText(igraphics::IGraphics& g,
                         EAlign::Center,
                         EVAlign::Middle);
 
-  const IText valueText(valueFontSize,
-                        palette.knobValueText,
-                        valueFontID,
-                        EAlign::Center,
-                        EVAlign::Middle);
-
   g.AttachControl(new ITextControl(labelRect, label, labelText, COLOR_TRANSPARENT), labelTag);
-  g.AttachControl(new ICaptionControl(valueRect, paramIdx, valueText, COLOR_TRANSPARENT, false), valueTag);
+  g.AttachControl(new LcdValueControl(valueRect, paramIdx, palette, valueFontID, valueFontSize), valueTag);
 }
 
 }  // namespace
@@ -1450,12 +1598,12 @@ void BuildOrRelayout(igraphics::IGraphics* pGraphics,
 
     if (pGraphics->GetControlWithTag(kTagRawToggle) == nullptr) {
       const char* rawFontID = ResolveFontIDFromTag(*pGraphics, kTagGrungeValue, "Roboto-Regular");
-      auto* pRawToggle = new RawModeToggleControl(relayout.rawToggle,
-                                                   params.rawVoicing,
-                                                   palette,
-                                                   rawFontID);
-      pRawToggle->SetTooltip(kTooltipRaw);
-      pGraphics->AttachControl(pRawToggle, kTagRawToggle);
+      auto* pVoicing = new VoicingSelectControl(relayout.rawToggle,
+                                                 params.rawVoicing,
+                                                 palette,
+                                                 rawFontID);
+      pVoicing->SetTooltip(kTooltipRaw);
+      pGraphics->AttachControl(pVoicing, kTagRawToggle);
     }
 
     if (pGraphics->GetControlWithTag(kTagLogo) == nullptr) {
@@ -1492,6 +1640,7 @@ void BuildOrRelayout(igraphics::IGraphics* pGraphics,
   const igraphics::ISVG backgroundSVG = kForceSafeVectorUIMode ? igraphics::ISVG(nullptr) : pGraphics->LoadSVG(assets.backgroundSVG);
   igraphics::ISVG knobSVG = kForceSafeVectorUIMode ? igraphics::ISVG(nullptr) : pGraphics->LoadSVG(assets.knobSVG);
   const igraphics::ISVG logoSVG = kForceSafeVectorUIMode ? igraphics::ISVG(nullptr) : pGraphics->LoadSVG(assets.logoSVG);
+  const igraphics::ISVG titleSVG = kForceSafeVectorUIMode ? igraphics::ISVG(nullptr) : pGraphics->LoadSVG(assets.titleSVG);
 
   if (!kForceSafeVectorUIMode && (!knobSVG.IsValid() || knobSVG.W() <= 0.f || knobSVG.H() <= 0.f)) {
     knobSVG = pGraphics->LoadSVG("knob-cropped.svg");
@@ -1500,6 +1649,7 @@ void BuildOrRelayout(igraphics::IGraphics* pGraphics,
   const bool hasBackgroundSVG = (!kForceSafeVectorUIMode) && backgroundSVG.IsValid() && backgroundSVG.W() > 0.f && backgroundSVG.H() > 0.f;
   const bool hasKnobSVG = (!kForceSafeVectorUIMode) && kUseSVGKnobs && knobSVG.IsValid() && knobSVG.W() > 0.f && knobSVG.H() > 0.f;
   const bool hasLogoSVG = (!kForceSafeVectorUIMode) && logoSVG.IsValid() && logoSVG.W() > 0.f && logoSVG.H() > 0.f;
+  const bool hasTitleSVG = (!kForceSafeVectorUIMode) && titleSVG.IsValid() && titleSVG.W() > 0.f && titleSVG.H() > 0.f;
 
   const igraphics::IRECT backgroundBounds = hasBackgroundSVG
       ? ContainRectCentered(uiBounds, backgroundSVG.W(), backgroundSVG.H())
@@ -1531,19 +1681,19 @@ LayoutRects layout = MakeLayout(uiBounds, backgroundBounds, ResolveLayoutVariant
                              kTagKnobStripe);
   }
 
-  const igraphics::IText titleText(layout.titleFontSize,
-                                   palette.titleText,
-                                   titleFontID,
-                                   igraphics::EAlign::Center,
-                                   igraphics::EVAlign::Middle);
-
-  pGraphics->AttachControl(new StrokedTitleControl(layout.title,
-                                                    kTitleText,
-                                                    titleText),
-                           kTagTitle);
-
-  if (hasLogoSVG) {
-    pGraphics->AttachControl(new StrokedSVGControl(layout.logo, logoSVG), kTagLogo);
+  if (hasTitleSVG) {
+    pGraphics->AttachControl(new StrokedSVGControl(layout.title, titleSVG), kTagTitle);
+  }
+  else {
+    const igraphics::IText titleText(layout.titleFontSize,
+                                     palette.titleText,
+                                     titleFontID,
+                                     igraphics::EAlign::Center,
+                                     igraphics::EVAlign::Middle);
+    pGraphics->AttachControl(new StrokedTitleControl(layout.title,
+                                                      kTitleText,
+                                                      titleText),
+                             kTagTitle);
   }
 
   if (hasKnobSVG) {
@@ -1694,12 +1844,19 @@ LayoutRects layout = MakeLayout(uiBounds, backgroundBounds, ResolveLayoutVariant
   pBypassToggle->SetTooltip(kTooltipStomp);
   pGraphics->AttachControl(pBypassToggle, kTagBypassToggle);
 
-  auto* pRawToggle = new RawModeToggleControl(layout.rawToggle,
-                                               params.rawVoicing,
-                                               palette,
-                                               labelFontID);
-  pRawToggle->SetTooltip(kTooltipRaw);
-  pGraphics->AttachControl(pRawToggle, kTagRawToggle);
+  auto* pVoicing = new VoicingSelectControl(layout.rawToggle,
+                                              params.rawVoicing,
+                                              palette,
+                                              labelFontID);
+  pVoicing->SetTooltip(kTooltipRaw);
+  pGraphics->AttachControl(pVoicing, kTagRawToggle);
+
+  // Logo is attached LAST so it renders on top of the stomp bypass control,
+  // whose cave-in redraws the faceplate SVG over its bounds when engaged.
+  // StrokedSVGControl sets mIgnoreMouse=true, so it never blocks the stomp.
+  if (hasLogoSVG) {
+    pGraphics->AttachControl(new StrokedSVGControl(layout.logo, logoSVG), kTagLogo);
+  }
 
   ApplyRuntimeStyle(*pGraphics);
 }

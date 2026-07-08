@@ -1,0 +1,1 @@
+Invoke-WebRequest -Uri "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto%5Bwdth,wght%5D.ttf" -OutFile "D:\Github\VST3 Developments\BronzeNoise\resources\Roboto-Regular.ttf" -UserAgent "Mozilla/5.0"

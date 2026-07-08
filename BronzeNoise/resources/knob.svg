@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <!-- Knob body: dark metallic with directional light -->
+    <radialGradient id="body" cx="44%" cy="36%" r="60%">
+      <stop offset="0%" stop-color="#3A3E46"/>
+      <stop offset="25%" stop-color="#24282E"/>
+      <stop offset="55%" stop-color="#181B22"/>
+      <stop offset="85%" stop-color="#12141A"/>
+      <stop offset="100%" stop-color="#0A0C10"/>
+    </radialGradient>
+    <!-- Recessed center: inset cavity feel -->
+    <radialGradient id="recess" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0A0C10"/>
+      <stop offset="60%" stop-color="#12141A"/>
+      <stop offset="100%" stop-color="#1A1D24"/>
+    </radialGradient>
+    <!-- Dark bronze ring: patinated, not shiny -->
+    <linearGradient id="bronzeRing" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8B6B4A"/>
+      <stop offset="30%" stop-color="#6B4F35"/>
+      <stop offset="70%" stop-color="#4A3520"/>
+      <stop offset="100%" stop-color="#3A2818"/>
+    </linearGradient>
+    <!-- Top bevel -->
+    <linearGradient id="bevel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#EFEAE2" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#EFEAE2" stop-opacity="0"/>
+    </linearGradient>
+    <!-- Paint fill for engraved notch -->
+    <linearGradient id="notchFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#EFEAE2"/>
+      <stop offset="100%" stop-color="#D4CFC5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Drop shadow -->
+  <circle cx="50" cy="53" r="44" fill="#000" opacity="0.35"/>
+
+  <!-- Outer ring body -->
+  <circle cx="50" cy="50" r="44" fill="url(#body)"/>
+  <circle cx="50" cy="50" r="44" fill="none" stroke="#0A0C10" stroke-width="1.5"/>
+
+  <!-- Top bevel -->
+  <circle cx="50" cy="50" r="43.5" fill="none" stroke="url(#bevel)" stroke-width="0.75"/>
+
+  <!-- Subtle outer edge glint -->
+  <circle cx="50" cy="50" r="42" fill="none" stroke="#4A4E56" stroke-width="0.5" opacity="0.2"/>
+
+  <!-- Dark bronze accent ring at outer boundary -->
+  <circle cx="50" cy="50" r="37.5" fill="none" stroke="url(#bronzeRing)" stroke-width="0.75" opacity="0.6"/>
+
+  <!-- Inner ring separator -->
+  <circle cx="50" cy="50" r="36" fill="none" stroke="#2A2E36" stroke-width="0.75"/>
+
+  <!-- Recessed center cavity -->
+  <circle cx="50" cy="50" r="22" fill="url(#recess)"/>
+  <circle cx="50" cy="50" r="22" fill="none" stroke="#2A2E36" stroke-width="0.75"/>
+
+  <!-- Deep inner shadow in cavity -->
+  <circle cx="50" cy="50" r="21.5" fill="none" stroke="#000" stroke-width="1.5" opacity="0.3"/>
+
+  <!-- Dark bronze insert ring at cavity boundary -->
+  <circle cx="50" cy="50" r="17" fill="none" stroke="url(#bronzeRing)" stroke-width="2" opacity="0.7"/>
+  <circle cx="50" cy="50" r="18" fill="none" stroke="#000" stroke-width="0.5" opacity="0.3"/>
+  <circle cx="50" cy="50" r="16" fill="none" stroke="#000" stroke-width="0.5" opacity="0.2"/>
+
+  <!-- Center point -->
+  <circle cx="50" cy="50" r="2" fill="#6B4F35" opacity="0.5"/>
+
+  <!-- Engraved notch indicator: painted groove in the metal -->
+  <!-- Shadow groove (the cut itself) -->
+  <polygon points="49,12 51,12 51.8,33 48.2,33" fill="#000" opacity="0.35"/>
+  <!-- Paint fill (cream/off-white, like real engraved hardware indicators) -->
+  <polygon points="49.3,13 50.7,13 51.4,32.5 48.6,32.5" fill="url(#notchFill)"/>
+
+  <!-- Surface highlight on the edge where the notch meets the outer ring -->
+  <line x1="49" y1="13" x2="51" y2="13" stroke="#EFEAE2" stroke-width="0.5" opacity="0.4"/>
+</svg>

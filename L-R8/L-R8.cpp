@@ -1,6 +1,5 @@
 #include "L-R8.h"
 #include <algorithm>
-#include <chrono>
 #include <cstdint>
 #include <cmath>
 #include <cstring>
@@ -30,16 +29,16 @@ constexpr float kPi = 3.14159265358979323846f;
 constexpr const char* kFontID_UI = "UIFont";
 constexpr const char* kFontID_Val = "ValFont";
 
-// Colors
+// Colors — dark industrial palette
 const IColor colBG   {255,14,16,22};
 const IColor colPN   {255,48,50,62};
 const IColor colTX   {255,225,228,240};
 const IColor colTD   {255,140,145,160};
 const IColor colTM   {255,85,90,105};
-const IColor colBL   {255,60,140,255};   // blue — side L
-const IColor colRD   {255,235,60,70};    // red — side R
-const IColor colGY   {255,150,155,165};  // gray — mid
-const IColor colBLGlow{60,60,160,255};
+const IColor colL    {255,30,210,215};   // teal — side L
+const IColor colR    {255,245,155,55};   // amber — side R
+const IColor colM    {255,175,182,195};  // cool gray — mid
+const IColor colGlow {180,80,220,240};  // teal glow
 const IColor colGR   {255,42,44,56};
 const IColor colSB   {255,20,22,32};
 const IColor colKB   {255,36,38,50};
@@ -80,19 +79,23 @@ private:
 };
 
 // ════════════════════════════════════════════════════════════════════
-// STEREO WATERFALL — scroll-zoomable, gray mid, blue L, red R
+// STEREO WATERFALL — scroll-zoomable, gray mid, teal L, amber R
 // ════════════════════════════════════════════════════════════════════
 class ScopeControl final : public IControl {
 public:
-  static constexpr int kHistorySize = 512;
-  ScopeControl(const IRECT& b,LR8& p) : IControl(b,kNoParameter), mPlugin(p) { Clear(); }
+  static constexpr int kHistorySize = 1024;
+  ScopeControl(const IRECT& b) : IControl(b,kNoParameter), mBufL(kHistorySize,0.f), mBufR(kHistorySize,0.f), mBufMid(kHistorySize,0.f), mCorrelation(1.f), mCorrelationRaw(1.f) { Clear(); }
   void Push(float l,float r,float mid) {
     mBufL[mPos]=l; mBufR[mPos]=r; mBufMid[mPos]=mid;
     mPos=(mPos+1)%kHistorySize;
-    mAvgL=mAvgL*0.999f+std::abs(l)*0.001f;
-    mAvgR=mAvgR*0.999f+std::abs(r)*0.001f;
+    SetDirty(false);
   }
-  void Clear() { std::fill(mBufL.begin(),mBufL.end(),0.f); std::fill(mBufR.begin(),mBufR.end(),0.f); std::fill(mBufMid.begin(),mBufMid.end(),0.f); mPos=0; mAvgL=mAvgR=0.f; }
+  void SetCorrelation(float c) {
+    // Smooth: EMA with 0.95/0.05 blend
+    mCorrelationRaw = c;
+    mCorrelation = mCorrelation * 0.95f + c * 0.05f;
+  }
+  void Clear() { std::fill(mBufL.begin(),mBufL.end(),0.f); std::fill(mBufR.begin(),mBufR.end(),0.f); std::fill(mBufMid.begin(),mBufMid.end(),0.f); mPos=0; mCorrelation=1.f; mCorrelationRaw=1.f; }
   void HapticPulse() {
     mPulse=1.f;
     SetAnimation([](IControl* c){auto* s=c->As<ScopeControl>();s->mPulse=1.f-EC(float(s->GetAnimationProgress()));s->SetDirty(false);},200);
@@ -107,67 +110,182 @@ public:
 
   void Draw(IGraphics& g) override {
     const IRECT r=mRECT.GetPadded(-2.f);
-    float cx=r.MW(),w=r.W(),h=r.H();
+    float w=r.W(),h=r.H();
     float baseScale=w*0.42f*mZoom;
     float lineH=h/float(kHistorySize);
-    float halfL=std::max(1.f,lineH*0.45f);
 
+    // Background
     g.FillRoundRect(colSB,r,6.f);
     g.DrawRoundRect(colPN,r,6.f,nullptr,1.f);
-    if(mPulse>0.01f) g.FillRoundRect(WA(colBLGlow,int(25.f*mPulse)),r,6.f);
+    if(mPulse>0.01f) g.FillRoundRect(WA(colGlow,int(25.f*mPulse)),r,6.f);
 
-    // Grid: center axis + quarter lines
-    g.DrawLine(WA(colGR,120),cx,r.T+4.f,cx,r.B-4.f,nullptr,1.f);
-    float qL=r.L+w*0.25f,qR=r.L+w*0.75f;
-    g.DrawLine(WA(colGR,30),qL,r.T+4.f,qL,r.B-4.f,nullptr,0.5f);
-    g.DrawLine(WA(colGR,30),qR,r.T+4.f,qR,r.B-4.f,nullptr,0.5f);
-
-    // Zoom indicator
-    char zBuf[16]; std::snprintf(zBuf,sizeof(zBuf),"x%.1f",mZoom);
-    g.DrawText(MakeTxt(8.f,colTM,kFontID_UI,EAlign::Far,EVAlign::Bottom),zBuf,IRECT(r.R-6.f,r.B-12.f,r.R,r.B));
-
-    // Waterfall: Mid/Side, gray+blue+red
+    // ── Waterfall: Bottom→Top (newest at bottom) ──
     for(int i=0;i<kHistorySize;++i) {
-      int idx=(mPos+i)%kHistorySize;
+      int idx=(mPos-1-i+kHistorySize)%kHistorySize;
       float L=mBufL[idx],R=mBufR[idx];
       float mid=(L+R)*0.5f;
       float side=(L-R)*0.5f;
-      float y=r.T+(float(i)/float(kHistorySize))*h;
+      float peakVal=std::max(std::abs(L),std::abs(R));
+      float y=r.B-(float(i+1)/float(kHistorySize))*h;
+      float lineW=std::max(1.f,lineH);
 
       float midW=std::abs(mid)*baseScale;
       float sideW=std::abs(side)*baseScale;
 
-      // Mid (gray): anchored center
+      // Higher alpha for better visibility (restored to near-original levels)
+      float midAlpha=CV(std::abs(mid)*300.f,60.f,200.f);
+      float sideAlpha=CV(std::abs(side)*360.f,80.f,240.f);
+
+      // Mid: cool gray
       if(midW>0.5f) {
-        g.FillRect(WA(colGY,140),IRECT(cx-midW,y-halfL,cx,y+halfL));
-        g.FillRect(WA(colGY,100),IRECT(cx,y-halfL,cx+midW,y+halfL));
+        g.FillRect(WA(colM,int(midAlpha*0.7f)),IRECT(r.MW()-midW,y-lineW,r.MW(),y));
+        g.FillRect(WA(colM,int(midAlpha*0.5f)),IRECT(r.MW(),y-lineW,r.MW()+midW,y));
       }
 
-      // Side: blue left, red right
+      // Side: teal L (negative), amber R (positive)
       if(side>0.f) {
-        if(sideW>0.5f) g.FillRect(WA(colBL,180),IRECT(cx-sideW,y-halfL,cx,y+halfL));
+        if(sideW>0.5f) g.FillRect(WA(colL,int(sideAlpha)),IRECT(r.MW()-sideW,y-lineW,r.MW(),y));
       } else {
-        if(sideW>0.5f) g.FillRect(WA(colRD,180),IRECT(cx,y-halfL,cx+sideW,y+halfL));
+        if(sideW>0.5f) g.FillRect(WA(colR,int(sideAlpha)),IRECT(r.MW(),y-lineW,r.MW()+sideW,y));
+      }
+
+      // ── Peak glow: signals above -6dBFS get a highlight pass ──
+      const float glowThreshold=0.5f;
+      if(peakVal>glowThreshold) {
+        float glowIntensity=CV((peakVal-glowThreshold)*4.f,0.f,1.f);
+        int glowAlpha=int(glowIntensity*80.f);
+        if(glowAlpha>5) {
+          // Slightly wider +1px on each side for the glow spread
+          if(midW>0.5f)
+            g.FillRect(WA(colM,glowAlpha),IRECT(r.MW()-midW-1.f,y-lineW-1.f,r.MW()+midW+1.f,y+1.f));
+          if(sideW>0.5f) {
+            if(side>0.f)
+              g.FillRect(WA(colL,glowAlpha),IRECT(r.MW()-sideW-1.f,y-lineW-1.f,r.MW(),y+1.f));
+            else
+              g.FillRect(WA(colR,glowAlpha),IRECT(r.MW(),y-lineW-1.f,r.MW()+sideW,y+1.f));
+          }
+        }
       }
     }
 
-    // Labels
-    g.DrawText(MakeTxt(8.f,colGY,kFontID_UI,EAlign::Near,EVAlign::Top),"MID",IRECT(r.L+4.f,r.T+2.f,r.L+32.f,r.T+16.f));
-    g.DrawText(MakeTxt(8.f,colTM,kFontID_UI,EAlign::Far,EVAlign::Top),"SIDE",IRECT(r.R-32.f,r.T+2.f,r.R-4.f,r.T+16.f));
+    // ── Vertical vignette: fade top and bottom edges ──
+    auto vg=IPattern::CreateLinearGradient(0,r.T,0,r.B,{{colSB,0.f},{IColor(0,colSB.R,colSB.G,colSB.B),0.12f},{IColor(0,colSB.R,colSB.G,colSB.B),0.88f},{colSB,1.f}});
+    g.PathRect(r); g.PathFill(vg);
+
+    // ── dB grid: vertical lines at -6, -12, -18, -24 dB from center ──
+    // Amplitude ratio for each dB level
+    const float dbLevels[]={-6.f,-12.f,-18.f,-24.f};
+    const float halfW=w*0.5f;
+    for(int di=0;di<4;++di) {
+      float ratio=std::pow(10.f,dbLevels[di]/20.f);
+      float offset=ratio*baseScale;
+      if(offset<halfW) {
+        float xL=r.MW()-offset;
+        float xR=r.MW()+offset;
+        // Faint vertical line
+        g.DrawLine(WA(colGR,25),xL,r.T+4.f,xL,r.B-4.f,nullptr,0.5f);
+        g.DrawLine(WA(colGR,25),xR,r.T+4.f,xR,r.B-4.f,nullptr,0.5f);
+        // Small dB label at top
+        char dbBuf[8];
+        std::snprintf(dbBuf,sizeof(dbBuf),"%.0f",dbLevels[di]);
+        g.DrawText(MakeTxt(6.f,colTM,kFontID_UI,EAlign::Center,EVAlign::Top),dbBuf,IRECT(xL-10.f,r.T+1.f,xL+10.f,r.T+10.f));
+        g.DrawText(MakeTxt(6.f,colTM,kFontID_UI,EAlign::Center,EVAlign::Top),dbBuf,IRECT(xR-10.f,r.T+1.f,xR+10.f,r.T+10.f));
+      }
+    }
+
+    // Center axis (0 dB / mono reference)
+    g.DrawLine(WA(colGR,120),r.MW(),r.T+4.f,r.MW(),r.B-4.f,nullptr,1.f);
+
+    // ── Labels ──
+    // MID / SIDE labels at top corners (keep as orientation hints)
+    g.DrawText(MakeTxt(8.f,colM,kFontID_UI,EAlign::Near,EVAlign::Top),"MID",IRECT(r.L+4.f,r.T+2.f,r.L+32.f,r.T+16.f));
+    g.DrawText(MakeTxt(8.f,BC(colL,colR,0.5f),kFontID_UI,EAlign::Far,EVAlign::Top),"SIDE",IRECT(r.R-32.f,r.T+2.f,r.R-4.f,r.T+16.f));
+
+    // Zoom indicator (bottom-left corner)
+    char zBuf[16]; std::snprintf(zBuf,sizeof(zBuf),"x%.1f",mZoom);
+    g.DrawText(MakeTxt(8.f,colTM,kFontID_UI,EAlign::Far,EVAlign::Bottom),zBuf,IRECT(r.R-6.f,r.B-12.f,r.R,r.B));
+
+    // ── Correlation meter: horizontal bar at bottom ──
+    const float cmH=14.f;
+    const float cmY=r.B-cmH-4.f;
+    const float cmX=r.L+60.f;
+    const float cmW=r.W()-120.f;
+
+    // Background track
+    g.FillRect(WA(colGR,60),IRECT(cmX,cmY,cmX+cmW,cmY+cmH));
+    g.DrawRect(WA(colPN,40),IRECT(cmX,cmY,cmX+cmW,cmY+cmH),nullptr,0.5f);
+
+    // Fill from center
+    float cW=cmW*0.5f;
+    float cFill=std::abs(mCorrelation)*cW;
+    float cMid=cmX+cW;
+
+    if(mCorrelation>=0.f) {
+      if(cFill>0.5f) {
+        auto cg=IPattern::CreateLinearGradient(0,cmY,0,cmY+cmH,{{IColor(140,100,240,100),0.f},{IColor(200,100,240,60),1.f}});
+        g.PathRect(IRECT(cMid,cmY,cMid+cFill,cmY+cmH));
+        g.PathFill(cg);
+      }
+    } else {
+      if(cFill>0.5f) {
+        auto cg=IPattern::CreateLinearGradient(0,cmY,0,cmY+cmH,{{IColor(200,240,140,60),0.f},{IColor(140,240,200,100),1.f}});
+        g.PathRect(IRECT(cMid-cFill,cmY,cMid,cmY+cmH));
+        g.PathFill(cg);
+      }
+    }
+
+    g.DrawLine(WA(colTM,100),cMid,cmY,cMid,cmY+cmH,nullptr,1.f);
+
+    g.DrawText(MakeTxt(7.f,colTM,kFontID_UI,EAlign::Near,EVAlign::Middle),"-1",IRECT(cmX-18.f,cmY,cmX,cmY+cmH));
+    g.DrawText(MakeTxt(7.f,colTM,kFontID_UI,EAlign::Far,EVAlign::Middle),"+1",IRECT(cmX+cmW,cmY,cmX+cmW+18.f,cmY+cmH));
+    g.DrawText(MakeTxt(7.f,colTX,kFontID_UI,EAlign::Center,EVAlign::Bottom),"CORR",IRECT(cmX,cmY-2.f,cmX+cmW,cmY));
+
+    // ═══════ MINIMAL DEBUG (corner, won't block waterfall) ═══════
+    char ov[64]; std::snprintf(ov,sizeof(ov),"mPos=%d",mPos);
+    g.DrawText(MakeTxt(9.f,colTM,kFontID_UI,EAlign::Near,EVAlign::Bottom),ov,IRECT(r.L+4.f,r.B-36.f,r.L+80.f,r.B-22.f));
+  }
+  std::vector<float> mBufL,mBufR,mBufMid;
+  int mPos=0; float mPulse=0.f;
+  float mZoom=1.f;
+  float mCorrelation; // smoothed correlation display value
+  float mCorrelationRaw; // raw per-block correlation for smoothing
+};
+
+// ════════════════════════════════════════════════════════════════════
+// TOOLTIP OVERLAY — draws label+value pill near hovered controls
+// ════════════════════════════════════════════════════════════════════
+class TooltipOverlayControl final : public IControl {
+public:
+  static TooltipOverlayControl* sInstance;
+  static void ShowTooltip(const IRECT& src,const char* lbl,const char* val) { if(sInstance) sInstance->SetTooltip(src,lbl,val); }
+  static void HideTooltip() { if(sInstance) { sInstance->mVisible=false; sInstance->SetDirty(false); } }
+  TooltipOverlayControl(const IRECT& b) : IControl(b,kNoParameter) { mIgnoreMouse=true; sInstance=this; }
+  void Draw(IGraphics& g) override {
+    if(!mVisible) return;
+    float tw=160.f,th=22.f;
+    float tx=std::max(4.f,std::min(mSrcRect.MW()-tw*0.5f,mRECT.R-tw-4.f));
+    float ty=mSrcRect.T-th-6.f;
+    if(ty<mRECT.T+4.f) ty=mSrcRect.B+6.f;
+    g.FillRoundRect(colGR,IRECT(tx,ty,tx+tw,ty+th),th*0.5f);
+    g.DrawRoundRect(WA(colPN,120),IRECT(tx,ty,tx+tw,ty+th),th*0.5f,nullptr,0.5f);
+    WDL_String full; full.SetFormatted(64,"%s: %s",mLbl.Get(),mVal.Get());
+    g.DrawText(MakeTxt(11.f,colTX),full.Get(),IRECT(tx+4.f,ty,tx+tw-4.f,ty+th));
   }
 private:
-  LR8& mPlugin;
-  std::array<float,kHistorySize> mBufL,mBufR,mBufMid;
-  int mPos=0; float mPulse=0.f,mAvgL=0.f,mAvgR=0.f;
-  float mZoom=1.f;
+  void SetTooltip(const IRECT& src,const char* lbl,const char* val) { mSrcRect=src; mLbl.Set(lbl); mVal.Set(val); mVisible=true; SetDirty(false); }
+  IRECT mSrcRect; WDL_String mLbl,mVal; bool mVisible=false;
 };
+TooltipOverlayControl* TooltipOverlayControl::sInstance=nullptr;
 
 // ════════════════════════════════════════════════════════════════════
 // KNOB — personalized: arc track, traveling dot, clean center
 // ════════════════════════════════════════════════════════════════════
+enum class KnobMode { Generic, RateKnob };
+
 class KnobControl final : public IKnobControlBase {
 public:
-  KnobControl(const IRECT& b,int p,const char* lbl) : IKnobControlBase(b,p), mLabel(lbl?lbl:"") { mDblAsSingleClick=true; }
+  KnobControl(const IRECT& b,int p,const char* lbl,KnobMode mode=KnobMode::Generic) : IKnobControlBase(b,p), mLabel(lbl?lbl:""), mKnobMode(mode) { mDblAsSingleClick=true; }
+  void SetSvgCap(const ISVG& svg) { mSvgCap = svg; }
   void SetValueFromDelegate(double v,int i=0) override {
     double prv=GetValue(); IControl::SetValueFromDelegate(v,i);
     if(float d=float(std::abs(GetValue()-prv));d>0.002f) TriggerPulse(d);
@@ -177,16 +295,20 @@ public:
     if(GetUI())GetUI()->SetMouseCursor(ECursor::HAND);
     mHT=1.f; mHF=mHA;
     SetAnimation([](IControl* c){auto*s=c->As<KnobControl>();s->mHA=s->mHF+(1.f-s->mHF)*EQ(float(s->GetAnimationProgress()));s->SetDirty(false);},120);
+    if(TooltipOverlayControl::sInstance&&GetParam()) {
+      WDL_String valStr; GetParam()->GetDisplay(valStr);
+      TooltipOverlayControl::ShowTooltip(mRECT,mLabel.Get(),valStr.Get());
+    }
   }
   void OnMouseOut() override {
     IKnobControlBase::OnMouseOut(); if(GetUI())GetUI()->SetMouseCursor();
     mHF=mHA; mHT=0.f;
     SetAnimation([](IControl* c){auto*s=c->As<KnobControl>();s->mHA=s->mHF*(1.f-EQ(float(s->GetAnimationProgress())));s->SetDirty(false);},80);
+    TooltipOverlayControl::HideTooltip();
   }
-  void OnEndAnimation() override { mHA=mHT; mPP=0.f; IKnobControlBase::OnEndAnimation(); }
+  void OnEndAnimation() override { mHA=mHT; mPP=0.f; mPK=0.f; IKnobControlBase::OnEndAnimation(); }
 
   void Draw(IGraphics& g) override {
-    UpP();
     float val=float(GetValue()),cx=mRECT.MW(),cy=mRECT.MH();
     float R=std::min(mRECT.W(),mRECT.H())*0.5f-5.f;
     bool hv=GetMouseIsOver(),cp=GetUI()&&GetUI()->ControlIsCaptured(this);
@@ -199,8 +321,8 @@ public:
 
     // Glows
     float ga=std::max(mHA*0.4f,(cp||mMouseDown)?0.7f:0.f);
-    if(ga>0.01f) g.FillCircle(WA(colBLGlow,int(50.f*ga)),cx,cy+po,R+3.f);
-    if(mPP>0.01f) g.FillCircle(BC(colBL,colRD,0.5f).WithOpacity(int(35.f*mPP)),cx,cy+po,R+5.f);
+    if(ga>0.01f) g.FillCircle(WA(colGlow,int(50.f*ga)),cx,cy+po,R+3.f);
+    if(mPP>0.01f) g.FillCircle(BC(colL,colR,0.5f).WithOpacity(int(35.f*mPP)),cx,cy+po,R+5.f);
 
     // Outer track ring (thin, dim)
     float tR=R-2.f;
@@ -208,29 +330,35 @@ public:
 
     // Fill arc
     if(val>0.002f) {
-      IColor fc=ac?colBL:BC(colBL,colTD,0.3f);
+      IColor fc=ac?colL:BC(colL,colTD,0.3f);
       g.DrawArc(WA(fc,ac?200:120),cx,cy+po,tR,225.f,225.f+val*270.f,nullptr,2.5f);
     }
 
-    // Face (slightly recessed)
+    // Face — SVG cap if loaded, else vector-drawn
     float fR=tR-4.f;
-    g.FillCircle(BC(colBG,colPN,0.2f),cx,cy+po,fR);
-    g.DrawCircle(WA(colPN,60),cx,cy+po,fR,nullptr,0.8f);
+    if(mSvgCap.IsValid()) {
+      IRECT capRect(cx-fR,cy+po-fR,cx+fR,cy+po+fR);
+      g.DrawRotatedSVG(mSvgCap,capRect.MW(),capRect.MH(),capRect.W(),capRect.H(),ang);
+      g.DrawCircle(WA(colPN,60),cx,cy+po,fR,nullptr,0.8f);
+    } else {
+      g.FillCircle(BC(colBG,colPN,0.2f),cx,cy+po,fR);
+      g.DrawCircle(WA(colPN,60),cx,cy+po,fR,nullptr,0.8f);
+    }
 
     // Traveling dot — travels along the arc endpoint
     float dotR=fR*0.16f;
     float dx=cx+std::cos(aRad)*(tR-1.f);
     float dy=cy+po+std::sin(aRad)*(tR-1.f);
-    g.FillCircle(WA(colBL,ac?230:150),dx,dy,dotR);
-    if(ac) g.FillCircle(WA(colBL,100),dx,dy,dotR*2.f); // glow halo
+    g.FillCircle(WA(colL,ac?230:150),dx,dy,dotR);
+    if(ac) g.FillCircle(WA(colL,100),dx,dy,dotR*2.f); // glow halo
 
     // Center indicator — subtle ring
-    g.DrawCircle(WA(colBL,int(60.f*(ac?1.f:0.4f))),cx,cy+po,fR*0.3f,nullptr,1.2f);
+    g.DrawCircle(WA(colL,int(60.f*(ac?1.f:0.4f))),cx,cy+po,fR*0.3f,nullptr,1.2f);
 
     // Label
     g.DrawText(MakeTxt(10.f,ac?colTX:colTD),mLabel.Get(),IRECT(mRECT.L,mRECT.B-32.f,mRECT.R,mRECT.B-16.f));
     char buf[32];
-    if(mLabel.Get()[0]=='R'&&mLabel.Get()[1]=='a') {
+    if(mKnobMode==KnobMode::RateKnob) {
       auto* d=GetDelegate(); bool synced=false;
       if(d){const IParam* p=d->GetParam(kParamSync);if(p)synced=p->Value()>0.5;}
       if(synced) {
@@ -246,14 +374,14 @@ public:
       }
       g.DrawText(MakeTxt(12.f,ac?colTX:colTD,kFontID_Val),buf,IRECT(mRECT.L,mRECT.B-16.f,mRECT.R,mRECT.B));
     } else {
-      g.DrawText(MakeTxt(11.f,ac?colTX:colTD,kFontID_Val),mLabel.Get(),IRECT(mRECT.L,mRECT.B-16.f,mRECT.R,mRECT.B));
+      WDL_String valStr;
+      if(GetParam()) GetParam()->GetDisplay(valStr); else valStr.Set("---");
+      g.DrawText(MakeTxt(11.f,ac?colTX:colTD,kFontID_Val),valStr.Get(),IRECT(mRECT.L,mRECT.B-16.f,mRECT.R,mRECT.B));
     }
   }
 private:
-  void TriggerPulse(float d){float in=std::min(1.f,0.3f+d*2.f);if(in>mPK){mPK=in;mPP=mPK;mPS=std::chrono::steady_clock::now();mPA=true;}}
-  void UpP(){if(!mPA)return;float e=float(std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-mPS).count());if(e>=180.f){mPP=0.f;mPK=0.f;mPA=false;return;}mPP=mPK*(1.f-EC(C01(e/180.f)));SetDirty(false);}
-  WDL_String mLabel; float mHA=0.f,mHT=0.f,mHF=0.f,mPP=0.f,mPK=0.f; bool mPA=false;
-  std::chrono::steady_clock::time_point mPS;
+  void TriggerPulse(float d){float in=std::min(1.f,0.3f+d*2.f);if(in>mPK){mPK=in;mPP=in;SetAnimation([](IControl* c){auto*s=c->As<KnobControl>();s->mPP=s->mPK*(1.f-EC(float(c->GetAnimationProgress())));s->SetDirty(false);},180);}}
+  WDL_String mLabel; KnobMode mKnobMode; ISVG mSvgCap = ISVG(nullptr); float mHA=0.f,mHT=0.f,mHF=0.f,mPP=0.f,mPK=0.f;
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -265,25 +393,25 @@ public:
   void OnInit() override { ISwitchControlBase::OnInit(); mV=GetValue()>0.5?1.f:0.f; mT=mV; }
   void SetValueFromDelegate(double v,int i=0) override { IControl::SetValueFromDelegate(v,i); mV=GetValue()>0.5?1.f:0.f; mA=mV; mT=mV; SetDirty(false); }
   void OnMouseDown(float x,float y,const IMouseMod& m) override { ISwitchControlBase::OnMouseDown(x,y,m); Anim(GetValue()>0.5?1.f:0.f); }
-  void OnEndAnimation() override { mV=mT; mP=0.f; ISwitchControlBase::OnEndAnimation(); }
+  void OnEndAnimation() override { mV=mT; ISwitchControlBase::OnEndAnimation(); }
 
   void Draw(IGraphics& g) override {
     float cx=mRECT.MW(),cy=mRECT.MH(),R=std::min(mRECT.W(),mRECT.H())*0.5f-1.f;
     bool on=mV>0.5f;
     // Outer ring
-    g.DrawCircle(on?WA(colBL,200):WA(colTD,80),cx,cy,R,nullptr,1.8f);
+    g.DrawCircle(on?WA(colL,200):WA(colTD,80),cx,cy,R,nullptr,1.8f);
     // Center dot when on
-    if(on) g.FillCircle(WA(colBL,180),cx,cy,R*0.3f);
+    if(on) g.FillCircle(WA(colL,180),cx,cy,R*0.3f);
     else g.FillCircle(WA(colTD,50),cx,cy,R*0.2f);
     // Power icon: vertical line from center up
     float ln=R*0.5f;
-    g.DrawLine(on?WA(colBL,220):WA(colTD,100),cx,cy-ln*0.3f,cx,cy+ln*0.8f,nullptr,1.5f);
+    g.DrawLine(on?WA(colL,220):WA(colTD,100),cx,cy-ln*0.3f,cx,cy+ln*0.8f,nullptr,1.5f);
     // Arc at top (power symbol gap)
-    g.DrawArc(on?WA(colBL,200):WA(colTD,80),cx,cy-ln*0.1f,R*0.7f,220.f,320.f,nullptr,1.8f);
+    g.DrawArc(on?WA(colL,200):WA(colTD,80),cx,cy-ln*0.1f,R*0.7f,220.f,320.f,nullptr,1.8f);
   }
 private:
-  void Anim(float t){if(std::abs(mV-t)<0.001f){mV=t;mT=t;mP=0.f;SetDirty(false);return;}mA=mV;mT=t;SetAnimation([](IControl* c){auto*s=c->As<PowerControl>();s->mV=LRP(s->mA,s->mT,EC(float(s->GetAnimationProgress())));s->mP=std::sin(float(s->GetAnimationProgress())*kPi)*0.5f;s->SetDirty(false);},200);}
-  float mV=0.f,mA=0.f,mT=0.f,mP=0.f;
+  void Anim(float t){if(std::abs(mV-t)<0.001f){mV=t;mT=t;SetDirty(false);return;}mA=mV;mT=t;SetAnimation([](IControl* c){auto*s=c->As<PowerControl>();s->mV=LRP(s->mA,s->mT,EC(float(s->GetAnimationProgress())));s->SetDirty(false);},200);}
+  float mV=0.f,mA=0.f,mT=0.f;
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -296,14 +424,14 @@ public:
     float cx=mRECT.MW(),cy=mRECT.MH(),R=std::min(mRECT.W(),mRECT.H())*0.5f-1.f;
     bool on=GetValue()>0.5f,hover=GetMouseIsOver();
     g.FillCircle(WA(colBG,80),cx+1.f,cy+1.5f,R+1.f);
-    g.FillCircle(on?BC(colBL,colPN,0.5f):colPN,cx,cy,R);
+    g.FillCircle(on?BC(colL,colPN,0.5f):colPN,cx,cy,R);
     if(on) {
-      g.FillCircle(WA(colBL,30),cx,cy,R+4.f);
-      g.DrawText(MakeTxt(10.f,colGY,kFontID_UI,EAlign::Center,EVAlign::Middle),"S",mRECT);
+      g.FillCircle(WA(colL,30),cx,cy,R+4.f);
+      g.DrawText(MakeTxt(10.f,colM,kFontID_UI,EAlign::Center,EVAlign::Middle),"S",mRECT);
     } else {
       g.DrawText(MakeTxt(10.f,colTD,kFontID_UI,EAlign::Center,EVAlign::Middle),"S",mRECT);
     }
-    g.DrawCircle(on?colBL:WA(colTD,80),cx,cy,R-2.f,nullptr,1.5f);
+    g.DrawCircle(on?colL:WA(colTD,80),cx,cy,R-2.f,nullptr,1.5f);
     if(hover) g.DrawCircle(WA(colTX,40),cx,cy,R+1.f,nullptr,1.f);
   }
 };
@@ -376,8 +504,8 @@ public:
     auto* d=GetDelegate(); if(!d) return;
     IRECT r=mRECT;
     g.FillRoundRect(WA(colFB,200),r,6.f); g.DrawRoundRect(WA(colPN,120),r,6.f,nullptr,1.f);
-    if(mFlashI>0.01f) g.DrawRoundRect(WA(colRD,180),r.GetPadded(-1.f),6.f,nullptr,2.f);
-    else if(mFlashV>0.01f) g.DrawRoundRect(WA(colBL,150),r.GetPadded(-1.f),6.f,nullptr,1.5f);
+    if(mFlashI>0.01f) g.DrawRoundRect(WA(colR,180),r.GetPadded(-1.f),6.f,nullptr,2.f);
+    else if(mFlashV>0.01f) g.DrawRoundRect(WA(colL,150),r.GetPadded(-1.f),6.f,nullptr,1.5f);
     g.DrawText(MakeTxt(9.f,colTM,kFontID_UI,EAlign::Near,EVAlign::Top),"BPM",IRECT(r.L+8.f,r.T+5.f,r.R,r.T+18.f));
     const IParam* sp=d->GetParam(mSyncIdx);
     bool sync=sp&&sp->Value()>0.5;
@@ -390,12 +518,12 @@ public:
       const IParam* bp=d->GetParam(GetParamIdx());
       bpm=bp?CV(bp->Value(),1.0,300.0):120.0;
     }
-    IColor bpmCol=manual?colBL:colGY;
+    IColor bpmCol=manual?colL:colM;
     char buf[32]; std::snprintf(buf,sizeof(buf),"%.1f",bpm);
     g.DrawText(MakeTxt(28.f,bpmCol,kFontID_Val),buf,IRECT(r.L,r.MH()-18.f,r.R,r.MH()+18.f));
     const IParam* rp=d->GetParam(mRateIdx);
-    double rv=rp?rp->Value():7.0;
-    int ri=int(rv+0.5);
+    double rv=rp?rp->Value():0.5;
+    int ri=int(rv*14.0+0.5);
     int shift=ri-7;
     if(shift>0) std::snprintf(buf,sizeof(buf),"x%d",1<<shift);
     else if(shift==0) std::snprintf(buf,sizeof(buf),"1x");
@@ -516,6 +644,9 @@ void LR8::LayoutUI(IGraphics* g) {
   g->AttachTextEntryControl();
   g->AttachPanelBackground(colBG);
   LoadFontUI(g); LoadFontVal(g);
+  
+  // SVG knob asset — loaded once, shared by all knobs via SetSvgCap
+  ISVG knobSvg = g->LoadSVG(KNOB_CAP_FN);
 
   const float M=8.f,G=6.f;
 
@@ -525,7 +656,7 @@ void LR8::LayoutUI(IGraphics* g) {
   g->AttachControl(new ITextControl(IRECT(W-90.f,M,W-4.f,M+barH),"L-R8",MakeTxt(12.f,colTM,kFontID_UI,EAlign::Far,EVAlign::Middle)));
 
   // SIDE PANELS + SCOPE
-  float sideW=std::min(105.f,W*0.16f);
+  float sideW=std::clamp(W*0.18f,120.f,150.f);
   float scopeL=M+sideW+G;
   float scopeR=W-M-sideW-G;
 
@@ -539,8 +670,8 @@ void LR8::LayoutUI(IGraphics* g) {
   float scopeT=lblY+lblH;
   float scopeB=H-70.f;
   const IRECT sRect(scopeL,scopeT,scopeR,scopeB);
-  auto* scope=new ScopeControl(sRect,*this);
-  mVisControlPtr=scope;
+  auto* scope=new ScopeControl(sRect);
+  mVisControlPtr.store(scope, std::memory_order_release);
   g->AttachControl(scope);
 
   // LEFT KNOBS
@@ -548,19 +679,27 @@ void LR8::LayoutUI(IGraphics* g) {
   float kY=barH+8.f;
   float kH=(scopeB-kY)*0.42f;
 
-  g->AttachControl(new KnobControl(IRECT(lL+2.f,kY,lR-2.f,kY+kH),kParamFreeRate,"Rate"));
+  auto mkKnob = [&](const IRECT& b,int p,const char* lbl,KnobMode mode=KnobMode::Generic) {
+    auto* k = new KnobControl(b,p,lbl,mode);
+    if(knobSvg.IsValid()) k->SetSvgCap(knobSvg);
+    return k;
+  };
+
+  g->AttachControl(mkKnob(IRECT(lL+2.f,kY,lR-2.f,kY+kH),kParamFreeRate,"Rate",KnobMode::RateKnob));
   float k2Y=kY+kH+G;
-  g->AttachControl(new KnobControl(IRECT(lL+2.f,k2Y,lR-2.f,k2Y+kH),kParamCrossfade,"Cross"));
+  g->AttachControl(mkKnob(IRECT(lL+2.f,k2Y,lR-2.f,k2Y+kH),kParamCrossfade,"Cross"));
 
   // RIGHT KNOBS
   float rL=scopeR+G,rR=W-M;
-  g->AttachControl(new KnobControl(IRECT(rL+2.f,kY,rR-2.f,kY+kH),kParamHighPass,"Split"));
-  g->AttachControl(new KnobControl(IRECT(rL+2.f,k2Y,rR-2.f,k2Y+kH),kParamLowPass,"Air"));
+  g->AttachControl(mkKnob(IRECT(rL+2.f,kY,rR-2.f,kY+kH),kParamHighPass,"Split"));
+  g->AttachControl(mkKnob(IRECT(rL+2.f,k2Y,rR-2.f,k2Y+kH),kParamLowPass,"Air"));
 
   // BOTTOM BAR
   float bY=H-62.f,bH=54.f;
   g->AttachControl(new SyncControl(IRECT(M+6.f,bY+4.f,M+50.f,bY+48.f),kParamSync));
   g->AttachControl(new BpmDisplayControl(IRECT(M+58.f,bY+2.f,W-M-4.f,bY+bH),kParamBpm,kParamRate,kParamSync,*this));
+
+  g->AttachControl(new TooltipOverlayControl(IRECT(0,0,W,H)));
 
   g->AttachCornerResizer(EUIResizerMode::Scale,false,
     IColor(60,255,255,255),WA(colTD,120),WA(colTX,210),24.f);
@@ -578,9 +717,22 @@ void LR8::SetFaustParam(const char* l,float v) {
   if(it!=mFaustZones.end()&&it->second) *it->second=v;
 }
 
+void LR8::OnUIClose() {
+  // Reset vis control pointer so audio thread doesn't use deleted control
+  mVisControlPtr.store(nullptr, std::memory_order_release);
+  // Spin until any in-flight ProcessBlock scope access finishes
+  // (should be nearly instant — just a few float writes + SetDirty)
+  while(mVisBusy.load(std::memory_order_acquire)) {
+    _mm_pause();
+  }
+}
+
 void LR8::SyncParamsToDSP() {
   if(!mDSP) return;
   float bp=float(GetParam(kParamBypass)->Value()>0.5);
+  // NOTE: bypass inversion intentional. Faust's "Bypass" = 0 means DSP active,
+  // = 1 means DSP bypassed. The iPlug bypass param (1=bypass, 0=process) is
+  // inverted here so they align: plugin bypassed → Faust processing off.
   SetFaustParam("Bypass",bp?0.f:1.f);
   bool sync=GetParam(kParamSync)->Value()>0.5;
   SetFaustParam("Sync",sync?1.f:0.f);
@@ -618,7 +770,7 @@ void LR8::OnParamChange(int idx) {
       SyncParamsToDSP();
       if(GetUI()) {
         GetUI()->SetAllControlsDirty();
-        if(mVisControlPtr) static_cast<ScopeControl*>(mVisControlPtr)->HapticPulse();
+        if(auto* sc = static_cast<ScopeControl*>(mVisControlPtr.load(std::memory_order_acquire))) sc->HapticPulse();
       }
       break;
     case kParamSync: {
@@ -639,7 +791,7 @@ void LR8::OnParamChange(int idx) {
       SyncParamsToDSP();
       if(GetUI()) {
         GetUI()->SetAllControlsDirty();
-        if(mVisControlPtr) static_cast<ScopeControl*>(mVisControlPtr)->HapticPulse();
+        if(auto* sc = static_cast<ScopeControl*>(mVisControlPtr.load(std::memory_order_acquire))) sc->HapticPulse();
       }
       break;
     }
@@ -695,8 +847,37 @@ void LR8::ProcessBlock(sample** in,sample** out,int nF) {
 
   constexpr int kDec=48;
   for(int s=0;s<nF;s+=kDec){mVisBufferL[mVisWritePos]=mOutL[s];mVisBufferR[mVisWritePos]=mOutR[s];mVisWritePos=(mVisWritePos+1)%kVisBufferSize;}
-  {float sL=0.f,sR=0.f;int ct=std::min(nF,256);for(int s=0;s<ct;++s){sL+=std::abs(mOutL[s]);sR+=std::abs(mOutR[s]);}
-  if(mVisControlPtr){auto*sc=static_cast<ScopeControl*>(mVisControlPtr);int last=(mVisWritePos-1+kVisBufferSize)%kVisBufferSize;float l=mVisBufferL[last],r=mVisBufferR[last];sc->Push(l,r,(l+r)*0.5f);}}
+
+  // Compute correlation over the first min(nF,256) samples of this block
+  float sumL2=0.f,sumR2=0.f,sumLR=0.f;
+  int ct=std::min(nF,256);
+  for(int s=0;s<ct;++s){
+    sumL2+=mOutL[s]*mOutL[s];
+    sumR2+=mOutR[s]*mOutR[s];
+    sumLR+=mOutL[s]*mOutR[s];
+  }
+
+  mVisBusy.store(1, std::memory_order_release);
+  if(auto* sc = static_cast<ScopeControl*>(mVisControlPtr.load(std::memory_order_acquire))){
+    int last=(mVisWritePos-1+kVisBufferSize)%kVisBufferSize;
+    float l=mVisBufferL[last],r=mVisBufferR[last];
+    sc->Push(l,r,(l+r)*0.5f);
+    // Set correlation: compute from block statistics
+    float corr=0.f;
+    if(sumL2*sumR2>1e-12f)
+      corr=sumLR/std::sqrt(sumL2*sumR2);
+    sc->SetCorrelation(corr);
+  }
+  mVisBusy.store(0, std::memory_order_release);
+
+  // Transport stop → clear scope
+  bool running = GetTransportIsRunning();
+  if(mTransportWasRunning&&!running){
+    mVisBusy.store(1, std::memory_order_release);
+    if(auto* sc = static_cast<ScopeControl*>(mVisControlPtr.load(std::memory_order_acquire))) sc->Clear();
+    mVisBusy.store(0, std::memory_order_release);
+  }
+  mTransportWasRunning = running;
 }
 
 bool LR8::SerializeState(IByteChunk& c) const {

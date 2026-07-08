@@ -36,6 +36,8 @@
 #define PLUG_MAX_WIDTH 1560
 #define PLUG_MAX_HEIGHT 840
 
+#define KNOB_CAP_FN "knob-cap.svg"
+
 #define AUV2_ENTRY LR8_Entry
 #define AUV2_ENTRY_STR "LR8_Entry"
 #define AUV2_FACTORY LR8_Factory

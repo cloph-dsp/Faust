@@ -21,6 +21,7 @@ struct Assets {
   const char* backgroundSVG = GRUNGE_BG_SVG_FN;
   const char* knobSVG = POWERBUTTON_SVG_FN;
   const char* logoSVG = CLOPH_LOGO_SVG_FN;
+  const char* titleSVG = GRUNGR_LOGO_SVG_FN;
   const char* stompSoleSVG = STOMP_SOLE_SVG_FN;
   const char* mainFont = NOMOREHERO_FN;
   const char* secondaryFont = FUTUREERODED_FN;

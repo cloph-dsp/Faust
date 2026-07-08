@@ -1,0 +1,561 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<AmorphAlgorithm name="Simple Tuner" date="2026-07-03T19:52:47.425+01:00" id="96cb7b56-efdf-490b-aa9c-62df7e7f7fac"
+                 origin_id="96cb7b56-efdf-490b-aa9c-62df7e7f7fac" plugin_type="fx"
+                 description="YIN-based precision guitar tuner with adaptive threshold, pre-emphasis, DC blocking, median filtering, and asymmetric smoothing. Strict passthrough - analysis only."
+                 author="cloph-dsp">
+  <PresentationConfig title="Simple Tuner" author="cloph-dsp" paramCount="0" highlightColour="ff00ff66"
+                      backgroundColour="ff050505" autoGenerateUiCode="0" uiScale="1.0"
+                      labWidth="1053" labHeight="830" presentationWidth="1053" presentationHeight="683"
+                      workspaceProjectPath="C:\Users\Razer\AppData\Roaming\Artists_in_DSP\AMORPH\FX\Projects\CLOPH - Simple Tuner">
+    <ParameterNames>
+      <Param index="0" name="Param 1"/>
+      <Param index="1" name="Param 2"/>
+      <Param index="2" name="Param 3"/>
+      <Param index="3" name="Param 4"/>
+      <Param index="4" name="Param 5"/>
+      <Param index="5" name="Param 6"/>
+      <Param index="6" name="Param 7"/>
+      <Param index="7" name="Param 8"/>
+      <Param index="8" name="Param 9"/>
+      <Param index="9" name="Param 10"/>
+      <Param index="10" name="Param 11"/>
+      <Param index="11" name="Param 12"/>
+      <Param index="12" name="Param 13"/>
+      <Param index="13" name="Param 14"/>
+      <Param index="14" name="Param 15"/>
+      <Param index="15" name="Param 16"/>
+      <Param index="16" name="Param 17"/>
+      <Param index="17" name="Param 18"/>
+      <Param index="18" name="Param 19"/>
+      <Param index="19" name="Param 20"/>
+      <Param index="20" name="Param 21"/>
+      <Param index="21" name="Param 22"/>
+      <Param index="22" name="Param 23"/>
+      <Param index="23" name="Param 24"/>
+      <Param index="24" name="Param 25"/>
+      <Param index="25" name="Param 26"/>
+      <Param index="26" name="Param 27"/>
+      <Param index="27" name="Param 28"/>
+      <Param index="28" name="Param 29"/>
+      <Param index="29" name="Param 30"/>
+      <Param index="30" name="Param 31"/>
+      <Param index="31" name="Param 32"/>
+      <Param index="32" name="Param 33"/>
+      <Param index="33" name="Param 34"/>
+      <Param index="34" name="Param 35"/>
+      <Param index="35" name="Param 36"/>
+      <Param index="36" name="Param 37"/>
+      <Param index="37" name="Param 38"/>
+      <Param index="38" name="Param 39"/>
+      <Param index="39" name="Param 40"/>
+      <Param index="40" name="Param 41"/>
+      <Param index="41" name="Param 42"/>
+      <Param index="42" name="Param 43"/>
+      <Param index="43" name="Param 44"/>
+      <Param index="44" name="Param 45"/>
+      <Param index="45" name="Param 46"/>
+      <Param index="46" name="Param 47"/>
+      <Param index="47" name="Param 48"/>
+      <Param index="48" name="Param 49"/>
+      <Param index="49" name="Param 50"/>
+    </ParameterNames>
+  </PresentationConfig>
+  <Code>processor GuitarTuner
+{
+    output stream float&lt;2&gt; out;
+    output event float pitchOut;
+    output event float clarityOut;
+    output event float centsOut;
+    input  stream float&lt;2&gt; in;
+    input  event float param1;
+
+    const int bufferSize = 2048;
+    const int maxLag     = 1024;
+    const int framesPerSecond = 30;
+
+    float[bufferSize] sampleBuffer;
+    wrap&lt;bufferSize&gt;  writePosition;
+    float referenceFreq = 440.0f;
+    float smoothPitch = 0.0f;
+    float smoothCents = 0.0f;
+
+    // Pre-emphasis (alpha=0.97 boosts fundamentals over harmonics)
+    float emphZ1 = 0.0f;
+
+    // DC blocker (20Hz one-pole HP)
+    float dcZ1 = 0.0f;
+    float dcY1 = 0.0f;
+    float dcA  = 0.0f;
+
+    // 9-element median ring (octave-jump rejection)
+    float[9] pitchHist;
+    int pitchHistPos = 0;
+    int pitchHistCount = 0;
+
+    // Cents smoothing coefficient (from init)
+    float centsSmoothAlpha = 0.39f;
+
+    void init()
+    {
+        float sr = float (processor.frequency);
+        dcA = exp (-2.0f * 3.14159265359f * 20.0f / sr);
+        float ar = float (framesPerSecond);
+        centsSmoothAlpha = 1.0f - exp (-1.0f / (0.120f * ar));
+    }
+
+    void main()
+    {
+        loop
+        {
+            int samplesPerFrame = int(float(processor.frequency) / float(framesPerSecond));
+            loop (samplesPerFrame)
+            {
+                float mono = (in[0] + in[1]) * 0.5f;
+                if (mono != mono) mono = 0.0f;
+                mono = clamp (mono, -2.0f, 2.0f);
+
+                // DC blocker
+                float dcY = dcA * (dcY1 + mono - dcZ1);
+                dcZ1 = mono;
+                dcY1 = dcY;
+
+                // Pre-emphasis: y[n] = x[n] - 0.97 * x[n-1]
+                float emph = dcY - 0.97f * emphZ1;
+                emphZ1 = dcY;
+
+                sampleBuffer[writePosition] = emph;
+                writePosition += 1;
+                out &lt;- in;
+                advance();
+            }
+            runAnalysis();
+        }
+    }
+
+    // YIN pitch detection (de Cheveigne &amp; Kawahara, 2002) with
+    // adaptive threshold, asymmetric smoothing, and median filtering.
+    void runAnalysis()
+    {
+        wrap&lt;bufferSize&gt; start = writePosition;
+
+        // Signal level for adaptive threshold (O(N), negligible vs O(N^2) YIN).
+        float sigEnergy = 0.0f;
+        int ei = 0;
+        for (; ei &lt; maxLag; ++ei)
+        {
+            float s = sampleBuffer.at (start + ei);
+            sigEnergy += s * s;
+        }
+        float avgPower = sigEnergy / float (maxLag);
+        float sigLevel = clamp (avgPower * 100.0f, 0.0f, 1.0f);
+        // Strong signal -&gt; strict 0.10; weak signal -&gt; lenient 0.18.
+        float adaptThreshold = 0.10f + (1.0f - sigLevel) * 0.08f;
+
+        // Step 1: Difference function d&apos;(tau) = sum (x[j] - x[j+tau])^2
+        float[maxLag] diff;
+        int tau = 0;
+        for (; tau &lt; maxLag; ++tau)
+        {
+            float sum = 0.0f;
+            int n = 0;
+            for (; n &lt; maxLag - tau; ++n)
+            {
+                float s1 = sampleBuffer.at (start + n);
+                float s2 = sampleBuffer.at (start + n + tau);
+                float d = s1 - s2;
+                sum += d * d;
+            }
+            diff[tau] = sum;
+        }
+
+        // Step 2: Cumulative Mean Normalized Difference Function.
+        diff[0] = 1.0f;
+        float cumSum = 0.0f;
+        int t = 1;
+        for (; t &lt; maxLag; ++t)
+        {
+            cumSum += diff[t];
+            if (cumSum &gt; 1e-30f)
+                diff[t] = diff[t] * float (t) / cumSum;
+            else
+                diff[t] = 1.0f;
+        }
+
+        // Step 3: Absolute threshold + local minimum descent.
+        int bestLag = 0;
+        float bestVal = 1.0f;
+
+        int tt = 2;
+        for (; tt &lt; maxLag - 1; ++tt)
+        {
+            if (diff[tt] &lt; adaptThreshold)
+            {
+                while (tt &lt; maxLag - 1 &amp;&amp; diff[tt + 1] &lt; diff[tt])
+                    tt += 1;
+                bestLag = tt;
+                bestVal = diff[tt];
+                break;
+            }
+        }
+
+        // Fallback: global minimum with clarity floor.
+        if (bestLag == 0)
+        {
+            float minVal = 1.0f;
+            int mt = 2;
+            for (; mt &lt; maxLag; ++mt)
+            {
+                if (diff[mt] &lt; minVal)
+                {
+                    minVal = diff[mt];
+                    bestLag = mt;
+                }
+            }
+            bestVal = minVal;
+            if (bestLag &lt; 2 || bestVal &gt; 0.7f)
+            {
+                pitchOut    &lt;- 0.0f;
+                clarityOut  &lt;- 0.0f;
+                centsOut    &lt;- 0.0f;
+                return;
+            }
+        }
+
+        // Step 4: Parabolic interpolation (sub-sample accuracy).
+        float yM = diff[bestLag - 1];
+        float y0 = diff[bestLag];
+        float yP = diff[bestLag + 1];
+        float denom = yM - 2.0f * y0 + yP;
+
+        float refinedLag = float (bestLag);
+        if (denom &gt; 1e-30f)
+            refinedLag += 0.5f * (yM - yP) / denom;
+
+        if (refinedLag &lt;= 0.0f)
+        {
+            pitchOut    &lt;- 0.0f;
+            clarityOut  &lt;- 0.0f;
+            centsOut    &lt;- 0.0f;
+            return;
+        }
+
+        float frequency = float (processor.frequency) / refinedLag;
+        if (frequency != frequency || frequency &gt; 20000.0f || frequency &lt; 20.0f)
+        {
+            pitchOut    &lt;- 0.0f;
+            clarityOut  &lt;- 0.0f;
+            centsOut    &lt;- 0.0f;
+            return;
+        }
+
+        // Step 5: 9-element median filter (octave-jump rejection).
+        pitchHist[pitchHistPos] = frequency;
+        pitchHistPos = (pitchHistPos + 1) % 9;
+        if (pitchHistCount &lt; 9) pitchHistCount += 1;
+        float medianFreq = median9();
+
+        // Step 6: Asymmetric pitch smoothing.
+        // Snap fast on new notes (&gt;2 semitones), glide on transitions,
+        // lock rock-steady when stable (&lt;0.5 semitones).
+        if (smoothPitch &gt; 1.0f &amp;&amp; medianFreq &gt; 1.0f)
+        {
+            float ratio = medianFreq / smoothPitch;
+            float semitoneDiff = abs (12.0f * (log (ratio) / log (2.0f)));
+            float alpha;
+            if (semitoneDiff &gt; 2.0f)
+                alpha = 0.6f;
+            else if (semitoneDiff &gt; 0.5f)
+                alpha = 0.2f;
+            else
+                alpha = 0.03f;
+            smoothPitch += alpha * (medianFreq - smoothPitch);
+        }
+        else
+        {
+            smoothPitch += 0.3f * (medianFreq - smoothPitch);
+        }
+        if (smoothPitch &lt; 1e-30f) smoothPitch = 0.0f;
+
+        // Cents deviation from nearest equal-tempered note.
+        if (smoothPitch &gt; 1.0f)
+        {
+            float note  = 12.0f * (log (smoothPitch / referenceFreq) / log (2.0f)) + 69.0f;
+            float cents = (note - rint (note)) * 100.0f;
+            // Asymmetric cents smoothing: fast when far from center, slow when close
+            float centsDelta = cents - smoothCents;
+            float centsAlpha = centsSmoothAlpha;
+            if (abs (centsDelta) &gt; 0.3f)
+                centsAlpha = centsSmoothAlpha;
+            else
+                centsAlpha = centsSmoothAlpha * 0.02f;
+            smoothCents += centsAlpha * centsDelta;
+            if (smoothCents &lt; 1e-30f &amp;&amp; smoothCents &gt; -1e-30f) smoothCents = 0.0f;
+        }
+
+        // Clarity: power curve for more intuitive confidence mapping.
+        float rawClarity = 1.0f - bestVal;
+        float clarity = rawClarity * rawClarity;
+
+        pitchOut    &lt;- smoothPitch;
+        clarityOut  &lt;- clarity;
+        centsOut    &lt;- smoothCents;
+    }
+
+    // Median of up to 9 pitch history values.
+    float median9()
+    {
+        int count = pitchHistCount;
+        if (count &lt;= 0) return 0.0f;
+        if (count == 1) return pitchHist[0];
+
+        float[9] tmp;
+        int i = 0;
+        for (; i &lt; count; ++i)
+            tmp[i] = pitchHist[i];
+
+        int j = 0;
+        for (; j &lt; count - 1; ++j)
+        {
+            int k = 0;
+            for (; k &lt; count - j - 1; ++k)
+            {
+                if (tmp[k] &gt; tmp[k + 1])
+                {
+                    float tv = tmp[k];
+                    tmp[k] = tmp[k + 1];
+                    tmp[k + 1] = tv;
+                }
+            }
+        }
+        return tmp[count / 2];
+    }
+}</Code>
+  <UICode>// Amorph Custom UI - Simple Tuner (YIN Precision)
+// WINDOW SIZE: 240x130
+
+
+class SimpleTunerView extends HTMLElement {
+    constructor (patchConnection) {
+        super();
+        this.pc = patchConnection;
+        this._pitch = 0;
+        this._clarity = 0;
+        this._cents = 0;
+        this._animFrame = null;
+        this._needlePos = 50;
+        this._glow = 0;
+        this._smoothAmount = 0.5;
+        this._smoothHandler = null;
+        this._knobCleanup = null;
+        this.innerHTML = this.getHTML();
+    }
+    connectedCallback () {
+        this._pitchHandler = v =&gt; { this._pitch = v; };
+        this._clarityHandler = v =&gt; { this._clarity = v; };
+        this._centsHandler = v =&gt; { this._cents = v; };
+        this.pc.addEndpointListener(&apos;pitchOut&apos;, this._pitchHandler);
+        this.pc.addEndpointListener(&apos;clarityOut&apos;, this._clarityHandler);
+        this.pc.addEndpointListener(&apos;centsOut&apos;, this._centsHandler);
+        this._smoothHandler = v =&gt; { this._smoothAmount = v; if (this._knobFill) this._knobFill.style.height = Math.round(v * 100) + &apos;%&apos;; };
+        this.pc.addParameterListener(&apos;param1&apos;, this._smoothHandler);
+        this.pc.sendEventOrValue(&apos;param1&apos;, this._smoothAmount);
+        this._initSmoothKnob();
+        this.startAnimationLoop();
+    }
+    disconnectedCallback () {
+        this.pc.removeEndpointListener(&apos;pitchOut&apos;, this._pitchHandler);
+        this.pc.removeEndpointListener(&apos;clarityOut&apos;, this._clarityHandler);
+        this.pc.removeEndpointListener(&apos;centsOut&apos;, this._centsHandler);
+        if (this._smoothHandler) this.pc.removeParameterListener(&apos;param1&apos;, this._smoothHandler);
+        if (this._knobCleanup) this._knobCleanup();
+        if (this._animFrame) cancelAnimationFrame(this._animFrame);
+    }
+    _freqToNote (freq) {
+        if (freq &lt;= 0) return { name: &apos;\u2014&apos;, full: &apos;\u2014&apos; };
+        const note = 12 * Math.log2(freq / 440) + 69;
+        const midi = Math.round(note);
+        const names = [&apos;C&apos;,&apos;C\u266f&apos;,&apos;D&apos;,&apos;D\u266f&apos;,&apos;E&apos;,&apos;F&apos;,&apos;F\u266f&apos;,&apos;G&apos;,&apos;G\u266f&apos;,&apos;A&apos;,&apos;A\u266f&apos;,&apos;B&apos;];
+        const octave = Math.floor(midi / 12) - 1;
+        return { name: names[((midi % 12) + 12) % 12], full: names[((midi % 12) + 12) % 12] + octave };
+    }
+    _initSmoothKnob () {
+        const el = this.querySelector(&apos;.tiny-knob&apos;);
+        if (!el) return;
+        this._knobFill = el.querySelector(&apos;.knob-fill&apos;);
+        let dragging = false, startY = 0, startVal = 0;
+        const onDown = e =&gt; {
+            dragging = true;
+            startY = e.clientY;
+            startVal = this._smoothAmount;
+            el.setPointerCapture(e.pointerId);
+        };
+        const onMove = e =&gt; {
+            if (!dragging) return;
+            const v = Math.max(0, Math.min(1, startVal + (startY - e.clientY) * 0.005));
+            this._smoothAmount = v;
+            if (this._knobFill) this._knobFill.style.height = Math.round(v * 100) + &apos;%&apos;;
+            this.pc.sendEventOrValue(&apos;param1&apos;, v);
+        };
+        const onUp = e =&gt; {
+            dragging = false;
+            el.releasePointerCapture(e.pointerId);
+        };
+        el.addEventListener(&apos;pointerdown&apos;, onDown);
+        el.addEventListener(&apos;pointermove&apos;, onMove);
+        el.addEventListener(&apos;pointerup&apos;, onUp);
+        this._knobCleanup = () =&gt; {
+            el.removeEventListener(&apos;pointerdown&apos;, onDown);
+            el.removeEventListener(&apos;pointermove&apos;, onMove);
+            el.removeEventListener(&apos;pointerup&apos;, onUp);
+        };
+    }
+    startAnimationLoop () {
+        const loop = () =&gt; {
+            const freq = this._pitch;
+            const cents = this._cents;
+            const clarity = this._clarity;
+            const hasSignal = clarity &gt; 0.25 &amp;&amp; freq &gt; 0;
+
+            const noteEl   = this.querySelector(&apos;.note&apos;);
+            const octEl    = this.querySelector(&apos;.octave&apos;);
+            const centsEl  = this.querySelector(&apos;.cents&apos;);
+            const freqEl   = this.querySelector(&apos;.freq&apos;);
+            const needleEl = this.querySelector(&apos;.needle&apos;);
+            const meterEl  = this.querySelector(&apos;.meter&apos;);
+            const inTune   = this.querySelector(&apos;.in-tune-zone&apos;);
+
+            const ac = Math.abs(cents);
+            const targetPos = hasSignal
+                ? Math.max(0, Math.min(100, 50 + (cents / 50) * 50))
+                : 50;
+            const dist = Math.abs(targetPos - this._needlePos);
+            const baseRate = dist &gt; 15 ? 0.30 : dist &gt; 5 ? 0.12 : dist &gt; 1.5 ? 0.05 : 0.015;
+            const smoothMul = this._smoothAmount &lt; 0.01 ? 100 : 0.1 + (1 - this._smoothAmount) * 1.8;
+            const rate = Math.min(1, baseRate * smoothMul);
+            this._needlePos += (targetPos - this._needlePos) * rate;
+            needleEl.style.left = this._needlePos.toFixed(2) + &apos;%&apos;;
+
+            const targetGlow = hasSignal &amp;&amp; ac &lt;= 2 ? 1 : 0;
+            this._glow += (targetGlow - this._glow) * 0.12;
+            meterEl.style.setProperty(&apos;--glow&apos;, this._glow.toFixed(3));
+            inTune.style.opacity = (this._glow * 0.8).toFixed(3);
+
+            if (hasSignal) {
+                const info = this._freqToNote(freq);
+                noteEl.textContent = info.name;
+                octEl.textContent = info.full.length &gt; 1 ? info.full.slice(-1) : &apos;&apos;;
+                const sign = cents &gt; 0 ? &apos;+&apos; : &apos;&apos;;
+                centsEl.textContent = sign + cents.toFixed(1) + &apos;\u00a2&apos;;
+                freqEl.textContent = freq.toFixed(2) + &apos; Hz&apos;;
+                const color = ac &lt;= 1 ? &apos;#00ff66&apos; : ac &lt;= 3 ? &apos;#66ff00&apos; : ac &lt;= 7 ? &apos;#ccff00&apos; : ac &lt;= 15 ? &apos;#ffcc00&apos; : ac &lt;= 30 ? &apos;#ff6600&apos; : &apos;#ff2222&apos;;
+                needleEl.style.background = color;
+                needleEl.style.boxShadow = ac &lt;= 2
+                    ? &apos;0 0 6px &apos; + color
+                    : &apos;none&apos;;
+                centsEl.style.color = color;
+                noteEl.style.color = ac &lt;= 2 ? &apos;#00ff66&apos; : &apos;#e8e8e8&apos;;
+            } else {
+                noteEl.textContent = &apos;\u2014&apos;;
+                octEl.textContent = &apos;&apos;;
+                centsEl.textContent = &apos;\u2014\u00a2&apos;;
+                freqEl.textContent = &apos;\u2014\u2014\u2014 Hz&apos;;
+                needleEl.style.background = &apos;#2a2a2a&apos;;
+                needleEl.style.boxShadow = &apos;none&apos;;
+                centsEl.style.color = &apos;#2a2a2a&apos;;
+                noteEl.style.color = &apos;#2a2a2a&apos;;
+            }
+
+            this._animFrame = requestAnimationFrame(loop);
+        };
+        this._animFrame = requestAnimationFrame(loop);
+    }
+    getHTML () {
+        return [
+&apos;&lt;style&gt;&apos;,
+&apos;  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }&apos;,
+&apos;  :host { display: block; width: 100%; height: 100%; overflow: hidden;&apos;,
+&apos;          background: #050505; font-family: &quot;SF Mono&quot;, &quot;Consolas&quot;, &quot;Courier New&quot;, monospace;&apos;,
+&apos;          user-select: none; -webkit-user-select: none; }&apos;,
+&apos;  .panel { display: flex; flex-direction: column; align-items: center;&apos;,
+&apos;           justify-content: center; height: 100%; padding: 6px 8px; gap: 3px;&apos;,
+&apos;           position: relative;&apos;,
+&apos;           background: radial-gradient(ellipse at 50% 40%, #0a0a0a 0%, #050505 70%); }&apos;,
+&apos;&apos;,
+&apos;  .note-row { display: flex; align-items: baseline; gap: 4px; }&apos;,
+&apos;  .note { font-size: 36px; font-weight: 800; color: #e8e8e8; line-height: 0.9;&apos;,
+&apos;          font-variant-numeric: tabular-nums; letter-spacing: -0.5px;&apos;,
+&apos;          transition: color 0.1s; min-width: 30px; text-align: right; }&apos;,
+&apos;  .octave { font-size: 14px; font-weight: 600; color: #666; line-height: 1;&apos;,
+&apos;            font-variant-numeric: tabular-nums; min-width: 10px; }&apos;,
+&apos;  .cents { font-size: 14px; font-weight: 700; min-width: 52px; text-align: left;&apos;,
+&apos;           font-variant-numeric: tabular-nums; transition: color 0.1s;&apos;,
+&apos;           margin-left: 8px; }&apos;,
+&apos;  .freq { font-size: 10px; color: #444; font-variant-numeric: tabular-nums;&apos;,
+&apos;          letter-spacing: 0.3px; }&apos;,
+&apos;&apos;,
+&apos;  .meter { width: 100%; height: 16px; position: relative; --glow: 0;&apos;,
+&apos;           transition: box-shadow 0.15s; }&apos;,
+&apos;  .track { width: 100%; height: 100%; position: relative;&apos;,
+&apos;           border-radius: 1px; }&apos;,
+&apos;  .line { position: absolute; left: 0; right: 0; top: 50%; height: 1px;&apos;,
+&apos;          background: #1a1a1a; transform: translateY(-50%); }&apos;,
+&apos;  .tick { position: absolute; top: 3px; bottom: 3px; width: 1px; background: #2a2a2a; }&apos;,
+&apos;  .tick.mid { background: #333; }&apos;,
+&apos;  .tick.center { background: #555; width: 2px; top: 0; bottom: 0; }&apos;,
+&apos;&apos;,
+&apos;  .in-tune-zone { position: absolute; left: 46%; width: 8%; top: 0; bottom: 0;&apos;,
+&apos;                  background: linear-gradient(180deg, transparent, rgba(0,255,102,0.06), transparent);&apos;,
+&apos;                  opacity: 0; pointer-events: none; }&apos;,
+&apos;&apos;,
+&apos;  .needle { position: absolute; top: 0; bottom: 0; width: 2px; background: #f00;&apos;,
+&apos;            transform: translateX(-50%); }&apos;,
+&apos;&apos;,
+&apos;  .logo { position: absolute; bottom: 3px; right: 6px; width: 48px; opacity: 0.12;&apos;,
+&apos;          pointer-events: none; }&apos;,
+&apos;  .knob-area { position: absolute; bottom: 3px; left: 6px; display: flex;&apos;,
+&apos;               align-items: center; gap: 3px; pointer-events: auto; }&apos;,
+&apos;  .tiny-knob { width: 6px; height: 20px; background: #111; border: 1px solid #333;&apos;,
+&apos;               border-radius: 1px; cursor: ns-resize; position: relative; touch-action: none; }&apos;,
+&apos;  .knob-fill { position: absolute; bottom: 0; left: 0; right: 0; background: #555;&apos;,
+&apos;               border-radius: 0 0 1px 1px; }&apos;,
+&apos;  .knob-label { font-size: 7px; color: #444; letter-spacing: 0.3px; user-select: none; }&apos;,
+&apos;&lt;/style&gt;&apos;,
+&apos;&lt;div class=&quot;panel&quot;&gt;&apos;,
+&apos;  &lt;div class=&quot;note-row&quot;&gt;&apos;,
+&apos;    &lt;span class=&quot;note&quot;&gt;\u2014&lt;/span&gt;&apos;,
+&apos;    &lt;span class=&quot;octave&quot;&gt;&lt;/span&gt;&apos;,
+&apos;    &lt;span class=&quot;cents&quot;&gt;\u2014\u00a2&lt;/span&gt;&apos;,
+&apos;  &lt;/div&gt;&apos;,
+&apos;  &lt;div class=&quot;meter&quot;&gt;&apos;,
+&apos;    &lt;div class=&quot;track&quot;&gt;&apos;,
+&apos;      &lt;div class=&quot;in-tune-zone&quot;&gt;&lt;/div&gt;&apos;,
+&apos;      &lt;div class=&quot;line&quot;&gt;&lt;/div&gt;&apos;,
+&apos;      &lt;div class=&quot;tick&quot; style=&quot;left:0%;&quot;&gt;&lt;/div&gt;&apos;,
+&apos;      &lt;div class=&quot;tick mid&quot; style=&quot;left:25%;&quot;&gt;&lt;/div&gt;&apos;,
+&apos;      &lt;div class=&quot;tick center&quot; style=&quot;left:50%;&quot;&gt;&lt;/div&gt;&apos;,
+&apos;      &lt;div class=&quot;tick mid&quot; style=&quot;left:75%;&quot;&gt;&lt;/div&gt;&apos;,
+&apos;      &lt;div class=&quot;tick&quot; style=&quot;left:100%;&quot;&gt;&lt;/div&gt;&apos;,
+&apos;      &lt;div class=&quot;needle&quot; style=&quot;left:50%;background:#2a2a2a;&quot;&gt;&lt;/div&gt;&apos;,
+&apos;    &lt;/div&gt;&apos;,
+&apos;  &lt;/div&gt;&apos;,
+&apos;  &lt;span class=&quot;freq&quot;&gt;\u2014\u2014\u2014 Hz&lt;/span&gt;&apos;,
+&apos;  &lt;div class=&quot;knob-area&quot;&gt;&apos;,
+&apos;    &lt;div class=&quot;tiny-knob&quot;&gt;&lt;div class=&quot;knob-fill&quot; style=&quot;height:50%&quot;&gt;&lt;/div&gt;&lt;/div&gt;&apos;,
+&apos;    &lt;span class=&quot;knob-label&quot;&gt;SM&lt;/span&gt;&apos;,
+&apos;  &lt;/div&gt;&apos;,
+&apos;  &lt;div class=&quot;logo&quot;&gt;&lt;svg xmlns=&quot;http://www.w3.org/2000/svg&quot; fill=&quot;#fcfdfc&quot; viewBox=&quot;294.15 84.3 1461.67 569&quot;&gt;&lt;path d=&quot;M1256.13 198.447a162.18 162.18 0 01111.06 41.283c33.89 29.926 55.78 75.595 58.56 120.675a169.07 169.07 0 01-42.1 122.893c-50.59 57.167-132.05 76.066-200.5 39.404-15.1-8.086-26.95-17.493-39.72-28.796-.59 12.339-.16 28.004-.17 40.594l.63 118.797-55.71-.062-.12-448.985c18.1-.316 37.29.053 55.46.099l-.07 42.286c29.09-29.84 71.33-46.236 112.68-48.188m6.38 288.673c64.62-2.577 114.91-57.047 112.34-121.666s-57.04-114.917-121.66-112.349-114.93 57.041-112.35 121.666c2.57 64.625 57.05 114.927 121.67 112.349M1255 280.111c3.41-.123 7.34-.042 10.34 1.775a10.93 10.93 0 014.98 7.055c2.55 12.398 1.44 55.562 1.6 70.089l-.27 86.773c-.21 9.076-3.39 10.913-10.81 14.449a23.2 23.2 0 01-5.87-.824c-3.08-.825-6.69-2.391-8.26-5.36-2.55-4.794-2.54-131.681-2.15-146.395.16-6.235.01-14.392 2.05-20.264 1.5-4.282 4.56-5.55 8.39-7.298m-46.14 42.005c3.64-.258 13.61-.274 15.06 4.074 8.28 24.903 4.65 55.827 3.91 82.009-.14 4.743-3.94 7.389-7.34 9.895-11.69.293-17.66.132-18.82-13.584-1.96-22.952-1.71-46.404-.49-69.401.39-7.404 2.38-8.553 7.68-12.993m90.84.059c2.44.226 4.88.561 7.2 1.37 3.1 1.079 5.49 3.643 6.81 6.606 4.56 10.262 3.59 68.837-.78 79.625-1.79 4.431-3.98 6.668-8.34 8.556-2.96-.113-6.36-.401-8.99-1.841-3.31-1.814-4.78-4.881-5.78-8.367-3.86-13.392-4.01-69.533 2.59-81.042 1.83-3.183 3.83-3.984 7.29-4.907m-134.55 29.941c25.58-2.604 25.67 25.422 11.17 36.498-23.32 2.978-25.12-26.266-11.17-36.498m175.64-.108c22.95-.577 24.83 24.254 8.58 36.261-6.44-.249-12.1-1.659-16.07-7.186a17.87 17.87 0 01-3.02-13.511c1.19-7.024 4.97-11.599 10.51-15.564M885.807 198.677c94.5-5.669 175.763 66.221 181.653 160.708s-65.81 175.914-160.281 182.029c-94.789 6.135-176.549-65.855-182.46-160.658s66.272-176.392 161.088-182.079m25.722 296.202c69.124-8.41 118.261-71.379 109.621-140.475s-71.771-118.026-140.838-109.155c-68.742 8.83-117.39 71.6-108.79 140.371s71.207 117.629 140.007 109.259m-19.795-233.811c9.721-.434 11.492 1.36 17.518 8.309 2.222 30.261.911 71.452.897 102.609-.012 27.858 1.618 72.076-.81 98.871-3.444 4.025-4.847 5.16-9.058 8.397a97 97 0 01-3.402-.336c-13.202-1.557-14.455-9.009-14.627-20.8l-.111-172.252c.095-12.978-1.354-17.024 9.593-24.798m43.631 43.107c2.739-.209 5.525-.212 8.245.221 3.128.497 6.208 2.06 7.995 4.741 6.818 10.231 4.241 102.409 1.428 117.567-.954 5.139-2.142 7.534-6.565 10.586a29.5 29.5 0 01-4.19.289c-4.201-.035-9.333-1.763-12.202-4.881-5.617-6.103-3.562-103.771-2.647-119.855 3.027-4.387 3.803-5.289 7.936-8.668m-88.531-.197q.524.006 1.047.024c9.555.273 17.097 2.433 17.4 13.204 1.025 36.471 1.701 76.117.019 112.356-2.785 3.29-4.844 4.866-8.139 7.569-1.835.105-3.661.147-5.495-.001-4.227-.34-7.931-1.485-10.679-4.903-4.289-5.334-4.002-103.546-2.572-116.076.665-5.825 4.168-8.712 8.419-12.173m134.396 39.843c25.51-2.261 24.39 41.627 9.341 53.838-20.699 2.564-20.184-21.835-18.718-35.761.893-8.484 2.626-12.848 9.377-18.077m-178.992.086c20.418-1.167 19.503 21.749 18.346 36.431-.614 7.802-3.578 12.187-9.759 16.737-20.279 2.73-19.704-21.365-18.59-35.185.649-8.055 3.606-13.164 10.003-17.983M1446.11 85.313l55.45.016.57 157.559c29.58-28.244 61.67-44.612 103.6-44.737A149.08 149.08 0 011712 242.53a145.1 145.1 0 0137.35 63.41c8.05 29.349 6.04 79.101 6.12 111.138l.32 120.672c-17.75.376-36.77.035-54.61.044l-.38-192.982c-1.79-26.145-8.11-45.456-26.51-64.953-51.72-54.957-155.28-29.362-169.75 46.607-4.73 24.835-3.1 53.036-3.11 78.527l.32 132.724c-18.65.359-37.3.11-55.93-.746 1.61-20.675.89-45.293.76-66.346l-.44-106.29.46-167.107c.13-36.613.99-75.588-.49-111.915m-984.365 113.11c19.066-2.024 44.574 4.167 62.294 11.627 48.615 20.465 91.842 65.274 100.73 118.622l-54.086-.111c-5.799-15.115-11.841-27.009-22.733-39.313a108.9 108.9 0 00-76.034-36.837c-30.815-1.854-60.272 6.62-83.543 27.294a118.25 118.25 0 00-39.47 80.937c-6.135 108.833 113.046 168.035 194.1 95.08 15.008-15.295 22.757-28.909 27.522-49.751 17.75-.28 37.759-.58 55.392.369-3.402 27.333-17.805 55.321-35.65 76.166a169.96 169.96 0 01-115.294 58.215 163.92 163.92 0 01-119.537-40.237 175.05 175.05 0 01-60.807-119.496c-3.249-43.665 11.225-89.315 39.941-122.473 34.749-40.125 75.306-56.331 127.175-60.092M645.508 84.326c17.854.525 36.439.298 54.366.307a22331 22331 0 01-.036 347.834c-.054 36.149-2.421 55.853 39.264 55.561-.228 9.76 1.204 43.492-.256 49.94-28.012.415-49.097.366-70.521-20.44-24.736-24.024-23.286-53.386-23.31-84.754l.488-69.465-.375-154.246zm973.532 195.841c6.23-.695 12.51-.107 16.32 5.564 1.35 2.013 2.3 3.719 2.36 6.216l.28 37.515-.47 76.367-.81 44.485c-.17 3.979-4.79 7.21-7.87 9.386-22.49 2.048-18.75-16.258-18.7-32.634l.43-140.047c2.32-2.277 5.83-4.82 8.46-6.852m-1159.454-.081c15.223-1.392 17.912 5.199 18.144 18.707l.425 148.169c.008 5.685-4.281 9.244-8.142 12.709-8.279 1.181-17.606-1.046-18.191-11.013-.993-16.93-.68-34.227-.771-51.228q-.36-54.365.145-108.728c3.13-4.34 4.212-5.243 8.39-8.616m42.177 42.146c14.31-.458 20.637 5.142 19.989 20.147-.808 18.719 5.107 61.443-7.471 75.282-4.29.36-16.089.83-17.282-5.026-5.211-25.579-3.323-54.796-2.73-80.987.096-4.256 4.446-7.197 7.494-9.416m-85.868-.04c23.318-3.003 19.648 21.056 19.924 38.396.241 15.123 3.786 48.804-8.233 57.33-2.408.188-4.893.423-7.307.302-3.427-.172-6.826-1.604-9.043-4.299-5.149-6.258-4.039-69.966-2.922-80.791.561-5.44 3.616-7.739 7.581-10.938m1159.065-.093c2.61-.223 5.24-.188 7.84.105 2.39.28 6.24 1.804 7.09 3.618 6.3 13.46 4.79 71.829 3.29 85.149-2.9 3.165-4.77 4.537-8.1 7.095-4.5.209-14.48-.313-15.7-5.972-5.42-25.224-3.7-54.357-2.49-80.204.23-4.821 4.53-7.454 8.07-9.791m87.9 28.011a45.14 45.14 0 013.31.078c19.58 1.289 20.28 27.197 5.71 39.389-14.26-.462-20.42-7.735-19.25-23.352.52-6.985 4.63-12.047 10.23-16.115m-131.08.93l.31-.008c22.7-.441 24.05 25.328 9.98 38.334-25.24-1.379-27.37-26.775-10.29-38.326m-1157.334.963c20.519-3.363 26.916 27.548 6.278 37.187-.944-.021-1.788-.061-2.727-.194a17.4 17.4 0 01-11.453-6.921c-7.75-10.652-1.784-23.183 7.902-30.072m172.509-.089c21.301.623 24.185 22.327 8.99 35.642-22.129 1.543-24.041-22.372-8.99-35.642m56.319 3.65a14.91 14.91 0 017.066 28.957 14.908 14.908 0 01-18.131-18.686 14.91 14.91 0 0111.065-10.271&quot;/&gt;&lt;/svg&gt;&lt;/div&gt;&apos;,
+&apos;&lt;/div&gt;&apos;
+        ].join(&apos;\n&apos;);
+    }
+}
+
+export default function createPatchView (patchConnection) {
+    const name = &apos;simple-tuner-view&apos;;
+    if (!window.customElements.get(name))
+        window.customElements.define(name, class extends SimpleTunerView {
+            constructor () { super(patchConnection); }
+        });
+    return new (window.customElements.get(name))();
+}</UICode>
+</AmorphAlgorithm>

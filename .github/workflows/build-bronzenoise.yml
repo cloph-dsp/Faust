@@ -1,0 +1,42 @@
+name: Build Bronze Noise
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'BronzeNoise/**'
+      - '.github/workflows/build-bronzenoise.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'BronzeNoise/**'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build VST3 (Release x64)
+        run: |
+          $project = "projects/BronzeNoise-vst3.vcxproj"
+          $solutionDir = "${{ github.workspace }}\"
+          msbuild $project /p:Configuration=Release /p:Platform=x64 "/p:SolutionDir=$solutionDir" /v:m
+
+      - name: Upload VST3 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BronzeNoise-vst3-win64
+          path: build-win/BronzeNoise.vst3
+          if-no-files-found: error

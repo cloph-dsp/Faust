@@ -124,6 +124,7 @@ void Detector::Reset() {
 }
 
 void Detector::PushSample(double mono) {
+  if (!std::isfinite(mono)) mono = 0.0;  // RT-3: guard NaN/Inf before writing to ring buffer
   mBuffer[mWriteIdx] = mono;
   mWriteIdx = (mWriteIdx + 1) % kBufferSize;
   if (mSampleCount < kBufferSize) mSampleCount++;
@@ -254,7 +255,7 @@ double Detector::MedianFilter(double candidate) {
 }
 
 double Detector::SmoothPitch(double candidate) {
-  if (candidate <= 0.0) { mLastPitch = 0.0; return 0.0; }
+  if (!std::isfinite(candidate) || candidate <= 0.0) { mLastPitch = 0.0; return 0.0; }
   if (mLastPitch <= 0.0) { mLastPitch = candidate; return candidate; }
   const double ratio = candidate / mLastPitch;
   const double semitones = std::abs(12.0 * std::log2(ratio));
@@ -267,6 +268,7 @@ double Detector::SmoothPitch(double candidate) {
 }
 
 double Detector::SmoothCents(double candidate) {
+  if (!std::isfinite(candidate)) { mLastCents = 0.0; return 0.0; }
   const double absCents = std::abs(candidate);
   const double alpha = 1.0 / (1.0 + 0.05 * absCents) * (1.0 - 0.95 * mSmooth);
   mLastCents = (1.0 - alpha) * mLastCents + alpha * candidate;
@@ -300,7 +302,20 @@ void Detector::RunAnalysis() {
   }
 
   const double lvl = mResult.level.load();
-  if (lvl < 0.005) rawPitch = 0.0;
+  if (lvl < 0.005 || !std::isfinite(rawPitch)) rawPitch = 0.0;
+
+  // Glide A4 reference toward target to avoid abrupt pitch/note jump when user
+  // changes A4 mid-note.  Step is 30% of remaining diff per analysis pass (~47 Hz);
+  // 95% convergence takes ~7 passes ≈ 150ms — fast enough for responsiveness,
+  // slow enough to avoid audible click.
+  {
+    const double a4Target = mA4RefTarget.load(std::memory_order_relaxed);
+    const double a4Diff = a4Target - mA4Ref;
+    if (std::abs(a4Diff) > 0.01)
+      mA4Ref += a4Diff * 0.30;
+    else
+      mA4Ref = a4Target;
+  }
 
   const double medianPitch  = MedianFilter(rawPitch);
   const double smoothedPitch = SmoothPitch(medianPitch);
@@ -486,9 +501,9 @@ void TunerReadoutControl::Draw(IGraphics& g) {
                       mRECT.L + 170, mRECT.T + 190);
   const float sval = (float)(mTuner->GetParam(kParamSmoothing)->Value() / 100.0);
 
-  // Track bg + border.
-  g.FillRect(smoothBg, slTrack);
-  g.DrawRect(textDim, slTrack);
+  // Track bg + border (brighten border when hovering).
+  g.FillRect(mIsHovering ? IColor(255, 28, 28, 28) : smoothBg, slTrack);
+  g.DrawRect(mIsHovering ? accent : textDim, slTrack);
 
   // Fill from center to (center + direction*value).
   const float ctrX = slTrack.MW();
@@ -524,7 +539,7 @@ void TunerReadoutControl::Draw(IGraphics& g) {
     constexpr float kA4Gap  = 2.f;
     const float kA4W = kA4Cells * (kA4CellW + kA4Gap) - kA4Gap;
     const float kA4X = mRECT.MW() - kA4W / 2.f;
-    const float kA4Y = mRECT.B - 36.f;
+    const float kA4Y = mRECT.B - 44.f;
     const IRECT a4Bg(kA4X, kA4Y, kA4X + kA4W, kA4Y + kA4H);
 
     int selIdx = (int)mTuner->GetParam(kParamA4Ref)->Value();
@@ -539,6 +554,8 @@ void TunerReadoutControl::Draw(IGraphics& g) {
       bool active = (i == selIdx);
       if (active)
         g.FillRect(accent, cell.GetPadded(-1));  // teal fill for active cell
+      else if (i == mHoveredA4Cell)
+        g.FillRect(IColor(50, 10, 220, 200), cell.GetPadded(-1));  // subtle teal hover
       const IColor& cellText = active ? IColor(255, 245, 245, 245)  // near-white on teal
                                       : textMid;
       g.DrawText(IText(12, cellText, "TexasLED",
@@ -595,7 +612,7 @@ void TunerReadoutControl::OnMouseDown(float x, float y, const IMouseMod& mod) {
     constexpr float kA4Gap    = 2.f;
     const float kA4W = kA4Cells * (kA4CellW + kA4Gap) - kA4Gap;
     const float kA4X = mRECT.MW() - kA4W / 2.f;
-    const float kA4Y = mRECT.B - 36.f;
+    const float kA4Y = mRECT.B - 44.f;
     const IRECT a4Bg(kA4X, kA4Y, kA4X + kA4W, kA4Y + kA4H);
     if (a4Bg.Contains(x, y)) {
       int cell = (int)((x - a4Bg.L) / (kA4CellW + kA4Gap));
@@ -640,14 +657,44 @@ void TunerReadoutControl::OnMouseUp(float x, float y, const IMouseMod& mod) {
 void TunerReadoutControl::OnMouseOver(float x, float y, const IMouseMod& mod) {
   const bool wasHovering = mIsHovering;
   mIsHovering = mSmoothRect.Contains(x, y);
-  if (mIsHovering != wasHovering) SetDirty(false);
+
+  // A4 cell hover.
+  constexpr float kA4Cells  = 6.f;
+  constexpr float kA4CellW  = 30.f;
+  constexpr float kA4H      = 20.f;
+  constexpr float kA4Gap    = 2.f;
+  const float kA4W = kA4Cells * (kA4CellW + kA4Gap) - kA4Gap;
+  const float kA4X = mRECT.MW() - kA4W / 2.f;
+  const float kA4Y = mRECT.B - 44.f;
+  const IRECT a4Bg(kA4X, kA4Y, kA4X + kA4W, kA4Y + kA4H);
+  int newA4Cell = -1;
+  if (a4Bg.Contains(x, y)) {
+    newA4Cell = (int)((x - a4Bg.L) / (kA4CellW + kA4Gap));
+    if (newA4Cell < 0 || newA4Cell >= (int)kA4Cells) newA4Cell = -1;
+  }
+
+  // Tooltip: show a short contextual hint based on the region under the cursor.
+  // The platform layer only calls GetTooltip() on WM_MOUSEHOVER (first entry),
+  // not on every OnMouseOver, so this text must be a stable region-hint,
+  // not a per-cell dynamic value.
+  if (mIsHovering)
+    mTooltip.Set("Smoothing: drag to adjust / double-click to reset");
+  else if (newA4Cell >= 0)
+    mTooltip.Set("A4 reference: click to select");
+  else
+    mTooltip.Set("");
+
+  const bool a4Changed = (newA4Cell != mHoveredA4Cell);
+  mHoveredA4Cell = newA4Cell;
+
+  if (mIsHovering != wasHovering || a4Changed) SetDirty(false);
 }
 
 void TunerReadoutControl::OnMouseOut() {
-  if (mIsHovering) {
-    mIsHovering = false;
-    SetDirty(false);
-  }
+  if (mIsHovering) SetDirty(false);
+  mIsHovering = false;
+  mHoveredA4Cell = -1;
+  mTooltip.Set("");
 }
 
 void TunerReadoutControl::OnMouseDblClick(float x, float y, const IMouseMod& mod) {
@@ -686,7 +733,7 @@ Tuner::Tuner(const InstanceInfo& info)
   {
     int a4Idx = (int)GetParam(kParamA4Ref)->Value();
     static const double kA4Hz[] = {415.0, 430.0, 432.0, 440.0, 442.0, 444.0};
-    mDetector.SetA4Reference(kA4Hz[std::min(a4Idx, 5)]);
+    mDetector.SetA4Reference(kA4Hz[std::min(a4Idx, 5)], true);  // instant = true at init
   }
 
   // RT-1: flush-to-zero + denormals-are-zero for the audio-thread IIR RMS
@@ -708,6 +755,41 @@ Tuner::Tuner(const InstanceInfo& info)
   };
   mLayoutFunc = [&](IGraphics* g) { LayoutUI(g); };
 #endif
+}
+
+// ST-1: chunk state serialization with magic number validation.  iPlug2's
+// default SerializeParams/UnserializeParams handles the two exposed params
+// (Smoothing, A4) automatically; the magic + version guard catches corrupted
+// or cross-version state before it reaches the parameter system.
+static constexpr int32_t kTunerMagic   = 'TnR1';
+static constexpr int32_t kTunerVersion = 1;
+
+bool Tuner::SerializeState(IByteChunk& chunk) const {
+  chunk.Put(&kTunerMagic);
+  chunk.Put(&kTunerVersion);
+  return SerializeParams(chunk);
+}
+
+int Tuner::UnserializeState(const IByteChunk& chunk, int startPos) {
+  int pos = startPos;
+  int32_t magic = 0;
+  pos = chunk.Get(&magic, pos);
+  if (magic != kTunerMagic) {
+    // Magic mismatch — corrupted or unknown format.  Reset to defaults.
+    for (int i = 0; i < kNumParams; ++i) GetParam(i)->SetToDefault();
+    OnParamChange(kParamSmoothing);
+    OnParamChange(kParamA4Ref);
+    return pos;
+  }
+  int32_t version = 0;
+  pos = chunk.Get(&version, pos);
+  // Version 1 format — only one version currently.  Future migrations
+  // branch here.
+  pos = UnserializeParams(chunk, pos);
+  // Sync DSP to freshly loaded parameter values.
+  OnParamChange(kParamSmoothing);
+  OnParamChange(kParamA4Ref);
+  return pos;
 }
 
 void Tuner::OnReset() {
@@ -755,7 +837,8 @@ void Tuner::ProcessBlock(sample** inputs, sample** outputs, int nFrames) {
   if (std::isnan(runningRms) || runningRms < 0.0) runningRms = 0.0;
 
   for (int i = 0; i < nFrames; ++i) {
-    const double mono = 0.5 * ((double)inL[i] + (double)inR[i]);
+    double mono = 0.5 * ((double)inL[i] + (double)inR[i]);
+    if (!std::isfinite(mono)) mono = 0.0;  // RT-4: guard NaN/Inf before RMS + detector
     const double sq = mono * mono;
     runningRms = rmsCoeff * sq + (1.0 - rmsCoeff) * runningRms;
     mDetector.PushSample(mono);
@@ -787,7 +870,7 @@ void Tuner::OnIdle() {
     // samples / SR) that the detector consumed -- this is the metric that
     // matters for real-time budgeting regardless of the actual pass rate.
     const double slotUs = (double)TunerAnalysis::kAnalysisStride / GetSampleRate() * 1e6;
-    const double pctSlot = (slotUs > 0.0) ? (avgUs / slotUs * 100.0) : 0.0;
+    [[maybe_unused]] const double pctSlot = (slotUs > 0.0) ? (avgUs / slotUs * 100.0) : 0.0;
     DBGMSG("Tuner: analysis avg=%.1f us (%.2f%% of %d-sample slot @ %.0f Hz)\n",
            avgUs, pctSlot, (int)TunerAnalysis::kAnalysisStride, GetSampleRate());
   }

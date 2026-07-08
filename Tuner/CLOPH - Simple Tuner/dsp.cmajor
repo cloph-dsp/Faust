@@ -1,0 +1,270 @@
+processor GuitarTuner
+{
+    output stream float<2> out;
+    output event float pitchOut;
+    output event float clarityOut;
+    output event float centsOut;
+    input  stream float<2> in;
+    input  event float param1;
+
+    const int bufferSize = 2048;
+    const int maxLag     = 1024;
+    const int framesPerSecond = 30;
+
+    float[bufferSize] sampleBuffer;
+    wrap<bufferSize>  writePosition;
+    float referenceFreq = 440.0f;
+    float smoothPitch = 0.0f;
+    float smoothCents = 0.0f;
+
+    // Pre-emphasis (alpha=0.97 boosts fundamentals over harmonics)
+    float emphZ1 = 0.0f;
+
+    // DC blocker (20Hz one-pole HP)
+    float dcZ1 = 0.0f;
+    float dcY1 = 0.0f;
+    float dcA  = 0.0f;
+
+    // 9-element median ring (octave-jump rejection)
+    float[9] pitchHist;
+    int pitchHistPos = 0;
+    int pitchHistCount = 0;
+
+    // Cents smoothing coefficient (from init)
+    float centsSmoothAlpha = 0.39f;
+
+    void init()
+    {
+        float sr = float (processor.frequency);
+        dcA = exp (-2.0f * 3.14159265359f * 20.0f / sr);
+        float ar = float (framesPerSecond);
+        centsSmoothAlpha = 1.0f - exp (-1.0f / (0.120f * ar));
+    }
+
+    void main()
+    {
+        loop
+        {
+            int samplesPerFrame = int(float(processor.frequency) / float(framesPerSecond));
+            loop (samplesPerFrame)
+            {
+                float mono = (in[0] + in[1]) * 0.5f;
+                if (mono != mono) mono = 0.0f;
+                mono = clamp (mono, -2.0f, 2.0f);
+
+                // DC blocker
+                float dcY = dcA * (dcY1 + mono - dcZ1);
+                dcZ1 = mono;
+                dcY1 = dcY;
+
+                // Pre-emphasis: y[n] = x[n] - 0.97 * x[n-1]
+                float emph = dcY - 0.97f * emphZ1;
+                emphZ1 = dcY;
+
+                sampleBuffer[writePosition] = emph;
+                writePosition += 1;
+                out <- in;
+                advance();
+            }
+            runAnalysis();
+        }
+    }
+
+    // YIN pitch detection (de Cheveigne & Kawahara, 2002) with
+    // adaptive threshold, asymmetric smoothing, and median filtering.
+    void runAnalysis()
+    {
+        wrap<bufferSize> start = writePosition;
+
+        // Signal level for adaptive threshold (O(N), negligible vs O(N^2) YIN).
+        float sigEnergy = 0.0f;
+        int ei = 0;
+        for (; ei < maxLag; ++ei)
+        {
+            float s = sampleBuffer.at (start + ei);
+            sigEnergy += s * s;
+        }
+        float avgPower = sigEnergy / float (maxLag);
+        float sigLevel = clamp (avgPower * 100.0f, 0.0f, 1.0f);
+        // Strong signal -> strict 0.10; weak signal -> lenient 0.18.
+        float adaptThreshold = 0.10f + (1.0f - sigLevel) * 0.08f;
+
+        // Step 1: Difference function d'(tau) = sum (x[j] - x[j+tau])^2
+        float[maxLag] diff;
+        int tau = 0;
+        for (; tau < maxLag; ++tau)
+        {
+            float sum = 0.0f;
+            int n = 0;
+            for (; n < maxLag - tau; ++n)
+            {
+                float s1 = sampleBuffer.at (start + n);
+                float s2 = sampleBuffer.at (start + n + tau);
+                float d = s1 - s2;
+                sum += d * d;
+            }
+            diff[tau] = sum;
+        }
+
+        // Step 2: Cumulative Mean Normalized Difference Function.
+        diff[0] = 1.0f;
+        float cumSum = 0.0f;
+        int t = 1;
+        for (; t < maxLag; ++t)
+        {
+            cumSum += diff[t];
+            if (cumSum > 1e-30f)
+                diff[t] = diff[t] * float (t) / cumSum;
+            else
+                diff[t] = 1.0f;
+        }
+
+        // Step 3: Absolute threshold + local minimum descent.
+        int bestLag = 0;
+        float bestVal = 1.0f;
+
+        int tt = 2;
+        for (; tt < maxLag - 1; ++tt)
+        {
+            if (diff[tt] < adaptThreshold)
+            {
+                while (tt < maxLag - 1 && diff[tt + 1] < diff[tt])
+                    tt += 1;
+                bestLag = tt;
+                bestVal = diff[tt];
+                break;
+            }
+        }
+
+        // Fallback: global minimum with clarity floor.
+        if (bestLag == 0)
+        {
+            float minVal = 1.0f;
+            int mt = 2;
+            for (; mt < maxLag; ++mt)
+            {
+                if (diff[mt] < minVal)
+                {
+                    minVal = diff[mt];
+                    bestLag = mt;
+                }
+            }
+            bestVal = minVal;
+            if (bestLag < 2 || bestVal > 0.7f)
+            {
+                pitchOut    <- 0.0f;
+                clarityOut  <- 0.0f;
+                centsOut    <- 0.0f;
+                return;
+            }
+        }
+
+        // Step 4: Parabolic interpolation (sub-sample accuracy).
+        float yM = diff[bestLag - 1];
+        float y0 = diff[bestLag];
+        float yP = diff[bestLag + 1];
+        float denom = yM - 2.0f * y0 + yP;
+
+        float refinedLag = float (bestLag);
+        if (denom > 1e-30f)
+            refinedLag += 0.5f * (yM - yP) / denom;
+
+        if (refinedLag <= 0.0f)
+        {
+            pitchOut    <- 0.0f;
+            clarityOut  <- 0.0f;
+            centsOut    <- 0.0f;
+            return;
+        }
+
+        float frequency = float (processor.frequency) / refinedLag;
+        if (frequency != frequency || frequency > 20000.0f || frequency < 20.0f)
+        {
+            pitchOut    <- 0.0f;
+            clarityOut  <- 0.0f;
+            centsOut    <- 0.0f;
+            return;
+        }
+
+        // Step 5: 9-element median filter (octave-jump rejection).
+        pitchHist[pitchHistPos] = frequency;
+        pitchHistPos = (pitchHistPos + 1) % 9;
+        if (pitchHistCount < 9) pitchHistCount += 1;
+        float medianFreq = median9();
+
+        // Step 6: Asymmetric pitch smoothing.
+        // Snap fast on new notes (>2 semitones), glide on transitions,
+        // lock rock-steady when stable (<0.5 semitones).
+        if (smoothPitch > 1.0f && medianFreq > 1.0f)
+        {
+            float ratio = medianFreq / smoothPitch;
+            float semitoneDiff = abs (12.0f * (log (ratio) / log (2.0f)));
+            float alpha;
+            if (semitoneDiff > 2.0f)
+                alpha = 0.6f;
+            else if (semitoneDiff > 0.5f)
+                alpha = 0.2f;
+            else
+                alpha = 0.03f;
+            smoothPitch += alpha * (medianFreq - smoothPitch);
+        }
+        else
+        {
+            smoothPitch += 0.3f * (medianFreq - smoothPitch);
+        }
+        if (smoothPitch < 1e-30f) smoothPitch = 0.0f;
+
+        // Cents deviation from nearest equal-tempered note.
+        if (smoothPitch > 1.0f)
+        {
+            float note  = 12.0f * (log (smoothPitch / referenceFreq) / log (2.0f)) + 69.0f;
+            float cents = (note - rint (note)) * 100.0f;
+            // Asymmetric cents smoothing: fast when far from center, slow when close
+            float centsDelta = cents - smoothCents;
+            float centsAlpha = centsSmoothAlpha;
+            if (abs (centsDelta) > 0.3f)
+                centsAlpha = centsSmoothAlpha;
+            else
+                centsAlpha = centsSmoothAlpha * 0.02f;
+            smoothCents += centsAlpha * centsDelta;
+            if (smoothCents < 1e-30f && smoothCents > -1e-30f) smoothCents = 0.0f;
+        }
+
+        // Clarity: power curve for more intuitive confidence mapping.
+        float rawClarity = 1.0f - bestVal;
+        float clarity = rawClarity * rawClarity;
+
+        pitchOut    <- smoothPitch;
+        clarityOut  <- clarity;
+        centsOut    <- smoothCents;
+    }
+
+    // Median of up to 9 pitch history values.
+    float median9()
+    {
+        int count = pitchHistCount;
+        if (count <= 0) return 0.0f;
+        if (count == 1) return pitchHist[0];
+
+        float[9] tmp;
+        int i = 0;
+        for (; i < count; ++i)
+            tmp[i] = pitchHist[i];
+
+        int j = 0;
+        for (; j < count - 1; ++j)
+        {
+            int k = 0;
+            for (; k < count - j - 1; ++k)
+            {
+                if (tmp[k] > tmp[k + 1])
+                {
+                    float tv = tmp[k];
+                    tmp[k] = tmp[k + 1];
+                    tmp[k + 1] = tv;
+                }
+            }
+        }
+        return tmp[count / 2];
+    }
+}

@@ -304,4 +304,45 @@ MetallicSnare/MetalSnare-20260406T192740Z-3-001/MetalSnare/XILENT_snare_metal_03
 MetallicSnare/MetalSnare-20260406T192740Z-3-001/MetalSnare/XILENT_snare_metal_04.wav
 MetallicSnare/MetalSnare-20260406T192740Z-3-001/MetalSnare/XILENT_snare_metal_05.wav
 
-# Deepwork progress files.slim/deepwork/
+# Deepwork progress files
+.slim/deepwork/
+.slim/
+
+# -------------------------------------------
+# Sisyphus session state and ad-hoc tooling
+# -------------------------------------------
+.omo/
+.omo/**
+*.obj
+Tuner VSTbuild-win/
+DustStopCpp/.opencode/
+
+# -------------------------------------------
+# Root-level debug scripts (one-off tools from prior sessions)
+# Real build/deploy scripts live in subdirectories (Grungr/, Tuner/, etc.).
+# -------------------------------------------
+/*.ps1
+/*.py
+.tmp*.json
+.tmp*.yml
+.tmp*.yaml
+.tmp*.md
+latency_probe.obj
+sanity_check.obj
+
+# -------------------------------------------
+# Deploy artifacts and sample libraries
+# -------------------------------------------
+common files/
+MetallicSnare/
+MetallicSnare/**
+
+# -------------------------------------------
+# Amorph runtime state (VST3/AU/CMajor scratch files)
+# -------------------------------------------
+.amorph/
+.amorph/**
+*/.amorph/
+*/.amorph/**
+*/ai_session.json
+*/compile_status.json

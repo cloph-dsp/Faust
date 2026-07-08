@@ -17,7 +17,12 @@
 
 #define PLUG_CHANNEL_IO "1-1 2-2"
 
-#define PLUG_LATENCY 0
+// ponytail: Grungr signal chain adds ~70 samples of IIR group delay
+// (HPF/LPF/shelf/peak stacks across 6 stages). Set to 128 to over-estimate by ~1ms
+// so hosts fully compensate parallel routing / sidechain / dry-wet without comb
+// filtering. Empirical measurement blocked by DSP startup NaN (clamped in
+// ProcessBlock). Refine via impulse-response probe if startup NaN is fixed.
+#define PLUG_LATENCY 128
 #define PLUG_TYPE 0
 #define PLUG_DOES_MIDI_IN 0
 #define PLUG_DOES_MIDI_OUT 0
@@ -28,7 +33,7 @@
 #define PLUG_HEIGHT 811
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
-#define PLUG_HOST_RESIZE 1
+#define PLUG_HOST_RESIZE 0
 #define PLUG_MIN_WIDTH 360
 #define PLUG_MIN_HEIGHT 608
 #define PLUG_MAX_WIDTH 960
@@ -63,6 +68,7 @@
 #define GRUNGE_BG_SVG_FN "GrungrFaceplate.svg"
 #define POWERBUTTON_SVG_FN "knob-cropped.svg"
 #define CLOPH_LOGO_SVG_FN "cloph-logo.svg"
+#define GRUNGR_LOGO_SVG_FN "logo-grungr.svg"
 #define NOMOREHERO_FN "NoMoreHeroV2-Regular.ttf"
 #define FUTUREERODED_FN "Future2097Eroded-Regular.otf"
 #define ROBOTO_FN "Roboto-Regular.ttf"

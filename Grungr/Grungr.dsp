@@ -16,8 +16,15 @@ grunge_knob = hslider("[1]Grunge[style:knob]", 0.70, 0, 1, 0.01) : si.smoo;
 butt_knob = hslider("[2]Butt[style:knob]", 0.62, 0, 1, 0.01) : si.smoo;
 face_knob = hslider("[3]Face[style:knob]", 0.56, 0, 1, 0.01) : si.smoo;
 loud_knob = hslider("[4]Loud[style:knob]", 0.72, 0, 1, 0.01) : si.smoo;
-enhanced_switch = checkbox("[5]Enhanced[style:switch]") : si.smoo;
+voicing_raw = hslider("[5]RAW Voicing[style:knob]", 0, 0, 2, 1);
 bypass_switch = checkbox("[6]Bypass[style:switch]");
+
+mode_select = int(voicing_raw + 0.5) : min(2) : max(0);
+raw_mode = (mode_select == 0);
+enhanced_mode = (mode_select == 1);
+bass_mode = (mode_select == 2);
+mod_active = enhanced_mode : si.smoo;
+bass_active = bass_mode : si.smoo;
 
 //============================================================================
 // Helpers and Report-Derived Constants
@@ -42,15 +49,18 @@ butt_taper = audio_pot(butt_knob, 0.82);
 face_taper = audio_pot(face_knob, 0.88);
 loud_taper = audio_pot(loud_knob, 1.65);
 enhanced_drive_t = clip01((grunge_knob - 0.55) / 0.45);
+bass_drive_t = clip01((grunge_knob - 0.40) / 0.60);
 drive_tone_t = clip01((grunge_knob - 0.35) / 0.65);
 enhanced_edge_t = clip01((grunge_knob - 0.70) / 0.30);
-enhanced_mode = enhanced_switch;
-voicing_blend = enhanced_mode * enhanced_drive_t;
-stock_blend = 1.0 - voicing_blend;
+bass_edge_t = clip01((grunge_knob - 0.65) / 0.35);
+voicing_blend = mod_active * enhanced_drive_t;
+bass_voicing_blend = bass_active * bass_drive_t;
+stock_blend = 1.0 - (voicing_blend + bass_voicing_blend);
 drive_floor = 0.07 * (1.0 - grunge_drive);
 stock_drive_lift = stock_blend * (0.22 * (1.0 - grunge_drive));
 enhanced_drive_lift = voicing_blend * (0.10 * (1.0 - grunge_drive) + 0.05 * grunge_edge);
-drive_core = clip01(grunge_drive + drive_floor + stock_drive_lift + enhanced_drive_lift);
+bass_drive_lift = bass_voicing_blend * (0.08 * (1.0 - grunge_drive) + 0.03 * bass_edge_t);
+drive_core = clip01(grunge_drive + drive_floor + stock_drive_lift + enhanced_drive_lift + bass_drive_lift);
 
 instrument_trim = 0.20;
 stock_low_hz = 120.0;
@@ -66,7 +76,7 @@ face_air = 0.50 + 0.50 * face_taper;
 
 // Enhanced mode is allowed to depart from stock voicing, but raw mode must
 // stay pinned to the measured pedal path when the switch is off.
-enhanced_tight_t = enhanced_mode * drive_tone_t;
+enhanced_tight_t = mod_active * drive_tone_t;
 enhanced_stage_relief_db = voicing_blend * (0.90 + 1.70 * grunge_drive);
 enhanced_late_gain_db = voicing_blend * (0.70 + 1.80 * grunge_edge);
 enhanced_clip_relief = voicing_blend * (0.020 + 0.015 * (1.0 - grunge_drive));
@@ -81,41 +91,75 @@ enhanced_presence_trim_db = enhanced_tight_t * face_air * (0.20 + 0.40 * (1.0 - 
 enhanced_fizz_trim_db = -enhanced_tight_t * face_air * (0.90 + 1.80 * grunge_edge);
 enhanced_output_makeup_db = enhanced_tight_t * (0.35 + 0.45 * grunge_drive - 0.25 * grunge_edge);
 
+// MOD voicing refinements — modern, polished, professional character.
+// Pre-emphasis / de-emphasis around clipping reduces the harsh harmonics that
+// land in the 3–5 kHz band; an HF intermodulation notch catches the sum/diff
+// products that build up with complex chord work; a steeper sub-bass HPF
+// keeps the low end defined instead of loose. All gated on voicing_blend so
+// RAW mode stays bit-for-bit unchanged.
+mod_preemph_db = voicing_blend * (1.3 + 0.5 * (1.0 - grunge_drive));
+mod_deemph_db = -mod_preemph_db;
+mod_preemph_hz = 3500.0;
+mod_hf_im_notch_hz = 4500.0;
+mod_hf_im_notch_q = 1.5;
+mod_hf_im_notch_db = -voicing_blend * (1.8 + 0.6 * grunge_edge);
+mod_sub_hpf_hz = max(20.0, mod_active * (40.0 + 12.0 * grunge_drive));
+
+// Bass mode is optimized for bass guitar: lower gain staging for hot inputs,
+// minimal HPF to preserve low fundamentals, higher clip thresholds for
+// headroom, and more compression for sustain.
+bass_stage_relief_db = bass_voicing_blend * (1.20 + 2.00 * grunge_drive);
+bass_late_gain_db = bass_voicing_blend * (0.50 + 1.50 * bass_edge_t);
+bass_clip_relief = bass_voicing_blend * (0.025 + 0.020 * (1.0 - grunge_drive));
+bass_bias_shift = -bass_voicing_blend * (0.003 + 0.005 * bass_edge_t);
+bass_stage2_hpf_boost_hz = bass_voicing_blend * (8.0 + 12.0 * grunge_drive);
+bass_stage3_hpf_boost_hz = bass_voicing_blend * (6.0 + 10.0 * grunge_drive);
+bass_stage1_lp_trim_hz = bass_voicing_blend * (200.0 + 600.0 * bass_edge_t);
+bass_stage2_lp_trim_hz = bass_voicing_blend * (160.0 + 460.0 * bass_edge_t);
+bass_stage3_lp_trim_hz = bass_voicing_blend * face_air * (320.0 + 720.0 * bass_edge_t);
+bass_mid_scoop_trim_db = bass_voicing_blend * 3.0;
+bass_fizz_shelf_hz = 4200.0 + (2500.0 - 4200.0) * bass_active;
+bass_fizz_trim_db = -bass_voicing_blend * face_air * (0.70 + 1.40 * bass_edge_t);
+bass_output_makeup_db = bass_voicing_blend * (0.50 + 0.55 * grunge_drive - 0.20 * bass_edge_t);
+bass_power_sag = bass_voicing_blend * (0.024 + 0.050 * grunge_drive * grunge_drive);
+bass_stage_sag_floor_offset = bass_voicing_blend * (-0.08);
+bass_output_sag_floor_offset = bass_voicing_blend * (-0.06);
+
 // The report calls out the 4558's 1.0 V/us slew rate as a meaningful part of
 // the pedal character. A fixed-step ramp is a stable way to emulate that limit.
 opamp_slew = ba.ramp(ma.SR / 1000000.0);
 
-stage1_gain_db = 18.0 + 19.0 * drive_core - enhanced_stage_relief_db;
-stage2_gain_db = 12.0 + 14.0 * drive_core - 0.65 * enhanced_stage_relief_db;
-stage3_gain_db = 6.0 + 6.0 * drive_core + enhanced_late_gain_db;
+stage1_gain_db = 18.0 + 19.0 * drive_core - enhanced_stage_relief_db - bass_stage_relief_db;
+stage2_gain_db = 12.0 + 14.0 * drive_core - 0.65 * (enhanced_stage_relief_db + bass_stage_relief_db);
+stage3_gain_db = 6.0 + 6.0 * drive_core + enhanced_late_gain_db + bass_late_gain_db;
 
-stage1_clip_threshold = 0.76 - 0.10 * drive_core + enhanced_clip_relief;
-stage2_clip_threshold = 0.74 - 0.12 * drive_core + 0.85 * enhanced_clip_relief;
-stage2_clip_bias = -0.010 - 0.018 * drive_core + enhanced_bias_shift;
+stage1_clip_threshold = 0.76 - 0.10 * drive_core + enhanced_clip_relief + bass_clip_relief;
+stage2_clip_threshold = 0.74 - 0.12 * drive_core + 0.85 * (enhanced_clip_relief + bass_clip_relief);
+stage2_clip_bias = -0.010 - 0.018 * drive_core + enhanced_bias_shift + bass_bias_shift;
 stage3_pos_threshold = 1.10 - 0.16 * drive_core;
 stage3_neg_threshold = 0.74 - 0.10 * drive_core;
 stage3_led_pos_threshold = 1.62 - 0.12 * drive_core;
 stage3_led_neg_threshold = 1.08 - 0.08 * drive_core;
 stage3_led_mix = voicing_blend * enhanced_edge_t * (0.08 + 0.34 * grunge_edge);
 
-stage1_lp_hz = 10800.0 - 2000.0 * drive_core - enhanced_stage1_lp_trim_hz;
-stage2_hpf_hz = 80.0 + 25.0 * drive_core + 12.0 * voicing_blend + enhanced_stage2_hpf_boost_hz;
-stage2_lp_hz = 8400.0 - 1600.0 * drive_core - enhanced_stage2_lp_trim_hz;
-stage3_hpf_hz = 110.0 + 20.0 * drive_core + enhanced_stage3_hpf_boost_hz;
-stage3_lp_hz = 11200.0 - 1800.0 * drive_core - 900.0 * grunge_edge - enhanced_stage3_lp_trim_hz;
-tone_mid_scoop_db = stock_mid_scoop_db + drive_tone_t * (0.95 - 0.55 * grunge_drive);
+stage1_lp_hz = 10800.0 - 2000.0 * drive_core - enhanced_stage1_lp_trim_hz - bass_stage1_lp_trim_hz;
+stage2_hpf_hz = 80.0 + 25.0 * drive_core + 12.0 * voicing_blend + enhanced_stage2_hpf_boost_hz + bass_stage2_hpf_boost_hz;
+stage2_lp_hz = 8400.0 - 1600.0 * drive_core - enhanced_stage2_lp_trim_hz - bass_stage2_lp_trim_hz;
+stage3_hpf_hz = 110.0 + 20.0 * drive_core + enhanced_stage3_hpf_boost_hz + bass_stage3_hpf_boost_hz;
+stage3_lp_hz = 11200.0 - 1800.0 * drive_core - 900.0 * grunge_edge - enhanced_stage3_lp_trim_hz - bass_stage3_lp_trim_hz;
+tone_mid_scoop_db = stock_mid_scoop_db + drive_tone_t * (0.95 - 0.55 * grunge_drive) + bass_mid_scoop_trim_db;
 presence_peak_hz = 1450.0;
 presence_peak_q = 0.72;
 presence_peak_db = drive_tone_t * face_air * (0.70 - 0.30 * grunge_drive) + enhanced_presence_trim_db;
 output_lp_hz = stock_output_lp_hz - drive_tone_t * face_air * (900.0 * grunge_drive + 650.0 * grunge_edge) - enhanced_tight_t * face_air * (350.0 + 850.0 * grunge_edge);
 im_notch_db = -3.0 * voicing_blend * enhanced_edge_t;
-power_sag = voicing_blend * (0.016 + 0.040 * grunge_drive * grunge_drive);
-stage_sag_floor = 0.76 + 0.04 * stock_blend;
-output_sag_floor = 0.84 + 0.03 * stock_blend;
+power_sag = voicing_blend * (0.016 + 0.040 * grunge_drive * grunge_drive) + bass_power_sag;
+stage_sag_floor = 0.76 + 0.04 * stock_blend + bass_stage_sag_floor_offset;
+output_sag_floor = 0.84 + 0.03 * stock_blend + bass_output_sag_floor_offset;
 
 low_shelf_db = lininterp(-9.0, 15.0, butt_taper);
 high_shelf_db = lininterp(-8.0, 11.0, face_taper);
-output_gain = loud_taper * db2lin(0.95 - 1.10 * grunge_edge * grunge_edge + 2.1 * stock_blend * (drive_core - grunge_drive) - 0.55 * voicing_blend * enhanced_edge_t + enhanced_output_makeup_db);
+output_gain = loud_taper * db2lin(0.95 - 1.10 * grunge_edge * grunge_edge + 2.1 * stock_blend * (drive_core - grunge_drive) - 0.55 * voicing_blend * enhanced_edge_t + enhanced_output_makeup_db + bass_output_makeup_db);
 
 centered_soft_clip(threshold, drive, bias) =
     +(bias)
@@ -149,6 +193,7 @@ hybrid_ground_clip = \(x).(
 input_buffer = _
     : *(instrument_trim)
     : fi.highpass(1, stock_input_hpf_hz + enhanced_input_hpf_hz)
+    : fi.highpass(2, mod_sub_hpf_hz)
     : fi.lowpass(1, stock_input_lp_hz)
     : centered_soft_clip(1.8, 0.40 + 0.07 * grunge_drive - 0.03 * enhanced_tight_t, 0.01);
 
@@ -174,7 +219,9 @@ third_opamp_stage = _
     : *(db2lin(stage3_gain_db))
     : opamp_slew
     : dynamic_sag(power_sag, stage_sag_floor)
+    : fi.high_shelf(mod_preemph_db, mod_preemph_hz)
     : hybrid_ground_clip
+    : fi.high_shelf(mod_deemph_db, mod_preemph_hz)
     : fi.lowpass(2, stage3_lp_hz)
     : fi.dcblocker;
 
@@ -189,7 +236,8 @@ output_buffer = _
     : tone_stack
     : *(stock_output_trim)
     : fi.highpass(1, 30)
-    : fi.high_shelf(enhanced_fizz_trim_db, 4200.0)
+    : fi.high_shelf(enhanced_fizz_trim_db + bass_fizz_trim_db, bass_fizz_shelf_hz)
+    : fi.peak_eq_cq(mod_hf_im_notch_db, mod_hf_im_notch_hz, mod_hf_im_notch_q)
     : fi.lowpass(2, output_lp_hz)
     : *(output_gain)
     : opamp_slew

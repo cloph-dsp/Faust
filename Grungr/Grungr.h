@@ -16,7 +16,7 @@
 #include "DSP/GrungrFaustDSP.h"
 #endif
 
-const int kNumPresets = 5;
+const int kNumPresets = 6;
 
 enum EParams
 {

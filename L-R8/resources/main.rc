@@ -6,6 +6,9 @@
 
 #include "..\config.h"
 
+// ── SVG resources ─────────────────────────────────────────────────────────
+KNOB_CAP_FN SVG KNOB_CAP_FN
+
 // ── Windows DPI awareness manifest ───────────────────────────────────────────
 // Declares PerMonitorV2 DPI awareness so the plugin renders correctly in hosts
 // on high-DPI displays without automatic OS scaling.

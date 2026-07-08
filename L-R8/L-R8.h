@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 #include <array>
-#include <chrono>
+#include <atomic>
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "FaustCompat.h"
@@ -39,15 +39,11 @@ public:
 
   void OnParamChange(int paramIdx) override;
   void OnReset() override;
+  void OnUIClose() override;
   void ProcessBlock(iplug::sample** inputs, iplug::sample** outputs, int nFrames) override;
 
   bool SerializeState(IByteChunk& chunk) const override;
   int UnserializeState(const IByteChunk& chunk, int startPos) override;
-
-  // Called by the visualizer to get current processing data
-  const float* GetVisualizerDataL() const { return mVisBufferL.data(); }
-  const float* GetVisualizerDataR() const { return mVisBufferR.data(); }
-  int GetVisualizerDataSize() const { return static_cast<int>(mVisBufferL.size()); }
 
 private:
   void LayoutUI(iplug::igraphics::IGraphics* pGraphics);
@@ -82,5 +78,11 @@ private:
   float mTargetBypassGain = 1.0f;
 
   // Opaque cached pointer to the StereoVisualizerControl (set during LayoutUI)
-  void* mVisControlPtr = nullptr;
+  // Atomic for safe read from audio thread, reset in OnUIClose()
+  std::atomic<void*> mVisControlPtr{nullptr};
+  
+  // Busy flag: audio thread sets this while using the scope, OnUIClose spins until clear
+  std::atomic<int> mVisBusy{0};
+
+  bool mTransportWasRunning = false;
 };

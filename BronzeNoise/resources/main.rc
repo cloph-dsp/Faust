@@ -1,0 +1,22 @@
+// Resource file for BronzeNoise VST3
+// Embeds SVG knob cap and font directly into the DLL so no
+// external Contents/Resources files are required at runtime.
+#include "winres.h"
+
+#ifndef APSTUDIO_INVOKED
+
+#include "..\config.h"
+
+// ── SVG knob cap ─────────────────────────────────────────────────────────────
+KNOB_SVG_FN  SVG  KNOB_SVG_FN
+
+// ── iPlug2 logo ──────────────────────────────────────────────────────────────
+CLOPH_LOGO_FN  SVG  CLOPH_LOGO_FN
+
+// ── Fonts ────────────────────────────────────────────────────────────────────
+IRON_SANS_FN  TTF  IRON_SANS_FN
+ROBOTO_FN  TTF  ROBOTO_FN
+
+IDI_ICON1 ICON "BronzeNoise.ico"
+
+#endif    // not APSTUDIO_INVOKED

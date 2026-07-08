@@ -145,6 +145,7 @@ BEGIN
     "GRUNGE_BG_SVG_FN SVG \"GrungrFaceplate.svg\"\r\n"
     "POWERBUTTON_SVG_FN SVG \"knob-cropped.svg\"\r\n"
     "CLOPH_LOGO_SVG_FN SVG \"cloph-logo.svg\"\r\n"
+    "GRUNGR_LOGO_SVG_FN SVG \"logo-grungr.svg\"\r\n"
     "BOXPOT_FN TTF \"boxpot1.ttf\"\r\n"
     "STOMP_SOLE_SVG_FN SVG \"stomp-sole.svg\"\0"
 
@@ -243,6 +244,7 @@ FUTUREERODED_FN OTF "Future2097Eroded-Regular.otf"
 GRUNGE_BG_SVG_FN SVG "GrungrFaceplate.svg"
 POWERBUTTON_SVG_FN SVG "knob-cropped.svg"
 CLOPH_LOGO_SVG_FN SVG "cloph-logo.svg"
+GRUNGR_LOGO_SVG_FN SVG "logo-grungr.svg"
 ROBOTO_FN TTF ROBOTO_FN
 BOXPOT_FN TTF "boxpot1.ttf"
 STOMP_SOLE_SVG_FN SVG "stomp-sole.svg"

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "D:/Github/VST3 Developments/oh-my-vst"
+  ],
+  "agent": {
+    "vst-spec": {
+      "description": "Define VST plugin specification and requirements",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash"
+    },
+    "vst-architect": {
+      "description": "Design VST plugin architecture and choose framework",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash"
+    },
+    "vst-dsp": {
+      "description": "Implement VST plugin DSP algorithms with numerical validation",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash"
+    },
+    "vst-gui": {
+      "description": "Design and implement VST plugin GUI with responsive layouts",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash"
+    },
+    "vst-validate": {
+      "description": "Quality validation and testing for VST plugins",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash"
+    }
+  }
+}

@@ -12,22 +12,61 @@ Grungr::Grungr(const InstanceInfo& info)
 {
   GetParam(kParamGrunge)->InitDouble("Grunge", 0.70, 0.0, 1.0, 0.01);
   GetParam(kParamGrunge)->SetDisplayFunc([](double val, WDL_String& str) {
-    str.SetFormatted(32, "%d%%", static_cast<int>(std::round(val * 100.0)));
+    int v = static_cast<int>(std::round(val * 100.0));
+    if (v >= 10) {
+      char buf[16];
+      snprintf(buf, sizeof(buf), "%d", v);
+      std::string s;
+      for (char* p = buf; *p; ++p) {
+        if (p != buf) s += ' ';
+        s += *p;
+      }
+      s += " %";
+      str.Set(s.c_str());
+    } else {
+      str.SetFormatted(32, "%d%%", v);
+    }
   });
   GetParam(kParamButt)->InitDouble("Butt", 0.62, 0.0, 1.0, 0.01);
   GetParam(kParamButt)->SetDisplayFunc([](double val, WDL_String& str) {
-    str.SetFormatted(32, "%d%%", static_cast<int>(std::round(val * 100.0)));
+    int v = static_cast<int>(std::round(val * 100.0));
+    if (v >= 10) {
+      char buf[16];
+      snprintf(buf, sizeof(buf), "%d", v);
+      std::string s;
+      for (char* p = buf; *p; ++p) {
+        if (p != buf) s += ' ';
+        s += *p;
+      }
+      s += " %";
+      str.Set(s.c_str());
+    } else {
+      str.SetFormatted(32, "%d%%", v);
+    }
   });
   GetParam(kParamFace)->InitDouble("Face", 0.56, 0.0, 1.0, 0.01);
   GetParam(kParamFace)->SetDisplayFunc([](double val, WDL_String& str) {
-    str.SetFormatted(32, "%d%%", static_cast<int>(std::round(val * 100.0)));
+    int v = static_cast<int>(std::round(val * 100.0));
+    if (v >= 10) {
+      char buf[16];
+      snprintf(buf, sizeof(buf), "%d", v);
+      std::string s;
+      for (char* p = buf; *p; ++p) {
+        if (p != buf) s += ' ';
+        s += *p;
+      }
+      s += " %";
+      str.Set(s.c_str());
+    } else {
+      str.SetFormatted(32, "%d%%", v);
+    }
   });
   GetParam(kParamLoud)->InitDouble("Loud", 0.72, 0.0, 1.0, 0.01);
   GetParam(kParamLoud)->SetDisplayFunc([](double val, WDL_String& str) {
     if (val <= 0.01) str.Set("-inf dB");
     else str.SetFormatted(32, "%.1f dB", val * 66.0 - 60.0);
   });
-  GetParam(kParamRawVoicing)->InitBool("RAW Voicing", false, "", 0, "", "RAW", "MOD");
+  GetParam(kParamRawVoicing)->InitEnum("RAW Voicing", 0, {"RAW", "MOD", "BASS"});
   GetParam(kParamBypass)->InitBool("Bypass", false);
   
   // Factory presets: order matches EParams enum (Grunge, Butt, Face, Loud, RawVoicing, Bypass)
@@ -36,6 +75,7 @@ Grungr::Grungr(const InstanceInfo& info)
   MakePreset("Full Grunge", 0.95, 0.80, 0.80, 0.65, 1., 0.);
   MakePreset("Bass Boost", 0.50, 1.00, 0.30, 0.68, 0., 0.);
   MakePreset("Bright", 0.40, 0.30, 1.00, 0.70, 0., 0.);
+  MakePreset("Bass Grunge", 0.75, 0.85, 0.50, 0.70, 2., 0.);
 
 #if IPLUG_DSP
   mFaustDSP.buildUserInterface(&mFaustUI);
@@ -51,7 +91,6 @@ Grungr::Grungr(const InstanceInfo& info)
       pGraphics->EnableMouseOver(true);
       pGraphics->EnableTooltips(true);
       pGraphics->EnableMultiTouch(true);
-      pGraphics->AttachCornerResizer(EUIResizerMode::Scale, false);
       pGraphics->SetKeyHandlerFunc([this](const IKeyPress& key, bool isUp) {
         return grungr::ui::HandleGlobalKey(GetUI(), key, isUp);
       });
@@ -106,8 +145,8 @@ void Grungr::SyncParamToFaust(int paramIdx)
       mFaustUI.setParamValue("Loud", static_cast<FAUSTFLOAT>(GetParam(kParamLoud)->Value()));
       break;
     case kParamRawVoicing:
-      // Faust exposes this switch as "Enhanced": 0 = RAW, 1 = ENHANCED.
-      mFaustUI.setParamValue("Enhanced", GetParam(kParamRawVoicing)->Bool() ? FAUSTFLOAT(1.0) : FAUSTFLOAT(0.0));
+      // Int() returns enum index 0=RAW, 1=MOD, 2=BASS — Faust expects these raw values.
+      mFaustUI.setParamValue("RAW Voicing", static_cast<FAUSTFLOAT>(GetParam(kParamRawVoicing)->Int()));
       break;
     case kParamBypass:
       mFaustUI.setParamValue("Bypass", GetParam(kParamBypass)->Bool() ? FAUSTFLOAT(1.0) : FAUSTFLOAT(0.0));
@@ -129,6 +168,22 @@ void Grungr::OnReset()
   {
     SyncParamToFaust(paramIdx);
   }
+
+  // ADAA warm-up: run a few samples through the DSP to initialise filter
+  // states and prevent NaN from the divided-difference singularity (delta=0).
+  {
+    FAUSTFLOAT warmIn[2][8] = {};
+    FAUSTFLOAT warmOut[2][8] = {};
+    for (int i = 0; i < 8; ++i) {
+      const FAUSTFLOAT v = static_cast<FAUSTFLOAT>(1e-6 * (i + 1));
+      warmIn[0][i] = v;
+      warmIn[1][i] = v;
+    }
+    FAUSTFLOAT* warmInPtr[2] = {warmIn[0], warmIn[1]};
+    FAUSTFLOAT* warmOutPtr[2] = {warmOut[0], warmOut[1]};
+    mFaustDSP.compute(8, warmInPtr, warmOutPtr);
+  }
+
 }
 
 void Grungr::OnParamChange(int paramIdx)
@@ -170,6 +225,8 @@ void Grungr::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 
   mFaustDSP.compute(nFrames, faustInputs, faustOutputs);
 
+  // ponytail: ADAA warm-up in OnReset() prevents NaN from zero-state
+  // δ=0 singularity. This clamp remains as a safety net only.
   for (int s = 0; s < nFrames; ++s) {
     if (!std::isfinite(out0[s])) out0[s] = 0.0;
     if (nOut > 1 && !std::isfinite(out1[s])) out1[s] = 0.0;
