@@ -323,10 +323,7 @@ DustStopCpp/.opencode/
 # -------------------------------------------
 /*.ps1
 /*.py
-.tmp*.json
-.tmp*.yml
-.tmp*.yaml
-.tmp*.md
+.tmp*
 latency_probe.obj
 sanity_check.obj
 
@@ -344,5 +341,5 @@ MetallicSnare/**
 .amorph/**
 */.amorph/
 */.amorph/**
-*/ai_session.json
-*/compile_status.json
+**/ai_session.json
+**/compile_status.json
