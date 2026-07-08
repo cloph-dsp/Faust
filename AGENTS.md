@@ -57,10 +57,30 @@ This repository contains **multiple independent VST3 plugin projects** using iPl
 - **Project structure** → `docs/PROJECT_STRUCTURE.md`
 - **Main README** → Root `README.md` (Faust experiments overview)
 
+## oh-my-vst Plugin
+
+`oh-my-vst/` is an **OpenCode plugin** (`@opencode-ai/plugin`) that registers 6 specialized VST development agents:
+
+| Agent | Role | Mode | Description |
+|-------|------|------|-------------|
+| `vst-orchestrator` | Workflow manager | primary | Drives progressive Spec→Architect→DSP→GUI→Validate pipeline |
+| `vst-spec` | Requirements | subagent | Defines product brief, feature scope, control layout, I/O spec |
+| `vst-architect` | Architecture | subagent | Selects framework (iPlug2/JUCE/Faust/Cmajor/Rust), designs signal flow |
+| `vst-dsp` | DSP implementation | subagent | Implements algorithms, numerical validation, real-time safety |
+| `vst-gui` | UI/UX design | subagent | Designs and implements plugin GUI with responsive layouts |
+| `vst-validate` | Quality | subagent | Tests, benchmarks, host compatibility, release checklist |
+
+**Usage**: Add `"oh-my-vst"` to `opencode.json`'s `plugin` array, or run `bunx oh-my-vst install`.
+
+**Framework presets** (bundled): iPlug2, JUCE, Faust, Cmajor, Rust — each specifies agent skills, MCPs, and prompt additions.
+
+> ⚠️ The old `.agents/skills/vst3-skills/` (21 skills) has been replaced by this plugin. The agent prompts and knowledge are now embedded in TypeScript agent modules within `oh-my-vst/src/agents/`.
+
 ## Learned User Preferences
 
 - User prefers **single-file VST3** (loose DLL with `.vst3` extension) over iPlug2's bundle wrapper — confirmed working in Bitwig alongside Freeze95's single-file deploy
-- When asked "is this valid?", the user wants evidence checked, not assumptions pushed back; **browse online** (webfetch/context7/websearch) when uncertain about specs
+- When asked "is this valid?" or asked to identify an unknown asset, verify against evidence rather than guessing — **browse online** (webfetch/context7/websearch) to confirm specs, identity, or behaviour before acting
+- Prefer **TypeScript-based OpenCode plugins** (via `@opencode-ai/plugin` config hook) over standalone markdown skill files — the plugin pattern registers agents directly in `config.agent` instead of loading skills at runtime
 - User uses **CLOPH** as the manufacturer prefix for new plugins (TnR1, F951, etc.)
 - Multi-line PowerShell one-liners via the `bash` tool often fail because `snip` parses `if`, `;`, and backticks; write a `.ps1` file and run `powershell -ExecutionPolicy Bypass -File <path>` instead
 - Custom SVG knob caps (ISVGKnobControl) for every knob — static body + rotating pointer indicator (not full-cap rotation), never ship stock IVectorBase dots as the final look
@@ -68,7 +88,6 @@ This repository contains **multiple independent VST3 plugin projects** using iPl
 - Larger UI text by default: control labels >= 16, value text >= 18, plugin title >= 36
 - Visualizer/spectrum should fill meaningful space but not dominate 80%+ of window — reserve at least 130-150px at bottom for controls
 - Two-font typography for plugins: embedded TITLE font (chunky display face, e.g. IronSans) for the plugin name, embedded SECONDARY font (e.g. Kenyan Coffee Rg) for body labels/values. Load both via 2-arg `LoadFont` with separate font IDs
-- Before naming a logo/asset file, confirm what it represents — a path data blob might be the manufacturer (CLOPH) or framework (iPlug2) logo, not what the visual shape suggests
 - For "finished tool" feel: tooltips on every control, double-click-to-reset on knobs, I/O meters flanking the visualizer, brand/version mark in the title bar, subtle idle animation (breathing LED)
 - User expects root-cause fixes over symptom suppression — when a bug has both a band-aid and a proper fix, fix the root cause
 

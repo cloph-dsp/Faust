@@ -3,6 +3,11 @@
 # ===========================================
 
 # -------------------------------------------
+# Node.js / Bun (npm packages)
+# -------------------------------------------
+node_modules/
+
+# -------------------------------------------
 # Build Outputs & Compiled Binaries
 # -------------------------------------------
 *.vst3/
@@ -292,3 +297,5 @@ MetallicSnare/MetalSnare-20260406T192740Z-3-001/MetalSnare/XCX clap 3.wav
 MetallicSnare/MetalSnare-20260406T192740Z-3-001/MetalSnare/XILENT_snare_metal_03.wav
 MetallicSnare/MetalSnare-20260406T192740Z-3-001/MetalSnare/XILENT_snare_metal_04.wav
 MetallicSnare/MetalSnare-20260406T192740Z-3-001/MetalSnare/XILENT_snare_metal_05.wav
+
+# Deepwork progress files.slim/deepwork/
