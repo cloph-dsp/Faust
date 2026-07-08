@@ -132,6 +132,12 @@ vendor/
 *_gen.cpp
 *_gen.dsp
 
+# Tuner VST's Faust-generated DSP header is committed because the CI
+# workflow copies it into the iPlug2 example tree but doesn't run the
+# Faust compiler.  Keeping it tracked avoids a "faust(1) not found" CI
+# failure without buying a cross-platform faust install step.
+!Tuner VST/TunerDSP_gen.h
+
 # -------------------------------------------
 # Python Virtual Environments
 # -------------------------------------------

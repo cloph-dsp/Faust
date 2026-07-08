@@ -240,22 +240,23 @@ jobs:
         run: bash download-iplug-sdks.sh
 
       - name: Setup Tuner resources into iPlug2 example
+        working-directory: Tuner VST
         run: |
-          cd "Tuner VST"
-          cp Tuner.cpp iPlug2/Examples/IPlugEffect/IPlugEffect.cpp
-          cp Tuner.h iPlug2/Examples/IPlugEffect/IPlugEffect.h
-          cp Tuner.h iPlug2/Examples/IPlugEffect/Tuner.h
-          cp config.h iPlug2/Examples/IPlugEffect/config.h
-          cp TunerDSP.h iPlug2/Examples/IPlugEffect/TunerDSP.h
-          cp TunerDSP.dsp iPlug2/Examples/IPlugEffect/TunerDSP.dsp
-          cp TunerDSP_gen.h iPlug2/Examples/IPlugEffect/TunerDSP_gen.h
-          cp FaustCompat.h iPlug2/Examples/IPlugEffect/FaustCompat.h
-          cp config/IPlugEffect-mac.xcconfig iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig
-          [ -f Tuner.entitlements ] && cp Tuner.entitlements iPlug2/Examples/IPlugEffect/Tuner.entitlements
-          cp resources/* iPlug2/Examples/IPlugEffect/resources/ 2>/dev/null || true
+          dst="../iPlug2/Examples/IPlugEffect"
+          cp Tuner.cpp               "$dst/IPlugEffect.cpp"
+          cp Tuner.h                 "$dst/IPlugEffect.h"
+          cp Tuner.h                 "$dst/Tuner.h"
+          cp config.h                "$dst/config.h"
+          cp TunerDSP.h              "$dst/TunerDSP.h"
+          cp TunerDSP.dsp            "$dst/TunerDSP.dsp"
+          cp TunerDSP_gen.h          "$dst/TunerDSP_gen.h"
+          cp FaustCompat.h           "$dst/FaustCompat.h"
+          cp config/IPlugEffect-mac.xcconfig "$dst/config/IPlugEffect-mac.xcconfig"
+          [ -f Tuner.entitlements ]  && cp Tuner.entitlements "$dst/Tuner.entitlements"
+          cp resources/*             "$dst/resources/" 2>/dev/null || true
           # iPlug2's plist templates are named IPlugEffect-*.plist; we want
           # them surfaced as Tuner-*.plist in the bundle, matching Freeze95.
-          cd iPlug2/Examples/IPlugEffect/resources
+          cd "$dst/resources"
           for f in IPlugEffect-*.plist; do
             [ -f "$f" ] && cp "$f" "Tuner${f#IPlugEffect}" || true
           done
