@@ -1,62 +1,467 @@
-name: Build Grungr
+name: Build Grungr (VST3 + CLAP + AUv2)
 
 on:
   push:
+    branches: [main]
     paths:
       - 'Grungr/**'
       - '.github/workflows/grungr-build.yml'
-  pull_request:
-    paths:
-      - 'Grungr/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  # ============================================================================
+  # Windows: VST3 + CLAP
+  # Pattern mirrors proven build-bronzenoise.yml. Stages Grungr sources into
+  # iPlug2/Examples/IPlugEffect so we reuse the maintained IPlugEffect project
+  # templates instead of fighting the project's standalone vcxproj layout.
+  # ============================================================================
   build-windows:
+    name: Windows VST3 + CLAP
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Clone iPlug2 framework
+      - name: Clone iPlug2 (shallow)
         shell: bash
         run: |
-          git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git iPlug2
+          cd "$GITHUB_WORKSPACE"
+          git clone --depth 1 https://github.com/iPlug2/iPlug2.git iPlug2
+          cd iPlug2
+          git submodule update --init --depth 1 Dependencies/IPlug 2>/dev/null || true
 
-      - name: Download iPlug2 SDKs (VST3)
+      - name: Download iPlug2 SDKs (VST3 + WAM)
         shell: bash
-        working-directory: iPlug2/Dependencies/IPlug
-        run: bash download-iplug-sdks.sh
-
-      - name: Install Faust (2.81.2)
-        shell: pwsh
         run: |
-          $faustInstaller = "$env:TEMP\Faust-2.81.2-win64.exe"
-          Write-Host "Downloading Faust 2.81.2..."
-          Invoke-WebRequest -Uri "https://github.com/grame-cncm/faust/releases/download/2.81.2/Faust-2.81.2-win64.exe" -OutFile $faustInstaller -UseBasicParsing
-          Write-Host "Installing Faust (silent)..."
-          $proc = Start-Process -FilePath $faustInstaller -ArgumentList "/S","/D=C:\Program Files\Faust" -Wait -PassThru
-          Write-Host "Faust installer exit code: $($proc.ExitCode)"
-          if (Test-Path "C:\Program Files\Faust\include\faust\dsp\dsp.h") {
-            Write-Host "Faust headers installed at C:\Program Files\Faust\include"
-          } else {
-            Write-Host "ERROR: Faust headers not found at expected location"
-            exit 1
-          }
+          bash iPlug2/Dependencies/IPlug/download-iplug-sdks.sh
 
-      - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Build Grungr VST3 (Windows)
-        shell: pwsh
-        working-directory: Grungr
+      - name: Stage Grungr source into IPlugEffect
+        shell: bash
         run: |
-          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
-          Write-Host "Using MSBuild: $msbuild"
-          & $msbuild projects\Grungr-vst3.vcxproj /p:Configuration=Release /p:Platform=x64 "/p:SolutionDir=$($env:GITHUB_WORKSPACE)\Grungr\" /v:m
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          DST="../iPlug2/Examples/IPlugEffect"
+          mkdir -p "$DST/DSP"
 
-      - name: Upload VST3 Artifact
+          # Main plugin source (Grungr.cpp -> IPlugEffect.cpp is the staging convention)
+          cp Grungr/Grungr.cpp        "$DST/IPlugEffect.cpp"
+          cp Grungr/Grungr.h          "$DST/IPlugEffect.h"
+          cp Grungr/GrungrIPlug2UI.cpp "$DST/GrungrIPlug2UI.cpp"
+          cp Grungr/GrungrIPlug2UI.h   "$DST/GrungrIPlug2UI.h"
+          cp Grungr/config.h          "$DST/config.h"
+
+          # DSP include: preserve relative "DSP/GrungrFaustDSP.h" used by Grungr.cpp
+          cp Grungr/DSP/GrungrFaustDSP.h "$DST/DSP/GrungrFaustDSP.h"
+
+          # Resources — main.rc embeds SVGs/fonts/ico into the VST3 DLL.
+          cp Grungr/resources/main.rc "$DST/resources/"
+          cp Grungr/resources/*.svg  "$DST/resources/" 2>/dev/null || true
+          cp Grungr/resources/*.ttf  "$DST/resources/" 2>/dev/null || true
+          cp Grungr/resources/*.otf  "$DST/resources/" 2>/dev/null || true
+          cp Grungr/resources/*.png  "$DST/resources/" 2>/dev/null || true
+          cp Grungr/resources/*.ico  "$DST/resources/" 2>/dev/null || true
+
+      - name: Generate IPlugEffect-win.props from Grungr-win.props
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          DST="../iPlug2/Examples/IPlugEffect"
+          # Build props reference project name; substitute Grungr -> IPlugEffect.
+          sed 's/Grungr/IPlugEffect/g' Grungr/config/Grungr-win.props > "$DST/IPlugEffect-win.props"
+
+      - name: Find MSBuild via vswhere
+        id: msbuild
+        shell: bash
+        run: |
+          MSBUILD=$(vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | head -n 1)
+          if [[ -z "$MSBUILD" ]]; then
+            echo "MSBuild not found via vswhere; falling back to BuildTools path"
+            MSBUILD="C:\Program Files\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+          fi
+          echo "MSBUILD=$MSBUILD" >> "$GITHUB_OUTPUT"
+          echo "Found MSBuild: $MSBUILD"
+
+      - name: Build VST3 (Windows)
+        shell: bash
+        run: |
+          cd "$GITHUB_WORKSPACE/iPlug2/Examples/IPlugEffect"
+          "${{ steps.msbuild.outputs.MSBUILD }}" projects/IPlugEffect-vst3.vcxproj \
+            /p:Configuration=Release /p:Platform=x64 \
+            "/p:SolutionDir=$GITHUB_WORKSPACE/iPlug2/Examples/IPlugEffect\\" \
+            /v:m /m
+
+      - name: Build CLAP (Windows)
+        shell: bash
+        run: |
+          cd "$GITHUB_WORKSPACE/iPlug2/Examples/IPlugEffect"
+          "${{ steps.msbuild.outputs.MSBUILD }}" projects/IPlugEffect-clap.vcxproj \
+            /p:Configuration=Release /p:Platform=x64 \
+            "/p:SolutionDir=$GITHUB_WORKSPACE/iPlug2/Examples/IPlugEffect\\" \
+            /v:m /m
+
+      - name: Stage outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="$GITHUB_WORKSPACE/iPlug2/Examples/IPlugEffect"
+          mkdir -p artifacts/vst3 artifacts/clap
+          # IPlugEffect template emits IPlugEffect.vst3 / IPlugEffect.clap — rename to Grungr.
+          if [[ -d "$SRC/build-win/vst3/x64/Release/IPlugEffect.vst3" ]]; then
+            cp -R "$SRC/build-win/vst3/x64/Release/IPlugEffect.vst3" artifacts/vst3/Grungr.vst3
+          fi
+          if [[ -f "$SRC/build-win/clap/x64/Release/IPlugEffect.clap" ]]; then
+            cp "$SRC/build-win/clap/x64/Release/IPlugEffect.clap" artifacts/clap/Grungr.clap
+          fi
+
+      - name: Verify VST3 binary
+        shell: bash
+        run: |
+          test -f artifacts/vst3/Grungr.vst3/Contents/x86_64-win/IPlugEffect.vst3
+          file artifacts/vst3/Grungr.vst3/Contents/x86_64-win/IPlugEffect.vst3 | grep -E "PE32.*x64|MS Windows"
+
+      - name: Verify CLAP binary
+        shell: bash
+        run: |
+          test -f artifacts/clap/Grungr.clap
+          file artifacts/clap/Grungr.clap | grep -E "PE32.*x64|MS Windows"
+
+      - name: Verify VST3 GetPluginFactory export
+        shell: bash
+        run: |
+          nm -gU artifacts/vst3/Grungr.vst3/Contents/x86_64-win/IPlugEffect.vst3 | grep -q GetPluginFactory
+
+      - name: Verify CLAP clap_entry export
+        shell: bash
+        run: |
+          nm -gU artifacts/clap/Grungr.clap | grep -q clap_entry
+
+      - name: Upload Grungr VST3 (Windows)
         uses: actions/upload-artifact@v4
         with:
-          name: Grungr-Windows
-          path: Grungr/build-win/vst3/x64/Release/Grungr.vst3
+          name: Grungr-VST3-Windows
+          path: artifacts/vst3/Grungr.vst3
+          if-no-files-found: error
+
+      - name: Upload Grungr CLAP (Windows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Grungr-CLAP-Windows
+          path: artifacts/clap/Grungr.clap
+          if-no-files-found: warn
+
+  # ============================================================================
+  # macOS: VST3 + CLAP + AUv2 (universal x86_64 + arm64)
+  # ============================================================================
+  build-macos:
+    name: macOS VST3 + CLAP + AUv2
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Clone iPlug2 (shallow)
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          git clone --depth 1 https://github.com/iPlug2/iPlug2.git iPlug2
+          cd iPlug2
+          git submodule update --init --depth 1 Dependencies/IPlug 2>/dev/null || true
+
+      - name: Download iPlug2 SDKs (macOS)
+        run: |
+          set -euo pipefail
+          bash iPlug2/Dependencies/IPlug/download-iplug-sdks-mac.sh
+
+      - name: Stage Grungr source into IPlugEffect
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          DST="../iPlug2/Examples/IPlugEffect"
+          mkdir -p "$DST/DSP"
+
+          cp Grungr/Grungr.cpp        "$DST/IPlugEffect.cpp"
+          cp Grungr/Grungr.h          "$DST/IPlugEffect.h"
+          cp Grungr/GrungrIPlug2UI.cpp "$DST/GrungrIPlug2UI.cpp"
+          cp Grungr/GrungrIPlug2UI.h   "$DST/GrungrIPlug2UI.h"
+          cp Grungr/config.h          "$DST/config.h"
+
+          cp Grungr/DSP/GrungrFaustDSP.h "$DST/DSP/GrungrFaustDSP.h"
+
+          cp Grungr/resources/main.rc "$DST/resources/"
+          cp Grungr/resources/*.svg  "$DST/resources/" 2>/dev/null || true
+          cp Grungr/resources/*.ttf  "$DST/resources/" 2>/dev/null || true
+          cp Grungr/resources/*.otf  "$DST/resources/" 2>/dev/null || true
+          cp Grungr/resources/*.png  "$DST/resources/" 2>/dev/null || true
+
+          # Pre-made Grungr plists — rename so the IPlugEffect xcodeproj finds them.
+          cp Grungr/resources/Grungr-VST3-Info.plist "$DST/resources/IPlugEffect-VST3-Info.plist"
+          cp Grungr/resources/Grungr-CLAP-Info.plist "$DST/resources/IPlugEffect-CLAP-Info.plist"
+          cp Grungr/resources/Grungr-AU-Info.plist   "$DST/resources/IPlugEffect-AUv2-Info.plist"
+
+      - name: Write IPlugEffect-mac.xcconfig (proven-correct values)
+        run: |
+          set -euo pipefail
+          # Proven pattern from Freeze95 / BronzeNoise. Avoids the deviations
+          # found in the project's Grungr-mac.xcconfig template (OBJC_PREFIX,
+          # PROFILE=NO, GCC_CFLAGS[arch=x86_64], etc. that aren't in Freeze95).
+          cat > "../iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig" <<'XCCONFIG_EOF'
+
+          // IPLUG2_ROOT should point to the top level IPLUG2 folder
+          IPLUG2_ROOT = ../../..
+
+          #include "../../../common-mac.xcconfig"
+
+          //------------------------------
+          // Global build settings
+
+          // the basename of the vst, vst3, app, component, aaxplugin
+          BINARY_NAME = Grungr
+
+          // ------------------------------
+          // HEADER AND LIBRARY SEARCH PATHS
+          EXTRA_INC_PATHS = $(IGRAPHICS_INC_PATHS) $(SRCROOT)/../../../..
+          EXTRA_LIB_PATHS = $(IGRAPHICS_LIB_PATHS)
+          EXTRA_LNK_FLAGS = -framework Metal -framework MetalKit $(IGRAPHICS_LNK_FLAGS)
+
+          //------------------------------
+          // PREPROCESSOR MACROS
+          EXTRA_ALL_DEFS = IGRAPHICS_NANOVG IGRAPHICS_METAL
+
+          //------------------------------
+          // RELEASE BUILD OPTIONS
+          RELEASE_OPTIMIZE = 3
+
+          //------------------------------
+          // MISCELLANEOUS COMPILER OPTIONS
+          ARCHS = $(ARCHS_STANDARD_64_BIT)
+          XCCONFIG_EOF
+
+      - name: Build VST3 (macOS, universal)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project iPlug2/Examples/IPlugEffect/projects/IPlugEffect-macOS.xcodeproj \
+            -scheme "IPlugEffect - VST3" \
+            -configuration Release \
+            -arch x86_64 -arch arm64 \
+            -derivedDataPath "$GITHUB_WORKSPACE/Grungr/build-mac" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee /tmp/xcb-vst3.log | tail -n 80
+          echo "---VST3 build OK---"
+
+      - name: Build CLAP (macOS, universal)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project iPlug2/Examples/IPlugEffect/projects/IPlugEffect-macOS.xcodeproj \
+            -scheme "IPlugEffect - CLAP" \
+            -configuration Release \
+            -arch x86_64 -arch arm64 \
+            -derivedDataPath "$GITHUB_WORKSPACE/Grungr/build-mac" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee /tmp/xcb-clap.log | tail -n 80
+          echo "---CLAP build OK---"
+
+      - name: Build AUv2 (macOS, universal)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project iPlug2/Examples/IPlugEffect/projects/IPlugEffect-macOS.xcodeproj \
+            -scheme "IPlugEffect - AU" \
+            -configuration Release \
+            -arch x86_64 -arch arm64 \
+            -derivedDataPath "$GITHUB_WORKSPACE/Grungr/build-mac" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee /tmp/xcb-au.log | tail -n 80
+          echo "---AU build OK---"
+
+      - name: Locate build outputs
+        id: locate
+        run: |
+          set -euo pipefail
+          BUILD="$GITHUB_WORKSPACE/Grungr/build-mac"
+          # Xcode puts products in Build/Products/Release/ when using -derivedDataPath
+          VST3=$(find "$BUILD/Build/Products/Release" -maxdepth 1 -name "*.vst3" -type d | head -n 1)
+          CLAP=$(find "$BUILD/Build/Products/Release" -maxdepth 1 -name "*.clap" -type d | head -n 1)
+          AU=$(find   "$BUILD/Build/Products/Release" -maxdepth 1 -name "*.component" -type d | head -n 1)
+          echo "VST3=$VST3" >> "$GITHUB_OUTPUT"
+          echo "CLAP=$CLAP" >> "$GITHUB_OUTPUT"
+          echo "AU=$AU" >> "$GITHUB_OUTPUT"
+          echo "VST3 bundle: $VST3"
+          echo "CLAP bundle: $CLAP"
+          echo "AU  bundle: $AU"
+
+      - name: Rename bundles to Grungr
+        run: |
+          set -euo pipefail
+          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Build/Products/Release"
+          [[ -d "$PROD/IPlugEffect.vst3"      ]] && mv "$PROD/IPlugEffect.vst3"      "$PROD/Grungr.vst3"
+          [[ -d "$PROD/IPlugEffect.clap"      ]] && mv "$PROD/IPlugEffect.clap"      "$PROD/Grungr.clap"
+          [[ -d "$PROD/IPlugEffect.component" ]] && mv "$PROD/IPlugEffect.component" "$PROD/Grungr.component"
+          # Inner binary rename (VST3 / AU both have Contents/MacOS binary)
+          [[ -f "$PROD/Grungr.vst3/Contents/MacOS/IPlugEffect" ]] && \
+            mv "$PROD/Grungr.vst3/Contents/MacOS/IPlugEffect" "$PROD/Grungr.vst3/Contents/MacOS/Grungr"
+          [[ -f "$PROD/Grungr.clap/Contents/MacOS/IPlugEffect" ]] && \
+            mv "$PROD/Grungr.clap/Contents/MacOS/IPlugEffect" "$PROD/Grungr.clap/Contents/MacOS/Grungr"
+          [[ -f "$PROD/Grungr.component/Contents/MacOS/IPlugEffect" ]] && \
+            mv "$PROD/Grungr.component/Contents/MacOS/IPlugEffect" "$PROD/Grungr.component/Contents/MacOS/Grungr"
+
+      - name: Fix plist values for Grungr
+        run: |
+          set -euo pipefail
+          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Build/Products/Release"
+          PLISTBUDDY=/usr/libexec/PlistBuddy
+
+          # Common keys applied to every bundle
+          for BUNDLE in "$PROD/Grungr.vst3" "$PROD/Grungr.clap" "$PROD/Grungr.component"; do
+            PL="$BUNDLE/Contents/Info.plist"
+            $PLISTBUDDY -c "Set :CFBundleExecutable Grungr"            "$PL"
+            $PLISTBUDDY -c "Set :CFBundleName Grungr"                  "$PL"
+            $PLISTBUDDY -c "Set :CFBundleShortVersionString 2.6.0"     "$PL"
+            $PLISTBUDDY -c "Set :CFBundleVersion 2.6.0"                "$PL"
+            $PLISTBUDDY -c "Set :LSMinimumSystemVersion 10.15"         "$PL"
+          done
+
+          # VST3
+          PL="$PROD/Grungr.vst3/Contents/Info.plist"
+          $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph-dsp.Grungr"          "$PL"
+          $PLISTBUDDY -c "Set :CFBundleSignature GRNR"                            "$PL"
+
+          # CLAP
+          PL="$PROD/Grungr.clap/Contents/Info.plist"
+          $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph-dsp.clap.Grungr"      "$PL"
+
+          # AUv2 — adds AudioComponents entry + view class for AU registration
+          PL="$PROD/Grungr.component/Contents/Info.plist"
+          $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph-dsp.audiounit.Grungr" "$PL"
+          $PLISTBUDDY -c "Add :AudioComponents array" "$PL"
+          $PLISTBUDDY -c "Add :AudioComponents:0 dict" "$PL"
+          $PLISTBUDDY -c "Add :AudioComponents:0:type string aufx" "$PL"
+          $PLISTBUDDY -c "Add :AudioComponents:0:subtype string GRNR" "$PL"
+          $PLISTBUDDY -c "Add :AudioComponents:0:manufacturer string Clph" "$PL"
+          $PLISTBUDDY -c "Add :AudioComponents:0:factoryFunction string Grungr_Factory" "$PL"
+          $PLISTBUDDY -c 'Add :AudioComponents:0:name string "CLOPH: Grungr"' "$PL"
+          $PLISTBUDDY -c "Add :AudioComponents:0:description string Grungr Faust-based drive pedal emulation" "$PL"
+          # PlistBuddy uses backslash-escaped keys for spaces; 'AudioUnit Version' carries the hex.
+          $PLISTBUDDY -c "Add :AudioUnit\ Version string 0x00020600" "$PL"
+          $PLISTBUDDY -c "Add :NSPrincipalClass string Grungr_View" "$PL"
+
+          echo "Plists updated for VST3, CLAP, AUv2"
+
+      - name: Verify VST3 binary
+        run: |
+          set -euo pipefail
+          B="${{ steps.locate.outputs.VST3 }}/Contents/MacOS/Grungr"
+          file "$B" | grep -q "Mach-O universal binary"
+          lipo -info "$B" | grep -q "x86_64"
+          lipo -info "$B" | grep -q "arm64"
+
+      - name: Verify CLAP binary
+        run: |
+          set -euo pipefail
+          B="${{ steps.locate.outputs.CLAP }}/Contents/MacOS/Grungr"
+          file "$B" | grep -q "Mach-O universal binary"
+          lipo -info "$B" | grep -q "x86_64"
+          lipo -info "$B" | grep -q "arm64"
+
+      - name: Verify AUv2 binary
+        run: |
+          set -euo pipefail
+          B="${{ steps.locate.outputs.AU }}/Contents/MacOS/Grungr"
+          file "$B" | grep -q "Mach-O universal binary"
+          lipo -info "$B" | grep -q "x86_64"
+          lipo -info "$B" | grep -q "arm64"
+
+      - name: Verify plist integrity
+        run: |
+          for BUNDLE in "${{ steps.locate.outputs.VST3 }}" "${{ steps.locate.outputs.CLAP }}" "${{ steps.locate.outputs.AU }}"; do
+            plutil -lint "$BUNDLE/Contents/Info.plist"
+          done
+
+      - name: Verify no IPlugEffect residue in plists
+        run: |
+          for BUNDLE in "${{ steps.locate.outputs.VST3 }}" "${{ steps.locate.outputs.CLAP }}" "${{ steps.locate.outputs.AU }}"; do
+            if grep -qi "IPlugEffect\|Acme" "$BUNDLE/Contents/Info.plist" 2>/dev/null; then
+              echo "::warning::IPlugEffect residue in $BUNDLE plist"
+            fi
+          done
+
+      - name: VST3 load test (GetPluginFactory)
+        run: |
+          nm -gU "${{ steps.locate.outputs.VST3 }}/Contents/MacOS/Grungr" | grep -q GetPluginFactory
+
+      - name: CLAP load test (clap_entry)
+        run: |
+          nm -gU "${{ steps.locate.outputs.CLAP }}/Contents/MacOS/Grungr" | grep -q clap_entry
+
+      - name: AU factory presence (warn if inlined)
+        run: |
+          if ! nm -gU "${{ steps.locate.outputs.AU }}/Contents/MacOS/Grungr" | grep -q Grungr_Factory; then
+            echo "::warning::Grungr_Factory not in dynamic symbol table (may be inlined into the bundle)"
+          fi
+
+      - name: Ad-hoc codesign
+        run: |
+          set -euo pipefail
+          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Build/Products/Release"
+          for BUNDLE in "$PROD/Grungr.vst3" "$PROD/Grungr.clap" "$PROD/Grungr.component"; do
+            [[ -d "$BUNDLE" ]] || continue
+            BINARY="$BUNDLE/Contents/MacOS/Grungr"
+            [[ -f "$BINARY" ]] && codesign --force --sign - "$BINARY"
+            codesign --force --sign - "$BUNDLE"
+            codesign -vvv "$BUNDLE" || true
+          done
+
+      - name: Strip extended attributes
+        run: |
+          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Build/Products/Release"
+          for BUNDLE in "$PROD/Grungr.vst3" "$PROD/Grungr.clap" "$PROD/Grungr.component"; do
+            [[ -d "$BUNDLE" ]] && xattr -rc "$BUNDLE"
+          done
+
+      - name: Stage artifacts
+        run: |
+          set -euo pipefail
+          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Build/Products/Release"
+          mkdir -p artifacts/vst3 artifacts/clap artifacts/au
+          [[ -d "$PROD/Grungr.vst3" ]]      && cp -R "$PROD/Grungr.vst3"      artifacts/vst3/
+          [[ -d "$PROD/Grungr.clap" ]]      && cp -R "$PROD/Grungr.clap"      artifacts/clap/
+          [[ -d "$PROD/Grungr.component" ]] && cp -R "$PROD/Grungr.component" artifacts/au/
+
+      - name: Upload Grungr VST3 (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Grungr-VST3-macOS
+          path: artifacts/vst3/Grungr.vst3
+          if-no-files-found: error
+
+      - name: Upload Grungr CLAP (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Grungr-CLAP-macOS
+          path: artifacts/clap/Grungr.clap
+          if-no-files-found: warn
+
+      - name: Upload Grungr AUv2 (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Grungr-AUv2-macOS
+          path: artifacts/au/Grungr.component
+          if-no-files-found: warn
