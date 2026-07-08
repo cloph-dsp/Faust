@@ -18,6 +18,11 @@
 // which are identical on all x86/x64 platforms.
 #ifdef _MSC_VER
   #include <intrin.h>
+#elif defined(__SSE__)
+  // GCC/Clang need the explicit SSE intrinsic header; MSVC pulls them
+  // in via <intrin.h> above.  Without this, _mm_getcsr/_mm_setcsr are
+  // undeclared on macOS Clang (and any non-MSVC x64 toolchain).
+  #include <xmmintrin.h>
 #endif
 
 #include "IPlug_include_in_plug_hdr.h"
@@ -79,8 +84,11 @@ public:
   void PushSample(double mono);
   Result& GetResult() { return mResult; }
   const Result& GetResult() const { return mResult; }
-  void SetSmoothing(double s)    { mSmooth = s; }
-  void SetA4Reference(double hz) { mA4Ref  = hz; }
+  void SetSmoothing(double s)        { mSmooth = s; }
+  void SetA4Reference(double hz, bool instant = false) {
+    mA4RefTarget.store(hz, std::memory_order_relaxed);
+    if (instant) mA4Ref = hz;
+  }
 
   // Read by the plugin (UI thread) to drain the analysis-path profiler.
   AnalysisProfiler& Profiler() { return mProfiler; }
@@ -102,6 +110,7 @@ private:
   double mSampleRate   = 48000.0;
   double mSmooth       = 0.55;
   double mA4Ref        = 440.0;
+  std::atomic<double> mA4RefTarget{440.0};
 
   std::array<double, kMedianSize> mMedianBuf{};
   int mMedianIdx = 0;
@@ -179,6 +188,9 @@ private:
   // Slider interaction states -- brighten when hovered/dragged.
   bool mIsHovering = false;
   bool mIsDragging = false;
+
+  // A4 cell hover tracking (0-5, -1 = none).
+  int mHoveredA4Cell = -1;
 };
 
 
@@ -195,6 +207,8 @@ class Tuner final : public iplug::Plugin {
 public:
   explicit Tuner(const InstanceInfo& info);
 
+  bool SerializeState(IByteChunk& chunk) const override;
+  int UnserializeState(const IByteChunk& chunk, int startPos) override;
   void OnParamChange(int paramIdx) override;
   void OnReset() override;
   void OnActivate(bool active) override;

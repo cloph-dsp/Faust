@@ -98,7 +98,10 @@ jobs:
               exit 1
           }
           $size = $item.Length
-          if ($size -lt 1MB) {
+          # 500 KB floor is comfortably below the actual Tuner.vst3 size
+          # (~987 KB).  1 MB falsely rejected a valid build because the
+          # single-file DLL is small (iPlug2 + Faust + IPlugUI only).
+          if ($size -lt 500KB) {
               Write-Error "VST3 binary suspiciously small ($size bytes)"
               exit 1
           }
@@ -113,29 +116,37 @@ jobs:
           # symbols.  Catch issues early before shipping the artifact.
           dll="Tuner VST/build-win/vst3/x64/Release/Tuner.vst3"
           test -f "$dll" || { echo "FAIL: $dll missing"; exit 1; }
+          echo "VST3 file present: $dll ($(wc -c < "$dll" | tr -d ' ') bytes)"
           # dumpbin /exports is part of the VS toolchain.  Locate it the
-          # same way msbuild is located.
+          # same way msbuild is located.  Bail softly with a SKIP if
+          # absent so the load test still tries powershell after.
           dumpbin=$(ls "${ProgramFiles}/Microsoft Visual Studio/"*/BuildTools/VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe 2>/dev/null | head -1)
           if [ -z "$dumpbin" ]; then
               dumpbin=$(ls "${ProgramFiles}/Microsoft Visual Studio/"*/Community/VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe 2>/dev/null | head -1)
           fi
           if [ -n "$dumpbin" ]; then
-              "$dumpbin" /exports "$dll" | grep -q "GetPluginFactory" || {
-                  echo "FAIL: GetPluginFactory not exported"; exit 1;
-              }
-              echo "GetPluginFactory: FOUND"
+              if "$dumpbin" /exports "$dll" 2>&1 | grep -q "GetPluginFactory"; then
+                  echo "  GetPluginFactory (dumpbin): FOUND"
+              else
+                  echo "FAIL: GetPluginFactory not exported"; exit 1
+              fi
           else
-              echo "SKIP: dumpbin not found, export check skipped"
+              echo "  SKIP: dumpbin not found, export check skipped"
           fi
-          # PowerShell LoadLibraryW test -- definitive load check.
-          powershell.exe -NoProfile -Command "
-            Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class L { [DllImport(\"kernel32\",SetLastError=true)] public static extern IntPtr LoadLibraryW([MarshalAs(UnmanagedType.LPWStr)]string p); [DllImport(\"kernel32\")] public static extern IntPtr GetProcAddress(IntPtr h,string n); }';
-            \$h = [L]::LoadLibraryW((Resolve-Path 'Tuner VST/build-win/vst3/x64/Release/Tuner.vst3'));
-            if (\$h -eq [IntPtr]::Zero) { Write-Error 'LoadLibraryW FAILED'; exit 1 }
-            \$p = [L]::GetProcAddress(\$h, 'GetPluginFactory');
-            if (\$p -eq [IntPtr]::Zero) { Write-Error 'GetProcAddress(GetPluginFactory) FAILED'; exit 1 }
-            Write-Host 'LoadLibraryW + GetPluginFactory: OK'
-          "
+          # PowerShell LoadLibraryW test -- definitive load check.  We
+          # disable -e around the call so a PowerShell parse error doesn't
+          # silently abort bash (exit 2 from a misuse-of-builtin rather
+          # than the real failure).  Anything other than exit 0 here is
+          # a hard fail.
+          set +e
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
+              "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class L { [DllImport(\"kernel32\",SetLastError=true)] public static extern IntPtr LoadLibraryW([MarshalAs(UnmanagedType.LPWStr)]string p); [DllImport(\"kernel32\")] public static extern IntPtr GetProcAddress(IntPtr h,string n); }'; \$h = [L]::LoadLibraryW((Resolve-Path 'Tuner VST/build-win/vst3/x64/Release/Tuner.vst3').Path); if (\$h -eq [IntPtr]::Zero) { Write-Error 'LoadLibraryW FAILED'; exit 1 } else { \$p = [L]::GetProcAddress(\$h, 'GetPluginFactory'); if (\$p -eq [IntPtr]::Zero) { Write-Error 'GetProcAddress(GetPluginFactory) FAILED'; exit 1 } else { Write-Host 'LoadLibraryW + GetPluginFactory: OK' } }"
+          ps_exit=$?
+          set -e
+          if [ $ps_exit -ne 0 ]; then
+              echo "FAIL: PowerShell LoadLibraryW exited $ps_exit"
+              exit $ps_exit
+          fi
 
       - name: Stage VST3 artifact
         if: always()
