@@ -166,9 +166,10 @@ jobs:
         working-directory: Grungr
         run: |
           # Debug: list artifact contents to see actual bundle structure
+          ls -la artifacts/vst3/
           find artifacts/vst3 -type f | head -30
-          echo "---"
-          ls -la artifacts/vst3/Grungr.vst3/Contents/x86_64-win/ 2>/dev/null || echo "x86_64-win dir not found"
+          find artifacts/vst3 -type d | head -30
+          ls -la artifacts/vst3/Grungr.vst3/ 2>/dev/null || echo "Grungr.vst3 not found"
           # Inner binary name matches BINARY_NAME=Grungr from IPlugEffect-win.props
           test -f artifacts/vst3/Grungr.vst3/Contents/x86_64-win/Grungr
 
