@@ -143,6 +143,7 @@ jobs:
 
       - name: Stage outputs
         shell: bash
+        working-directory: Grungr
         run: |
           set -euo pipefail
           SRC="$GITHUB_WORKSPACE/iPlug2/Examples/IPlugEffect"
@@ -162,22 +163,26 @@ jobs:
 
       - name: Verify VST3 binary
         shell: bash
+        working-directory: Grungr
         run: |
           # Inner binary name matches BINARY_NAME=Grungr from IPlugEffect-win.props
-          test -f artifacts/vst3/Grungr.vst3/Contents/x86_64-win/Grungr.vst3
+          test -f artifacts/vst3/Grungr.vst3/Contents/x86_64-win/Grungr
 
       - name: Verify CLAP binary
         shell: bash
+        working-directory: Grungr
         run: |
           test -f artifacts/clap/Grungr.clap
 
       - name: Verify VST3 GetPluginFactory export
         shell: bash
+        working-directory: Grungr
         run: |
-          nm -gU artifacts/vst3/Grungr.vst3/Contents/x86_64-win/Grungr.vst3 | grep -q GetPluginFactory
+          nm -gU artifacts/vst3/Grungr.vst3/Contents/x86_64-win/Grungr | grep -q GetPluginFactory
 
       - name: Verify CLAP clap_entry export
         shell: bash
+        working-directory: Grungr
         run: |
           nm -gU artifacts/clap/Grungr.clap | grep -q clap_entry
 
@@ -407,6 +412,7 @@ jobs:
             mv "$PROD/Grungr.component/Contents/MacOS/IPlugEffect" "$PROD/Grungr.component/Contents/MacOS/Grungr" || true
 
       - name: Fix plist values for Grungr
+        working-directory: Grungr
         run: |
           set -euo pipefail
           PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Products"
