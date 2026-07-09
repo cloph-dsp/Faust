@@ -55,6 +55,11 @@ jobs:
           Copy-Item -Force "TunerDSP.dsp"       "$dst/TunerDSP.dsp"
           Copy-Item -Force "TunerDSP_gen.h"     "$dst/TunerDSP_gen.h"
           Copy-Item -Force "FaustCompat.h"      "$dst/FaustCompat.h"
+          # Detector split: refactor extracted host-free detector from
+          # Tuner.cpp into its own TU so a host-free smoke test can
+          # compile it.  The vcxproj compiles both files into IPlugEffect.obj.
+          Copy-Item -Force "TunerAnalysis.h"    "$dst/TunerAnalysis.h"
+          Copy-Item -Force "TunerAnalysis.cpp"  "$dst/TunerAnalysis.cpp"
           Copy-Item -Force "config\IPlugEffect-win.props" "$dst\config\IPlugEffect-win.props"
           Copy-Item -Force "scripts\prebuild-win.bat"    "$dst\scripts\prebuild-win.bat"
           Copy-Item -Force "scripts\postbuild-win.bat"   "$dst\scripts\postbuild-win.bat"
@@ -178,6 +183,11 @@ jobs:
           cp TunerDSP.dsp            "$dst/TunerDSP.dsp"
           cp TunerDSP_gen.h          "$dst/TunerDSP_gen.h"
           cp FaustCompat.h           "$dst/FaustCompat.h"
+          # Detector split: refactor extracted host-free detector from
+          # Tuner.cpp into its own TU so a host-free smoke test can
+          # compile it.  Xcode project compiles both files together.
+          cp TunerAnalysis.h         "$dst/TunerAnalysis.h"
+          cp TunerAnalysis.cpp       "$dst/TunerAnalysis.cpp"
           cp config/IPlugEffect-mac.xcconfig "$dst/config/IPlugEffect-mac.xcconfig"
           [ -f Tuner.entitlements ]  && cp Tuner.entitlements "$dst/Tuner.entitlements"
           cp resources/*             "$dst/resources/" 2>/dev/null || true
