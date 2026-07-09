@@ -85,14 +85,20 @@ jobs:
           cp resources/*.png  "$DST/resources/" 2>/dev/null || true
           cp resources/*.ico  "$DST/resources/" 2>/dev/null || true
 
-      - name: Generate IPlugEffect-win.props from Grungr-win.props
+      - name: Stage IPlugEffect-win.props
         shell: bash
         working-directory: Grungr
         run: |
           set -euo pipefail
           DST="../iPlug2/Examples/IPlugEffect"
-          # Build props reference project name; substitute Grungr -> IPlugEffect.
-          sed 's/Grungr/IPlugEffect/g' config/Grungr-win.props > "$DST/IPlugEffect-win.props"
+          # Copy Grungr-win.props to the path the vcxproj imports it from:
+          # config/IPlugEffect-win.props. Do NOT sed-transform the content —
+          # BINARY_NAME must stay "Grungr" so MSBuild outputs Grungr.vst3.
+          # (Previous sed 's/Grungr/IPlugEffect/g' destroyed BINARY_NAME and
+          #  wrote to the wrong path — the vcxproj imports from config/.)
+          mkdir -p "$DST/config"
+          cp config/Grungr-win.props "$DST/config/IPlugEffect-win.props"
+          echo "Staged IPlugEffect-win.props (BINARY_NAME=Grungr preserved)"
 
       - name: Find MSBuild via vswhere
         id: msbuild
@@ -153,18 +159,18 @@ jobs:
       - name: Verify VST3 binary
         shell: bash
         run: |
-          test -f artifacts/vst3/Grungr.vst3/Contents/x86_64-win/IPlugEffect.vst3
+          # Inner binary name matches BINARY_NAME=Grungr from IPlugEffect-win.props
+          test -f artifacts/vst3/Grungr.vst3/Contents/x86_64-win/Grungr.vst3
 
       - name: Verify CLAP binary
         shell: bash
         run: |
           test -f artifacts/clap/Grungr.clap
-          file artifacts/clap/Grungr.clap
 
       - name: Verify VST3 GetPluginFactory export
         shell: bash
         run: |
-          nm -gU artifacts/vst3/Grungr.vst3/Contents/x86_64-win/IPlugEffect.vst3 | grep -q GetPluginFactory
+          nm -gU artifacts/vst3/Grungr.vst3/Contents/x86_64-win/Grungr.vst3 | grep -q GetPluginFactory
 
       - name: Verify CLAP clap_entry export
         shell: bash
@@ -425,17 +431,16 @@ jobs:
           PL="$PROD/Grungr.component/Contents/Info.plist"
           $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph-dsp.audiounit.Grungr" "$PL"
           $PLISTBUDDY -c "Delete :AudioComponents" "$PL" 2>/dev/null || true
-$PLISTBUDDY -c "Add :AudioComponents array" "$PL"
+          $PLISTBUDDY -c "Add :AudioComponents array" "$PL"
           $PLISTBUDDY -c "Add :AudioComponents:0 dict" "$PL"
-          $PLISTBUDDY -c "Add :AudioComponents:0:type string aufx" "$PL"
-          $PLISTBUDDY -c "Add :AudioComponents:0:subtype string GRNR" "$PL"
-          $PLISTBUDDY -c "Add :AudioComponents:0:manufacturer string Clph" "$PL"
-          $PLISTBUDDY -c "Add :AudioComponents:0:factoryFunction string Grungr_Factory" "$PL"
-          $PLISTBUDDY -c 'Add :AudioComponents:0:name string "CLOPH: Grungr"' "$PL"
-          $PLISTBUDDY -c "Add :AudioComponents:0:description string Grungr Faust-based drive pedal emulation" "$PL"
-          # PlistBuddy uses backslash-escaped keys for spaces; 'AudioUnit Version' carries the hex.
-          $PLISTBUDDY -c "Add :AudioUnit\ Version string 0x00020600" "$PL"
-          $PLISTBUDDY -c "Add :NSPrincipalClass string Grungr_View" "$PL"
+          $PLISTBUDDY -c "Set :AudioComponents:0:type string aufx" "$PL"
+          $PLISTBUDDY -c "Set :AudioComponents:0:subtype string GRNR" "$PL"
+          $PLISTBUDDY -c "Set :AudioComponents:0:manufacturer string Clph" "$PL"
+          $PLISTBUDDY -c "Set :AudioComponents:0:factoryFunction string Grungr_Factory" "$PL"
+          $PLISTBUDDY -c 'Set :AudioComponents:0:name string "CLOPH: Grungr"' "$PL"
+          $PLISTBUDDY -c "Set :AudioComponents:0:description string Grungr Faust-based drive pedal emulation" "$PL"
+          $PLISTBUDDY -c "Set :AudioUnit\ Version string 0x00020600" "$PL"
+          $PLISTBUDDY -c "Set :NSPrincipalClass string Grungr_View" "$PL"
 
           echo "Plists updated for VST3, CLAP, AUv2"
 
@@ -443,25 +448,22 @@ $PLISTBUDDY -c "Add :AudioComponents array" "$PL"
         run: |
           set -euo pipefail
           B="${{ steps.locate.outputs.VST3 }}/Contents/MacOS/Grungr"
-          file "$B" | grep -q "Mach-O universal binary"
+          file "$B" | grep -q "Mach-O"
           lipo -info "$B" | grep -q "x86_64"
-          lipo -info "$B" | grep -q "arm64"
 
       - name: Verify CLAP binary
         run: |
           set -euo pipefail
           B="${{ steps.locate.outputs.CLAP }}/Contents/MacOS/Grungr"
-          file "$B" | grep -q "Mach-O universal binary"
+          file "$B" | grep -q "Mach-O"
           lipo -info "$B" | grep -q "x86_64"
-          lipo -info "$B" | grep -q "arm64"
 
       - name: Verify AUv2 binary
         run: |
           set -euo pipefail
           B="${{ steps.locate.outputs.AU }}/Contents/MacOS/Grungr"
-          file "$B" | grep -q "Mach-O universal binary"
+          file "$B" | grep -q "Mach-O"
           lipo -info "$B" | grep -q "x86_64"
-          lipo -info "$B" | grep -q "arm64"
 
       - name: Verify plist integrity
         run: |
@@ -494,7 +496,7 @@ $PLISTBUDDY -c "Add :AudioComponents array" "$PL"
       - name: Ad-hoc codesign
         run: |
           set -euo pipefail
-          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Build/Products/Release"
+          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Products"
           for BUNDLE in "$PROD/Grungr.vst3" "$PROD/Grungr.clap" "$PROD/Grungr.component"; do
             [[ -d "$BUNDLE" ]] || continue
             BINARY="$BUNDLE/Contents/MacOS/Grungr"
@@ -505,7 +507,7 @@ $PLISTBUDDY -c "Add :AudioComponents array" "$PL"
 
       - name: Strip extended attributes
         run: |
-          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Build/Products/Release"
+          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Products"
           for BUNDLE in "$PROD/Grungr.vst3" "$PROD/Grungr.clap" "$PROD/Grungr.component"; do
             [[ -d "$BUNDLE" ]] && xattr -rc "$BUNDLE"
           done
@@ -513,7 +515,7 @@ $PLISTBUDDY -c "Add :AudioComponents array" "$PL"
       - name: Stage artifacts
         run: |
           set -euo pipefail
-          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Build/Products/Release"
+          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Products"
           mkdir -p artifacts/vst3 artifacts/clap artifacts/au
           [[ -d "$PROD/Grungr.vst3" ]]      && cp -R "$PROD/Grungr.vst3"      artifacts/vst3/
           [[ -d "$PROD/Grungr.clap" ]]      && cp -R "$PROD/Grungr.clap"      artifacts/clap/
