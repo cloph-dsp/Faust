@@ -59,7 +59,14 @@ jobs:
           # the original filename. Without this copy, MSBuild fails with
           # C1083: Cannot open include file: 'Grungr.h'.
           cp Grungr.h          "$DST/Grungr.h"
-          cp GrungrIPlug2UI.cpp "$DST/GrungrIPlug2UI.cpp"
+          # Single-TU compile: IPlugEffect-vst3.vcxproj only compiles IPlugEffect.cpp,
+          # not GrungrIPlug2UI.cpp. Append the UI implementation to the single TU so
+          # grungr::ui::{HandleGlobalKey, BuildOrRelayout} symbols are emitted.
+          # Without this, link fails with LNK2001: unresolved external.
+          echo "" >> "$DST/IPlugEffect.cpp"
+          echo "// ---- Begin GrungrIPlug2UI.cpp (single-TU append) ----" >> "$DST/IPlugEffect.cpp"
+          cat GrungrIPlug2UI.cpp >> "$DST/IPlugEffect.cpp"
+          echo "// ---- End GrungrIPlug2UI.cpp ----" >> "$DST/IPlugEffect.cpp"
           cp GrungrIPlug2UI.h   "$DST/GrungrIPlug2UI.h"
           cp config.h          "$DST/config.h"
           # Faust runtime shim — replaces faust/dsp/dsp.h, faust/gui/MapUI.h,
@@ -215,7 +222,13 @@ jobs:
           # the original filename. Without this copy, xcodebuild fails with
           # 'Grungr.h' file not found.
           cp Grungr.h          "$DST/Grungr.h"
-          cp GrungrIPlug2UI.cpp "$DST/GrungrIPlug2UI.cpp"
+          # Single-TU compile: xcodebuild compiles IPlugEffect.cpp only, not
+          # GrungrIPlug2UI.cpp. Append the UI implementation to the single TU so
+          # grungr::ui::{HandleGlobalKey, BuildOrRelayout} symbols are emitted.
+          echo "" >> "$DST/IPlugEffect.cpp"
+          echo "// ---- Begin GrungrIPlug2UI.cpp (single-TU append) ----" >> "$DST/IPlugEffect.cpp"
+          cat GrungrIPlug2UI.cpp >> "$DST/IPlugEffect.cpp"
+          echo "// ---- End GrungrIPlug2UI.cpp ----" >> "$DST/IPlugEffect.cpp"
           cp GrungrIPlug2UI.h   "$DST/GrungrIPlug2UI.h"
           cp config.h          "$DST/config.h"
           # Faust runtime shim — replaces faust/dsp/dsp.h, faust/gui/MapUI.h,
