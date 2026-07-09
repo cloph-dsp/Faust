@@ -244,10 +244,20 @@ jobs:
           cp resources/*.otf  "$DST/resources/" 2>/dev/null || true
           cp resources/*.png  "$DST/resources/" 2>/dev/null || true
 
-          # Pre-made Grungr plists — rename so the IPlugEffect xcodeproj finds them.
-          cp resources/Grungr-VST3-Info.plist "$DST/resources/IPlugEffect-VST3-Info.plist"
-          cp resources/Grungr-CLAP-Info.plist "$DST/resources/IPlugEffect-CLAP-Info.plist"
-          cp resources/Grungr-AU-Info.plist   "$DST/resources/IPlugEffect-AUv2-Info.plist"
+          # iPlug2 framework's IPlugEffect/resources/ already contains
+          # IPlugEffect-VST3-Info.plist etc. (the xcodeproj's INFOPLIST_FILE
+          # references these). Do NOT overwrite them with Grungr content.
+          # The xcodebuild Run Script prepare_resources-mac.py reads
+          # BUNDLE_NAME=Grungr from staged config.h and looks for
+          # {BUNDLE_NAME}-VST3-Info.plist = Grungr-VST3-Info.plist.
+          # Create Grungr-*.plist copies from the framework's IPlugEffect-*.plist.
+          # The post-build PlistBuddy step (Fix plist values for Grungr) then
+          # patches the bundle's Info.plist with the correct CFBundleIdentifier
+          # etc. — same pattern as the proven Tuner workflow.
+          cd "$DST/resources"
+          for f in IPlugEffect-*.plist; do
+            [ -f "$f" ] && cp "$f" "Grungr${f#IPlugEffect}" || true
+          done
 
       - name: Write IPlugEffect-mac.xcconfig (proven-correct values)
         working-directory: Grungr
