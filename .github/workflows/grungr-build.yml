@@ -30,18 +30,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Clone iPlug2 (shallow)
+      - name: Clone iPlug2 (shallow + shallow submodules)
         shell: bash
         run: |
           cd "$GITHUB_WORKSPACE"
-          git clone --depth 1 https://github.com/iPlug2/iPlug2.git iPlug2
+          git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git iPlug2
           cd iPlug2
           git submodule update --init --depth 1 Dependencies/IPlug 2>/dev/null || true
 
       - name: Download iPlug2 SDKs (VST3 + WAM)
         shell: bash
-        run: |
-          bash iPlug2/Dependencies/IPlug/download-iplug-sdks.sh
+        working-directory: iPlug2/Dependencies/IPlug
+        run: bash download-iplug-sdks.sh
 
       - name: Stage Grungr source into IPlugEffect
         shell: bash
@@ -173,18 +173,17 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Clone iPlug2 (shallow)
+      - name: Clone iPlug2 (shallow + shallow submodules)
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
-          git clone --depth 1 https://github.com/iPlug2/iPlug2.git iPlug2
+          git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git iPlug2
           cd iPlug2
           git submodule update --init --depth 1 Dependencies/IPlug 2>/dev/null || true
 
       - name: Download iPlug2 SDKs (macOS)
-        run: |
-          set -euo pipefail
-          bash iPlug2/Dependencies/IPlug/download-iplug-sdks-mac.sh
+        working-directory: iPlug2/Dependencies/IPlug
+        run: bash download-iplug-sdks.sh
 
       - name: Stage Grungr source into IPlugEffect
         run: |
