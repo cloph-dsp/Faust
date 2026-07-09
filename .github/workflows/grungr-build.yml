@@ -45,38 +45,39 @@ jobs:
 
       - name: Stage Grungr source into IPlugEffect
         shell: bash
+        working-directory: Grungr
         run: |
           set -euo pipefail
-          cd "$GITHUB_WORKSPACE"
           DST="../iPlug2/Examples/IPlugEffect"
           mkdir -p "$DST/DSP"
+          mkdir -p "$DST/resources"
 
           # Main plugin source (Grungr.cpp -> IPlugEffect.cpp is the staging convention)
-          cp Grungr/Grungr.cpp        "$DST/IPlugEffect.cpp"
-          cp Grungr/Grungr.h          "$DST/IPlugEffect.h"
-          cp Grungr/GrungrIPlug2UI.cpp "$DST/GrungrIPlug2UI.cpp"
-          cp Grungr/GrungrIPlug2UI.h   "$DST/GrungrIPlug2UI.h"
-          cp Grungr/config.h          "$DST/config.h"
+          cp Grungr.cpp        "$DST/IPlugEffect.cpp"
+          cp Grungr.h          "$DST/IPlugEffect.h"
+          cp GrungrIPlug2UI.cpp "$DST/GrungrIPlug2UI.cpp"
+          cp GrungrIPlug2UI.h   "$DST/GrungrIPlug2UI.h"
+          cp config.h          "$DST/config.h"
 
           # DSP include: preserve relative "DSP/GrungrFaustDSP.h" used by Grungr.cpp
-          cp Grungr/DSP/GrungrFaustDSP.h "$DST/DSP/GrungrFaustDSP.h"
+          cp DSP/GrungrFaustDSP.h "$DST/DSP/GrungrFaustDSP.h"
 
           # Resources — main.rc embeds SVGs/fonts/ico into the VST3 DLL.
-          cp Grungr/resources/main.rc "$DST/resources/"
-          cp Grungr/resources/*.svg  "$DST/resources/" 2>/dev/null || true
-          cp Grungr/resources/*.ttf  "$DST/resources/" 2>/dev/null || true
-          cp Grungr/resources/*.otf  "$DST/resources/" 2>/dev/null || true
-          cp Grungr/resources/*.png  "$DST/resources/" 2>/dev/null || true
-          cp Grungr/resources/*.ico  "$DST/resources/" 2>/dev/null || true
+          cp resources/main.rc "$DST/resources/"
+          cp resources/*.svg  "$DST/resources/" 2>/dev/null || true
+          cp resources/*.ttf  "$DST/resources/" 2>/dev/null || true
+          cp resources/*.otf  "$DST/resources/" 2>/dev/null || true
+          cp resources/*.png  "$DST/resources/" 2>/dev/null || true
+          cp resources/*.ico  "$DST/resources/" 2>/dev/null || true
 
       - name: Generate IPlugEffect-win.props from Grungr-win.props
         shell: bash
+        working-directory: Grungr
         run: |
           set -euo pipefail
-          cd "$GITHUB_WORKSPACE"
           DST="../iPlug2/Examples/IPlugEffect"
           # Build props reference project name; substitute Grungr -> IPlugEffect.
-          sed 's/Grungr/IPlugEffect/g' Grungr/config/Grungr-win.props > "$DST/IPlugEffect-win.props"
+          sed 's/Grungr/IPlugEffect/g' config/Grungr-win.props > "$DST/IPlugEffect-win.props"
 
       - name: Find MSBuild via vswhere
         id: msbuild
@@ -186,38 +187,42 @@ jobs:
         run: bash download-iplug-sdks.sh
 
       - name: Stage Grungr source into IPlugEffect
+        working-directory: Grungr
         run: |
           set -euo pipefail
-          cd "$GITHUB_WORKSPACE"
           DST="../iPlug2/Examples/IPlugEffect"
           mkdir -p "$DST/DSP"
+          mkdir -p "$DST/resources"
 
-          cp Grungr/Grungr.cpp        "$DST/IPlugEffect.cpp"
-          cp Grungr/Grungr.h          "$DST/IPlugEffect.h"
-          cp Grungr/GrungrIPlug2UI.cpp "$DST/GrungrIPlug2UI.cpp"
-          cp Grungr/GrungrIPlug2UI.h   "$DST/GrungrIPlug2UI.h"
-          cp Grungr/config.h          "$DST/config.h"
+          cp Grungr.cpp        "$DST/IPlugEffect.cpp"
+          cp Grungr.h          "$DST/IPlugEffect.h"
+          cp GrungrIPlug2UI.cpp "$DST/GrungrIPlug2UI.cpp"
+          cp GrungrIPlug2UI.h   "$DST/GrungrIPlug2UI.h"
+          cp config.h          "$DST/config.h"
 
-          cp Grungr/DSP/GrungrFaustDSP.h "$DST/DSP/GrungrFaustDSP.h"
+          cp DSP/GrungrFaustDSP.h "$DST/DSP/GrungrFaustDSP.h"
 
-          cp Grungr/resources/main.rc "$DST/resources/"
-          cp Grungr/resources/*.svg  "$DST/resources/" 2>/dev/null || true
-          cp Grungr/resources/*.ttf  "$DST/resources/" 2>/dev/null || true
-          cp Grungr/resources/*.otf  "$DST/resources/" 2>/dev/null || true
-          cp Grungr/resources/*.png  "$DST/resources/" 2>/dev/null || true
+          cp resources/main.rc "$DST/resources/"
+          cp resources/*.svg  "$DST/resources/" 2>/dev/null || true
+          cp resources/*.ttf  "$DST/resources/" 2>/dev/null || true
+          cp resources/*.otf  "$DST/resources/" 2>/dev/null || true
+          cp resources/*.png  "$DST/resources/" 2>/dev/null || true
 
           # Pre-made Grungr plists — rename so the IPlugEffect xcodeproj finds them.
-          cp Grungr/resources/Grungr-VST3-Info.plist "$DST/resources/IPlugEffect-VST3-Info.plist"
-          cp Grungr/resources/Grungr-CLAP-Info.plist "$DST/resources/IPlugEffect-CLAP-Info.plist"
-          cp Grungr/resources/Grungr-AU-Info.plist   "$DST/resources/IPlugEffect-AUv2-Info.plist"
+          cp resources/Grungr-VST3-Info.plist "$DST/resources/IPlugEffect-VST3-Info.plist"
+          cp resources/Grungr-CLAP-Info.plist "$DST/resources/IPlugEffect-CLAP-Info.plist"
+          cp resources/Grungr-AU-Info.plist   "$DST/resources/IPlugEffect-AUv2-Info.plist"
 
       - name: Write IPlugEffect-mac.xcconfig (proven-correct values)
+        working-directory: Grungr
         run: |
           set -euo pipefail
           # Proven pattern from Freeze95 / BronzeNoise. Avoids the deviations
           # found in the project's Grungr-mac.xcconfig template (OBJC_PREFIX,
           # PROFILE=NO, GCC_CFLAGS[arch=x86_64], etc. that aren't in Freeze95).
-          cat > "../iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig" <<'XCCONFIG_EOF'
+          DST="../iPlug2/Examples/IPlugEffect"
+          mkdir -p "$DST/config"
+          cat > "$DST/config/IPlugEffect-mac.xcconfig" <<'XCCONFIG_EOF'
 
           // IPLUG2_ROOT should point to the top level IPLUG2 folder
           IPLUG2_ROOT = ../../..
