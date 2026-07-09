@@ -4,7 +4,6 @@
 
 #include "Tuner.h"
 #include "TunerDSP.h"
-#include "TunerAnalysis.h"   // host-free detector split out (round-11 refactor)
 #include "IPlug_include_in_plug_src.h"
 #include "IControls.h"
 
@@ -96,28 +95,489 @@ FAUSTFLOAT* TunerDSPWrapper::GetZone(const char* label) {
 //      else 0.03 + 0.4 * userSmooth)
 //   7. Asymmetric cents smoother (alpha = 1 / (1 + 0.05 * |cents|))
 //
+// CPU: analysis passes every kAnalysisStride=1024 samples (~47 Hz @ 48 kHz).
+// YIN + MPM each cost O(N*maxLag) = 2048*1024 ≈ 2.1M ops; ~100M ops/sec on
+// the audio thread.
+
+// TunerAnalysis::Detector now lives in TunerAnalysis.h (declarations) and
+// TunerAnalysis.cpp (implementations).  This split allows the detector to
+// be linked stand-alone from a host-free smoke test (tests/detector_smoke.cpp)
+// that does NOT include iPlug2 or any host platform headers.
+#include "TunerAnalysis.h"
+
+
 // =============================================================================
-// TunerAnalysis::Detector -- algorithm documentation
+// TunerReadoutControl::Draw -- the live tuner face (Amorph-faithful)
 // =============================================================================
-//
-// Implementation lives in TunerAnalysis.cpp (host-free TU; split out in
-// round-11 so the detector is linkable from a stand-alone smoke test that
-// does NOT include iPlug2).  That file contains the bodies of:
-//
-//   Detector::Init       -- configure sample rate + reset all state
-//   Detector::Reset      -- zero ring buffer + atomic Result fields
-//   Detector::PushSample -- RT-3 NaN/Inf clamp, ring-buffer write,
-//                            fire RunAnalysis() every kAnalysisStride samples
-//   Detector::DetectYIN  -- YIN with cumulative mean normalized difference
-//   Detector::DetectMPM  -- McLeod Pitch Method (NSDF parabola)
-//   Detector::RefineLagNeville -- 3-point Neville polynomial refinement
-//   Detector::MedianFilter -- 7-tap bounded partial sort (RT-2 safe)
-//   Detector::SmoothPitch  -- asymmetric alpha smoothing (semantic-aware)
-//   Detector::SmoothCents  -- alpha = 1 / (1 + 0.05 * |cents|)
-//   Detector::NoteFromPitch -- MIDI/note/cents mapping w/ A4 reference glide
-//   Detector::RunAnalysis -- YIN+MPM pick + MedianFilter + smoothing + atomics
-//
-// The Detector::GetResult() return type / fields are the audio->UI hand-off
+
+static IColor ColorFromAccuracy(double ac) {
+  // Mirror Amorph's CSS:
+  //   <=1  -> #00ff66
+  //   <=3  -> #66ff00
+  //   <=7  -> #ccff00
+  //   <=15 -> #ffcc00
+  //   <=30 -> #ff6600
+  //   else -> #ff2222
+  if (ac <= 1.0)  return IColor(255,   0, 255, 102);
+  if (ac <= 3.0)  return IColor(255, 102, 255,   0);
+  if (ac <= 7.0)  return IColor(255, 204, 255,   0);
+  if (ac <= 15.0) return IColor(255, 255, 204,   0);
+  if (ac <= 30.0) return IColor(255, 255, 102,   0);
+  return IColor(255, 255,  34,  34);
+}
+
+static const char* kNoteNames[12] = {
+  "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+};
+
+void TunerReadoutControl::Draw(IGraphics& g) {
+  // =============================================================================
+  // REDESIGNED layout (540×300) — clean dark-LED panel aesthetic
+  // =============================================================================
+
+  // ---- read detector results ----
+  const TunerAnalysis::Result& r = mTuner->GetAnalysisResult();
+  const double freq    = r.pitchHz.load();
+  const double cents   = r.cents.load();
+  const double clarity = r.clarity.load();
+  const int    noteIdx = r.noteIndex.load();
+  const int    octave  = r.octave.load();
+
+  const bool hasSignal = clarity > 0.25 && freq > 0.0;
+
+  // ---- animate needle ----
+  const float target = hasSignal
+    ? (float)std::max(0.0, std::min(100.0, 50.0 + (cents / 50.0) * 50.0))
+    : 50.0f;
+  const float dist = std::abs(target - mNeedlePos);
+  float baseRate;
+  if      (dist > 15.0f) baseRate = 0.30f;
+  else if (dist >  5.0f) baseRate = 0.12f;
+  else if (dist >  1.5f) baseRate = 0.05f;
+  else                   baseRate = 0.015f;
+  const double smoothVal = mTuner->GetParam(kParamSmoothing)->Value() / 100.0;
+  const float smoothMul = (smoothVal < 0.01)
+    ? 100.0f
+    : (float)(0.02 + (1.0 - smoothVal) * 1.8);
+  const float rate = std::min(1.0f, baseRate * smoothMul);
+  mNeedlePos += (target - mNeedlePos) * rate;
+
+  const float targetGlow = (hasSignal && std::abs(cents) <= 2.0) ? 1.0f : 0.0f;
+  mGlow += (targetGlow - mGlow) * 0.12f;
+
+  // ---- palette ----
+  const IColor bg       = IColor(255,   6,   6,   6);   // #060606
+  const IColor panel    = IColor(255,  12,  12,  12);   // #0c0c0c
+  const IColor text     = IColor(255, 220, 220, 220);   // #dcdcdc
+  const IColor textDim  = IColor(255,  90,  90,  90);   // #5a5a5a
+  const IColor textMid  = IColor(255, 130, 130, 130);   // #828282
+  const IColor accent   = IColor(255,  10, 220, 200);   // teal-cyan
+  const IColor tickLine = IColor(255,  35,  35,  35);   // #232323
+  const IColor tickMid  = IColor(255,  60,  60,  60);   // #3c3c3c
+  const IColor tickCtr  = IColor(255,  90,  90,  90);   // #5a5a5a
+  const IColor trackBg  = IColor(255,  18,  18,  18);   // #121212
+  const IColor smoothBg = IColor(255,  22,  22,  22);   // #161616
+  const IColor smoothFg = IColor(255,  10, 200, 180);   // teal fill
+
+  // ---- background ----
+  g.FillRect(bg, mRECT);
+
+  // ---- NOTE NAME — large, centered ----
+  const char* noteStr = hasSignal ? kNoteNames[noteIdx] : "-";
+  IColor noteCol = hasSignal ? text : IColor(255, 150, 150, 150);  // brighter when inactive
+  g.DrawText(IText(64, noteCol, "TexasLED",
+                   EAlign::Center, EVAlign::Middle),
+             noteStr,
+             IRECT(mRECT.L + 80, mRECT.T + 8,
+                   mRECT.R - 80, mRECT.T + 100));
+
+  // ---- OCTAVE — top-right, beside note ----
+  char octStr[4] = {0};
+  if (hasSignal) snprintf(octStr, sizeof(octStr), "%d", octave);
+  g.DrawText(IText(18, hasSignal ? textMid : textDim, "TexasLED",
+                   EAlign::Near, EVAlign::Middle),
+             octStr,
+             IRECT(mRECT.L + 452, mRECT.T + 20,
+                   mRECT.L + 495, mRECT.T + 60));
+
+  // ---- CENTS — below octave ----
+  char centsStr[16] = {0};
+  if (hasSignal) {
+    const char* sign = cents > 0 ? "+" : "";
+    snprintf(centsStr, sizeof(centsStr), "%s%.1f", sign, cents);
+  } else {
+    snprintf(centsStr, sizeof(centsStr), "---");
+  }
+  IColor centsCol = hasSignal ? ColorFromAccuracy(std::abs(cents)) : textDim;
+  g.DrawText(IText(20, centsCol, "TexasLED",
+                   EAlign::Near, EVAlign::Middle),
+               centsStr,
+               IRECT(mRECT.L + 452, mRECT.T + 62,
+                     mRECT.L + 540, mRECT.T + 100));
+
+  // ---- FREQUENCY — centered below ----
+  char freqStr[32] = {0};
+  if (hasSignal) snprintf(freqStr, sizeof(freqStr), "%.2f Hz", freq);
+  else           snprintf(freqStr, sizeof(freqStr), "------ Hz");
+  g.DrawText(IText(14, hasSignal ? text : textDim, "TexasLED",
+                   EAlign::Center, EVAlign::Middle),
+               freqStr,
+               IRECT(mRECT.L, mRECT.T + 102,
+                     mRECT.R, mRECT.T + 126));
+
+  // =============================================================================
+  // TUNING METER — horizontal track, centered, with ticks and needle
+  // =============================================================================
+  const IRECT track(mRECT.L + 20, mRECT.T + 130,
+                    mRECT.R - 20, mRECT.T + 156);
+
+  // Track bg.
+  g.FillRect(trackBg, track);
+
+  // Center line.
+  const float cy = (float)track.MH();
+  g.DrawLine(tickLine, track.L, cy, track.R, cy, nullptr, 1.0f);
+
+  // Ticks: 0%, 25%, 50% (2px wide), 75%, 100%.
+  auto drawTick = [&](float pct, const IColor& c, float thickness) {
+    const float x = (float)(track.L + pct * track.W());
+    g.DrawLine(c, x, track.T + 3, x, track.B - 3, nullptr, thickness);
+  };
+  drawTick(0.00f, tickLine, 1.0f);
+  drawTick(0.25f, tickMid,  1.0f);
+  drawTick(0.50f, tickCtr,  2.0f);
+  drawTick(0.75f, tickMid,  1.0f);
+  drawTick(1.00f, tickLine, 1.0f);
+
+  // In-tune zone (46%..54%): faint teal glow.
+  if (mGlow > 0.001f) {
+    const float zL = (float)(track.L + 0.46f * track.W());
+    const float zR = (float)(track.L + 0.54f * track.W());
+    IColor zoneCol = IColor((uint8_t)(255 * mGlow * 0.35f),
+                             10, 220, 200);
+    g.FillRect(zoneCol, IRECT(zL, track.T, zR, track.B));
+  }
+
+  // Needle.
+  const float nx = (float)(track.L + (mNeedlePos / 100.0f) * track.W());
+  IColor needleCol = hasSignal ? ColorFromAccuracy(std::abs(cents)) : textDim;
+  g.DrawLine(needleCol, nx, track.T - 5, nx, track.B + 5, nullptr, 2.5f);
+
+  // =============================================================================
+  // SMOOTHING SLIDER — horizontal, left side, 150×24px (wider for easier drag)
+  // =============================================================================
+  const IRECT slTrack(mRECT.L + 20, mRECT.T + 166,
+                      mRECT.L + 170, mRECT.T + 190);
+  const float sval = (float)(mTuner->GetParam(kParamSmoothing)->Value() / 100.0);
+
+  // Track bg + border (brighten border when hovering).
+  g.FillRect(mIsHovering ? IColor(255, 28, 28, 28) : smoothBg, slTrack);
+  g.DrawRect(mIsHovering ? accent : textDim, slTrack);
+
+  // Fill from center to (center + direction*value).
+  const float ctrX = slTrack.MW();
+  const float fillEnd = ctrX + (sval - 0.5f) * slTrack.W();
+  if (std::abs(sval - 0.5f) > 0.001f) {
+    IRECT fillRect = (sval > 0.5f)
+      ? IRECT(ctrX, slTrack.T + 2, fillEnd, slTrack.B - 2)
+      : IRECT(fillEnd, slTrack.T + 2, ctrX, slTrack.B - 2);
+    g.FillRect(smoothFg, fillRect);
+  }
+
+  // Center detent tick.
+  g.DrawLine(tickCtr, ctrX, slTrack.T + 2, ctrX, slTrack.B - 2, nullptr, 2.0f);
+
+  // Label + value below.
+  g.DrawText(IText(10, textMid, "TexasLED", EAlign::Near, EVAlign::Middle),
+              "SM", IRECT(slTrack.L, slTrack.B + 2, slTrack.L + 24, slTrack.B + 18));
+  char smVal[8] = {0};
+  snprintf(smVal, sizeof(smVal), "%.0f%%", mTuner->GetParam(kParamSmoothing)->Value());
+  g.DrawText(IText(10, textMid, "TexasLED", EAlign::Near, EVAlign::Middle),
+              smVal, IRECT(slTrack.L + 26, slTrack.B + 2, slTrack.L + 70, slTrack.B + 18));
+
+  // Smoothing hit-test rect (same as visual track).
+  mSmoothRect = slTrack;
+
+  // =============================================================================
+  // A4 REFERENCE — centered, below slider row
+  // =============================================================================
+  {
+    constexpr float kA4Cells = 6.f;
+    constexpr float kA4CellW = 30.f;
+    constexpr float kA4H     = 20.f;
+    constexpr float kA4Gap  = 2.f;
+    const float kA4W = kA4Cells * (kA4CellW + kA4Gap) - kA4Gap;
+    const float kA4X = mRECT.MW() - kA4W / 2.f;
+    const float kA4Y = mRECT.B - 44.f;
+    const IRECT a4Bg(kA4X, kA4Y, kA4X + kA4W, kA4Y + kA4H);
+
+    int selIdx = (int)mTuner->GetParam(kParamA4Ref)->Value();
+    static const char* a4Labels[] = {"415", "430", "432", "440", "442", "444"};
+
+    g.FillRect(smoothBg, a4Bg);
+    g.DrawRect(textDim, a4Bg);
+
+    for (int i = 0; i < (int)kA4Cells; i++) {
+      IRECT cell(a4Bg.L + i * (kA4CellW + kA4Gap), a4Bg.T,
+                 a4Bg.L + i * (kA4CellW + kA4Gap) + kA4CellW, a4Bg.B);
+      bool active = (i == selIdx);
+      if (active)
+        g.FillRect(accent, cell.GetPadded(-1));  // teal fill for active cell
+      else if (i == mHoveredA4Cell)
+        g.FillRect(IColor(50, 10, 220, 200), cell.GetPadded(-1));  // subtle teal hover
+      const IColor& cellText = active ? IColor(255, 245, 245, 245)  // near-white on teal
+                                      : textMid;
+      g.DrawText(IText(12, cellText, "TexasLED",
+                       EAlign::Center, EVAlign::Middle),
+                  a4Labels[i], cell);
+    }
+    // Label.
+    g.DrawText(IText(11, textMid, "TexasLED", EAlign::Center, EVAlign::Middle),
+               "A4", IRECT(a4Bg.MW() - 20, a4Bg.T - 16, a4Bg.MW() + 20, a4Bg.T));
+  }
+
+  // =============================================================================
+  // CLOPH LOGO — bottom-right, teal tint for brand consistency
+  // =============================================================================
+  if (mLogo && mLogo->IsValid()) {
+    constexpr float kLogoAspect = 1461.67f / 569.f;
+    constexpr float kLogoW     = 72.f;    // 72px wide — visible but not dominant
+    constexpr float kLogoH     = kLogoW / kLogoAspect;  // ≈ 28
+    const IRECT logoRect(mRECT.R - kLogoW - 10.f,
+                          mRECT.B - kLogoH - 8.f,
+                          mRECT.R - 10.f,
+                          mRECT.B - 8.f);
+    // Tint the SVG teal to match the accent palette.
+    g.DrawSVG(*mLogo, logoRect, nullptr, &accent, nullptr);
+  }
+}
+
+// ponytail: dead code removed — lines 567-763 were the OLD active draw block.
+// The redesign (lines 349-566) is now the only Draw() implementation.
+// Key improvements: horizontal 100x20px smoothing slider (was 8px strip),
+// teal-tinted logo, unified palette, teal in-tune glow, improved typography.
+
+
+void TunerReadoutControl::OnMouseDown(float x, float y, const IMouseMod& mod) {
+  // ---- Smoothing slider hit-test (horizontal bar) ----
+  if (mSmoothRect.Contains(x, y)) {
+    mDragStartX = x;
+    mDragStartSmooth = (float)(mTuner->GetParam(kParamSmoothing)->Value() / 100.0);
+    mIsDragging = true;
+    if (IGraphics* pGraphics = GetUI()) {
+      if (auto* pPlug = dynamic_cast<iplug::Plugin*>(pGraphics->GetDelegate())) {
+        pPlug->BeginInformHostOfParamChangeFromUI(kParamSmoothing);
+      }
+    }
+    SetDirty(false);
+    return;
+  }
+
+  // ---- A4 reference bar hit-test (bottom-center) ----
+  {
+    constexpr float kA4Cells  = 6.f;
+    constexpr float kA4CellW  = 30.f;
+    constexpr float kA4H      = 20.f;
+    constexpr float kA4Gap    = 2.f;
+    const float kA4W = kA4Cells * (kA4CellW + kA4Gap) - kA4Gap;
+    const float kA4X = mRECT.MW() - kA4W / 2.f;
+    const float kA4Y = mRECT.B - 44.f;
+    const IRECT a4Bg(kA4X, kA4Y, kA4X + kA4W, kA4Y + kA4H);
+    if (a4Bg.Contains(x, y)) {
+      int cell = (int)((x - a4Bg.L) / (kA4CellW + kA4Gap));
+      if (cell >= 0 && cell < (int)kA4Cells) {
+        if (IGraphics* pGraphics = GetUI()) {
+          if (auto* pPlug = dynamic_cast<iplug::Plugin*>(pGraphics->GetDelegate())) {
+            const double norm = pPlug->GetParam(kParamA4Ref)->ToNormalized((double)cell);
+            pPlug->SendParameterValueFromUI(kParamA4Ref, norm);
+          }
+        }
+      }
+      SetDirty(false);
+    }
+  }
+}
+
+void TunerReadoutControl::OnMouseDrag(float x, float y, float dX, float dY, const IMouseMod& mod) {
+  if (!mIsDragging) return;
+  // Horizontal drag: 1px = 1% smoothing (100px = full range 0..1).
+  const float delta = (x - mDragStartX) * 0.01f;
+  const float newVal = std::max(0.0f, std::min(1.0f, mDragStartSmooth + delta));
+  if (IGraphics* pGraphics = GetUI()) {
+    if (auto* pPlug = dynamic_cast<iplug::Plugin*>(pGraphics->GetDelegate())) {
+      pPlug->SendParameterValueFromUI(kParamSmoothing, (double)newVal);
+    }
+  }
+  SetDirty(false);
+}
+
+void TunerReadoutControl::OnMouseUp(float x, float y, const IMouseMod& mod) {
+  if (mIsDragging) {
+    mIsDragging = false;
+    if (IGraphics* pGraphics = GetUI()) {
+      if (auto* pPlug = dynamic_cast<iplug::Plugin*>(pGraphics->GetDelegate())) {
+        pPlug->EndInformHostOfParamChangeFromUI(kParamSmoothing);
+      }
+    }
+    SetDirty(false);
+  }
+}
+
+void TunerReadoutControl::OnMouseOver(float x, float y, const IMouseMod& mod) {
+  const bool wasHovering = mIsHovering;
+  mIsHovering = mSmoothRect.Contains(x, y);
+
+  // A4 cell hover.
+  constexpr float kA4Cells  = 6.f;
+  constexpr float kA4CellW  = 30.f;
+  constexpr float kA4H      = 20.f;
+  constexpr float kA4Gap    = 2.f;
+  const float kA4W = kA4Cells * (kA4CellW + kA4Gap) - kA4Gap;
+  const float kA4X = mRECT.MW() - kA4W / 2.f;
+  const float kA4Y = mRECT.B - 44.f;
+  const IRECT a4Bg(kA4X, kA4Y, kA4X + kA4W, kA4Y + kA4H);
+  int newA4Cell = -1;
+  if (a4Bg.Contains(x, y)) {
+    newA4Cell = (int)((x - a4Bg.L) / (kA4CellW + kA4Gap));
+    if (newA4Cell < 0 || newA4Cell >= (int)kA4Cells) newA4Cell = -1;
+  }
+
+  // Tooltip: show a short contextual hint based on the region under the cursor.
+  // The platform layer only calls GetTooltip() on WM_MOUSEHOVER (first entry),
+  // not on every OnMouseOver, so this text must be a stable region-hint,
+  // not a per-cell dynamic value.
+  if (mIsHovering)
+    mTooltip.Set("Smoothing: drag to adjust / double-click to reset");
+  else if (newA4Cell >= 0)
+    mTooltip.Set("A4 reference: click to select");
+  else
+    mTooltip.Set("");
+
+  const bool a4Changed = (newA4Cell != mHoveredA4Cell);
+  mHoveredA4Cell = newA4Cell;
+
+  if (mIsHovering != wasHovering || a4Changed) SetDirty(false);
+}
+
+void TunerReadoutControl::OnMouseOut() {
+  if (mIsHovering) SetDirty(false);
+  mIsHovering = false;
+  mHoveredA4Cell = -1;
+  mTooltip.Set("");
+}
+
+void TunerReadoutControl::OnMouseDblClick(float x, float y, const IMouseMod& mod) {
+  // Double-click on smoothing slider resets to default (55%).
+  if (mSmoothRect.Contains(x, y)) {
+    if (IGraphics* pGraphics = GetUI()) {
+      if (auto* pPlug = dynamic_cast<iplug::Plugin*>(pGraphics->GetDelegate())) {
+        pPlug->BeginInformHostOfParamChangeFromUI(kParamSmoothing);
+        pPlug->SendParameterValueFromUI(kParamSmoothing, 0.55); // 55% default
+        pPlug->EndInformHostOfParamChangeFromUI(kParamSmoothing);
+      }
+    }
+    SetDirty(false);
+  }
+}
+
+
+// =============================================================================
+// Plugin class
+// =============================================================================
+
+Tuner::Tuner(const InstanceInfo& info)
+  : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
+  , mDSP(std::make_unique<TunerDSPWrapper>())
+{
+  GetParam(kParamSmoothing)->InitDouble(
+      "Smoothing", 55.0, 0.0, 100.0, 1.0, "%");
+  GetParam(kParamA4Ref)->InitEnum("A4", 3, 6, "Hz");
+  {
+    static const char* a4Labels[] = {"415", "430", "432", "440", "442", "444"};
+    for (int i = 0; i < 6; i++)
+      GetParam(kParamA4Ref)->SetDisplayText(i, a4Labels[i]);
+  }
+
+  mDetector.SetSmoothing(GetParam(kParamSmoothing)->Value() / 100.0);
+  {
+    int a4Idx = (int)GetParam(kParamA4Ref)->Value();
+    static const double kA4Hz[] = {415.0, 430.0, 432.0, 440.0, 442.0, 444.0};
+    mDetector.SetA4Reference(kA4Hz[std::min(a4Idx, 5)], true);  // instant = true at init
+  }
+
+  // RT-1: flush-to-zero + denormals-are-zero for the audio-thread IIR RMS
+  // smoother (and any future accumulator that risks producing denormals).
+  // 0x8040 = _MM_FLUSH_ZERO_ON (0x8000) | _MM_DENORMALS_ZERO_ON (0x0040).
+  // Set once at construction; the thread-affinity guarantees from iPlug2
+  // mean this sticks across the lifetime of the process.  Gated by
+  // TUNER_HAS_SSE_DENORMALS -- the intrinsics are x86-only; on ARM64 we
+  // rely on the math library's default denormal handling.
+#if TUNER_HAS_SSE_DENORMALS
+  _mm_setcsr(_mm_getcsr() | 0x8040);
+#endif
+
+  // ST-1: factory presets.  Enum indices for A4: 0=415,1=430,2=432,3=440,4=442,5=444.
+  MakePreset("Standard A=440",  55.0, 3.0);
+  MakePreset("Baroque A=415",   55.0, 0.0);
+  MakePreset("Classical A=430", 55.0, 1.0);
+  MakePreset("Baritone",        65.0, 3.0);
+
+#if IPLUG_EDITOR
+  mMakeGraphicsFunc = [&]() {
+    return MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS);
+  };
+  mLayoutFunc = [&](IGraphics* g) { LayoutUI(g); };
+#endif
+}
+
+// ST-1: chunk state serialization with magic number validation.  iPlug2's
+// default SerializeParams/UnserializeParams handles the two exposed params
+// (Smoothing, A4) automatically; the magic + version guard catches corrupted
+// or cross-version state before it reaches the parameter system.
+static constexpr int32_t kTunerMagic   = 'TnR1';
+static constexpr int32_t kTunerVersion = 1;
+
+bool Tuner::SerializeState(IByteChunk& chunk) const {
+  chunk.Put(&kTunerMagic);
+  chunk.Put(&kTunerVersion);
+  return SerializeParams(chunk);
+}
+
+int Tuner::UnserializeState(const IByteChunk& chunk, int startPos) {
+  int pos = startPos;
+  int32_t magic = 0;
+  pos = chunk.Get(&magic, pos);
+  if (magic != kTunerMagic) {
+    // Magic mismatch — corrupted or unknown format.  Reset to defaults.
+    for (int i = 0; i < kNumParams; ++i) GetParam(i)->SetToDefault();
+    OnParamChange(kParamSmoothing);
+    OnParamChange(kParamA4Ref);
+    return pos;
+  }
+  int32_t version = 0;
+  pos = chunk.Get(&version, pos);
+  // Version 1 format — only one version currently.  Future migrations
+  // branch here.
+  pos = UnserializeParams(chunk, pos);
+  // Sync DSP to freshly loaded parameter values.
+  OnParamChange(kParamSmoothing);
+  OnParamChange(kParamA4Ref);
+  return pos;
+}
+
+void Tuner::OnReset() {
+  mDSP->Init(GetSampleRate());
+  mDetector.Init(GetSampleRate());
+}
+
+void Tuner::OnParamChange(int paramIdx) {
+  switch (paramIdx) {
+    case kParamSmoothing:
+      mDetector.SetSmoothing(GetParam(kParamSmoothing)->Value() / 100.0);
+      break;
+    case kParamA4Ref: {
+      static const double kA4Hz[] = {415.0, 430.0, 432.0, 440.0, 442.0, 444.0};
+      int idx = (int)GetParam(kParamA4Ref)->Value();
       mDetector.SetA4Reference(kA4Hz[(idx < 0 || idx > 5) ? 3 : idx]);
       break;
     }

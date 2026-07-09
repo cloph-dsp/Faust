@@ -33,15 +33,18 @@
 #endif
 
 #include "IPlug_include_in_plug_hdr.h"
-#include "TunerAnalysis.h"   // round-11: split out host-free detector
 #include "FaustCompat.h"
 #include "IControls.h"
+
+// TunerAnalysis::Detector class declarations moved to a separate header so
+// the detector can be linked without iPlug2 (host-free smoke test).  See
+// TunerAnalysis.h / TunerAnalysis.cpp for the algorithm.
+#include "TunerAnalysis.h"
 
 const int kNumPresets = 4;
 
 using namespace iplug;
 using namespace igraphics;
-
 
 
 // =============================================================================
