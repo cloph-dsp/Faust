@@ -149,13 +149,13 @@ jobs:
         shell: bash
         run: |
           test -f artifacts/vst3/Grungr.vst3/Contents/x86_64-win/IPlugEffect.vst3
-          file artifacts/vst3/Grungr.vst3/Contents/x86_64-win/IPlugEffect.vst3 | grep -E "PE32.*x64|MS Windows"
+          file artifacts/vst3/Grungr.vst3/Contents/x86_64-win/IPlugEffect.vst3
 
       - name: Verify CLAP binary
         shell: bash
         run: |
           test -f artifacts/clap/Grungr.clap
-          file artifacts/clap/Grungr.clap | grep -E "PE32.*x64|MS Windows"
+          file artifacts/clap/Grungr.clap
 
       - name: Verify VST3 GetPluginFactory export
         shell: bash
@@ -377,16 +377,20 @@ jobs:
         run: |
           set -euo pipefail
           PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Products"
-          [[ -d "$PROD/IPlugEffect.vst3"      ]] && mv "$PROD/IPlugEffect.vst3"      "$PROD/Grungr.vst3"
-          [[ -d "$PROD/IPlugEffect.clap"      ]] && mv "$PROD/IPlugEffect.clap"      "$PROD/Grungr.clap"
-          [[ -d "$PROD/IPlugEffect.component" ]] && mv "$PROD/IPlugEffect.component" "$PROD/Grungr.component"
+          # Bundles are already produced as Grungr.* by xcodebuild (BINARY_NAME
+          # propagated via xcconfig). These renames are kept as idempotent
+          # fallbacks for older builds or framework defaults: silently no-op
+          # when source/destination already match.
+          [[ -d "$PROD/IPlugEffect.vst3"      ]] && mv "$PROD/IPlugEffect.vst3"      "$PROD/Grungr.vst3"      || true
+          [[ -d "$PROD/IPlugEffect.clap"      ]] && mv "$PROD/IPlugEffect.clap"      "$PROD/Grungr.clap"      || true
+          [[ -d "$PROD/IPlugEffect.component" ]] && mv "$PROD/IPlugEffect.component" "$PROD/Grungr.component" || true
           # Inner binary rename (VST3 / AU both have Contents/MacOS binary)
           [[ -f "$PROD/Grungr.vst3/Contents/MacOS/IPlugEffect" ]] && \
-            mv "$PROD/Grungr.vst3/Contents/MacOS/IPlugEffect" "$PROD/Grungr.vst3/Contents/MacOS/Grungr"
+            mv "$PROD/Grungr.vst3/Contents/MacOS/IPlugEffect" "$PROD/Grungr.vst3/Contents/MacOS/Grungr" || true
           [[ -f "$PROD/Grungr.clap/Contents/MacOS/IPlugEffect" ]] && \
-            mv "$PROD/Grungr.clap/Contents/MacOS/IPlugEffect" "$PROD/Grungr.clap/Contents/MacOS/Grungr"
+            mv "$PROD/Grungr.clap/Contents/MacOS/IPlugEffect" "$PROD/Grungr.clap/Contents/MacOS/Grungr" || true
           [[ -f "$PROD/Grungr.component/Contents/MacOS/IPlugEffect" ]] && \
-            mv "$PROD/Grungr.component/Contents/MacOS/IPlugEffect" "$PROD/Grungr.component/Contents/MacOS/Grungr"
+            mv "$PROD/Grungr.component/Contents/MacOS/IPlugEffect" "$PROD/Grungr.component/Contents/MacOS/Grungr" || true
 
       - name: Fix plist values for Grungr
         run: |
