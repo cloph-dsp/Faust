@@ -205,14 +205,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Grungr-VST3-Windows
-          path: artifacts/vst3/Grungr.vst3
+          path: Grungr/artifacts/vst3/Grungr.vst3
           if-no-files-found: error
 
       - name: Upload Grungr CLAP (Windows)
         uses: actions/upload-artifact@v4
         with:
           name: Grungr-CLAP-Windows
-          path: artifacts/clap/Grungr.clap
+          path: Grungr/artifacts/clap/Grungr.clap
           if-no-files-found: warn
 
   # ============================================================================
