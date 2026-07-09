@@ -6,17 +6,17 @@
 	<array>
 		<dict>
 			<key>description</key>
-			<string>Grungr</string>
+			<string>Grungr Faust-based drive pedal emulation</string>
 			<key>factoryFunction</key>
 			<string>Grungr_Factory</string>
 			<key>manufacturer</key>
-			<string>Acme</string>
+			<string>Clph</string>
 			<key>name</key>
-			<string>cloph: Grungr</string>
+			<string>CLOPH: Grungr</string>
 			<key>sandboxSafe</key>
 			<true/>
 			<key>subtype</key>
-			<string>Ipef</string>
+			<string>GRNR</string>
 			<key>type</key>
 			<string>aufx</string>
 			<key>version</key>
@@ -24,7 +24,7 @@
 		</dict>
 	</array>
 	<key>AudioUnit Version</key>
-	<string>0x00010000</string>
+	<string>0x00020600</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
 	<key>CFBundleExecutable</key>
@@ -40,11 +40,11 @@
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>2.6.0</string>
 	<key>CFBundleSignature</key>
-	<string>Ipef</string>
+	<string>GRNR</string>
 	<key>CFBundleVersion</key>
-	<string>1.0.0</string>
+	<string>2.6.0</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>

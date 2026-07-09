@@ -121,9 +121,11 @@ jobs:
         run: |
           $msbuild = "${{ steps.msbuild.outputs.MSBUILD }}"
           $solutionDir = (Resolve-Path "../iPlug2/Examples/IPlugEffect").Path + "\"
+          $iplug2Root = (Resolve-Path "../iPlug2").Path
           & $msbuild "../iPlug2/Examples/IPlugEffect/projects/IPlugEffect-vst3.vcxproj" `
             /p:Configuration=Release /p:Platform=x64 `
             "/p:SolutionDir=$solutionDir" `
+            "/p:IPLUG2_ROOT=$iplug2Root" `
             /v:m /m
 
       - name: Build CLAP (Windows)
@@ -132,9 +134,11 @@ jobs:
         run: |
           $msbuild = "${{ steps.msbuild.outputs.MSBUILD }}"
           $solutionDir = (Resolve-Path "../iPlug2/Examples/IPlugEffect").Path + "\"
+          $iplug2Root = (Resolve-Path "../iPlug2").Path
           & $msbuild "../iPlug2/Examples/IPlugEffect/projects/IPlugEffect-clap.vcxproj" `
             /p:Configuration=Release /p:Platform=x64 `
             "/p:SolutionDir=$solutionDir" `
+            "/p:IPLUG2_ROOT=$iplug2Root" `
             /v:m /m
 
       - name: Stage outputs
@@ -408,6 +412,9 @@ jobs:
           PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Products"
           PLISTBUDDY=/usr/libexec/PlistBuddy
 
+          # AUv2: copy Grungr's Info.plist template (has correct AudioComponents)
+          cp resources/Grungr-AU-Info.plist "$PROD/Grungr.component/Contents/Info.plist"
+
           # Common keys applied to every bundle
           for BUNDLE in "$PROD/Grungr.vst3" "$PROD/Grungr.clap" "$PROD/Grungr.component"; do
             PL="$BUNDLE/Contents/Info.plist"
@@ -427,20 +434,9 @@ jobs:
           PL="$PROD/Grungr.clap/Contents/Info.plist"
           $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph-dsp.clap.Grungr"      "$PL"
 
-          # AUv2 — adds AudioComponents entry + view class for AU registration
+          # AUv2: set remaining fields on the copied template
           PL="$PROD/Grungr.component/Contents/Info.plist"
           $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph-dsp.audiounit.Grungr" "$PL"
-          $PLISTBUDDY -c "Delete :AudioComponents" "$PL" 2>/dev/null || true
-          $PLISTBUDDY -c "Add :AudioComponents array" "$PL"
-          $PLISTBUDDY -c "Add :AudioComponents:0 dict" "$PL"
-          $PLISTBUDDY -c "Set :AudioComponents:0:type string aufx" "$PL"
-          $PLISTBUDDY -c "Set :AudioComponents:0:subtype string GRNR" "$PL"
-          $PLISTBUDDY -c "Set :AudioComponents:0:manufacturer string Clph" "$PL"
-          $PLISTBUDDY -c "Set :AudioComponents:0:factoryFunction string Grungr_Factory" "$PL"
-          $PLISTBUDDY -c 'Set :AudioComponents:0:name string "CLOPH: Grungr"' "$PL"
-          $PLISTBUDDY -c "Set :AudioComponents:0:description string Grungr Faust-based drive pedal emulation" "$PL"
-          $PLISTBUDDY -c "Set :AudioUnit\ Version string 0x00020600" "$PL"
-          $PLISTBUDDY -c "Set :NSPrincipalClass string Grungr_View" "$PL"
 
           echo "Plists updated for VST3, CLAP, AUv2"
 
