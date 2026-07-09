@@ -402,6 +402,41 @@ jobs:
             exit 1
           fi
 
+      - name: Tuner detector smoke test (host-free DSP regression)
+        # Validates the pitch-detection path without a host, GUI, or iPlug2
+        # framework.  Catches the "GUI loads but no values shown" regression
+        # the user reported: a synthetic 440 Hz sine @ -12 dBFS through the
+        # Detector for ~6-7 analysis passes must produce atomic Result fields
+        # pitchHz ~ 440, noteIndex == 9 (A), clarity > 0.5.
+        # Failure here means Draw() in iPlug2 would show "-" / "------" /
+        # needle at centre -- exactly the user's symptom.
+        run: |
+          TEST_SRC="Tuner VST/tests/detector_smoke.cpp"
+          DET_SRC="Tuner VST/TunerAnalysis.cpp"
+
+          if [ ! -f "$TEST_SRC" ] || [ ! -f "$DET_SRC" ]; then
+            echo "SKIP: smoke test sources missing"
+            exit 0
+          fi
+
+          echo "Compiling detector smoke test (host-free, no iPlug2, no VST3)..."
+          clang++ -std=c++17 -O2 -Wall -Wno-unused-function \
+                  -I "Tuner VST" \
+                  -o /tmp/tuner_smoke \
+                  "$TEST_SRC" "$DET_SRC" 2>&1 || {
+            echo "FAIL: detector smoke test compile failed"
+            exit 1
+          }
+          echo "Running detector smoke test..."
+          if /tmp/tuner_smoke; then
+            echo ""
+            echo "DETECTOR SMOKE: PASSED"
+          else
+            echo ""
+            echo "DETECTOR SMOKE: FAILED"
+            exit 1
+          fi
+
       - name: Generate VST3 moduleinfo.json + validate code signature
         if: always()
         run: |
