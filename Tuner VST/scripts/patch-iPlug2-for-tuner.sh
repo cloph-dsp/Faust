@@ -44,15 +44,25 @@ echo "  iPlug2 root: $IPLUG2_DIR"
 # Targets: every .cpp/.mm/.h under the IPlug + IGraphics framework trees.
 # Skip the user's own plugin code (iPlug2/Examples/IPlugEffect/) -- we
 # don't want to rewrite their host-plugin names; that's _local_copy.ps1's job.
-mapfile -t TARGETS < <(find "$IPLUG2_DIR/IPlug" "$IPLUG2_DIR/IGraphics" \
-  -type f \( -name '*.cpp' -o -name '*.mm' -o -name '*.h' \) 2>/dev/null)
-
-if [ "${#TARGETS[@]}" -eq 0 ]; then
+#
+# `mapfile` is bash 4+; Apple still ships bash 3.2 so we use a heredoc +
+# while-read instead.  Output of `find -print0` is read NUL-delimited so
+# paths with spaces (e.g. "Tuner VST/") don't split into junk args.
+TARGETS_FILE="$PROJECT_ROOT/.tuner_patch_targets.$$"
+: > "$TARGETS_FILE"
+find "$IPLUG2_DIR/IPlug" "$IPLUG2_DIR/IGraphics" \
+  -type f \( -name '*.cpp' -o -name '*.mm' -o -name '*.h' \) \
+  -print0 2>/dev/null \
+  | while IFS= read -r -d '' f; do
+      printf '%s\0' "$f"
+    done > "$TARGETS_FILE"
+COUNT=$(tr '\0' '\n' < "$TARGETS_FILE" | grep -c . || true)
+if [ "$COUNT" -eq 0 ]; then
   echo "  WARNING: no iPlug2 framework files found under $IPLUG2_DIR/{IPlug,IGraphics}"
+  rm -f "$TARGETS_FILE"
   exit 0
 fi
-
-echo "  Files to patch: ${#TARGETS[@]}"
+echo "  Files to patch: $COUNT"
 
 # AcmeInc / com.AcmeInc are template residue from upstream iPlug2's
 # default Info.plist (CFBundleIdentifier prefix, vendor name, etc.).
@@ -60,12 +70,17 @@ echo "  Files to patch: ${#TARGETS[@]}"
 # not whole-word identifiers, so we don't risk colliding with class names.
 #   - AcmeInc      -> Clph          (vendor 4CC, matches our AU manufacturer)
 #   - com.AcmeInc  -> com.cloph-dsp (bundle id prefix)
-for f in "${TARGETS[@]}"; do
-  sed -i \
-    -e 's/AcmeInc/Clph/g' \
-    -e 's/com\.AcmeInc/com.cloph-dsp/g' \
-    "$f"
-done
+#
+# sed -i is GNU/BSD-incompatible (BSD requires `sed -i ''`; GNU accepts
+# `-i` plain), so route through a tmp file with random suffix to avoid
+# collisions if two patches ever run concurrently.
+while IFS= read -r -d '' f; do
+  tmp="${f}.tunerpatch.$$"
+  sed -e 's/AcmeInc/Clph/g' \
+      -e 's/com\.AcmeInc/com.cloph-dsp/g' \
+      "$f" > "$tmp" && mv "$tmp" "$f"
+done < "$TARGETS_FILE"
+rm -f "$TARGETS_FILE"
 
 echo "  Replaced AcmeInc -> Clph and com.AcmeInc -> com.cloph-dsp"
 echo ""
