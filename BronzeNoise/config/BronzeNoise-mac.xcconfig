@@ -1,0 +1,64 @@
+// BronzeNoise macOS xcconfig
+// Proven pattern from Tuner VST (working in Bitwig).  Stages into
+// iPlug2/Examples/IPlugEffect/config/IPlugEffect-mac.xcconfig during CI.
+
+// IPLUG2_ROOT should point to the top level IPLUG2 folder.
+// By default, that is three directories up from /Examples/IPlugEffect/config.
+IPLUG2_ROOT = ../../..
+
+#include "../../../common-mac.xcconfig"
+
+//------------------------------
+// Global build settings
+
+// basename of the vst, vst3, app, component, clap
+BINARY_NAME = BronzeNoise
+
+// ------------------------------
+// HEADER AND LIBRARY SEARCH PATHS
+EXTRA_INC_PATHS = $(IGRAPHICS_INC_PATHS)
+EXTRA_LIB_PATHS = $(IGRAPHICS_LIB_PATHS)
+
+// Metal/MetalKit for IGRAPHICS_METAL, OpenGL retained for legacy SWELL/windowing fallback.
+EXTRA_LNK_FLAGS = -framework Metal -framework MetalKit -framework OpenGL
+
+//------------------------------
+// PREPROCESSOR MACROS
+// OBJC_PREFIX/SWELL_APP_PREFIX kept at iPlug2 defaults (matches Tuner's proven pattern).
+EXTRA_ALL_DEFS = OBJC_PREFIX=vIPlugEffect SWELL_APP_PREFIX=Swell_vIPlugEffect IGRAPHICS_NANOVG IGRAPHICS_METAL
+
+//------------------------------
+// RELEASE BUILD OPTIONS
+
+// Enable/Disable Profiling code (NO, YES - enable to use instruments to profile a plugin).
+PROFILE = NO
+
+// Optimization level -- None:[-O0] Fast:[-O, -O1] Faster:[-O2] Fastest:[-O3] Fastest, smallest:[-Os].
+RELEASE_OPTIMIZE = 3
+
+//------------------------------
+// DEBUG BUILD OPTIONS
+DEBUG_OPTIMIZE = 0
+
+//------------------------------
+// ARCHITECTURE AND TARGET
+ARCHS = x86_64 arm64
+MACOSX_DEPLOYMENT_TARGET = 10.15
+
+//------------------------------
+// MISCELLANEOUS COMPILER OPTIONS
+
+// x86_64 needs explicit -msse2 because Apple Clang defaults are not back-compat with iPlug2's SIMD code.
+GCC_CFLAGS[arch=x86_64] = -Wno-write-strings -mfpmath=sse -msse -msse2 -msse3
+
+// Disable pch sharing -- iPlug2 example has no per-target pch and warnings about "no rule to build" leak otherwise.
+GCC_INCREASE_PRECOMPILED_HEADER_SHARING = NO
+
+//------------------------------
+// CODE SIGNING
+// Ad-hoc with CODE_SIGN_IDENTITY=- so unsigned plugin loads in DAWs without "damaged/invalid signature".
+CODE_SIGNING_REQUIRED = YES
+CODE_SIGN_IDENTITY = -
+// macOS 15.0-15.6: ad-hoc WITH --options=runtime causes dyld rejection
+// because ad-hoc can't embed entitlements.  Sign WITHOUT hardened runtime.
+// DAWs' disable-library-validation covers loading ad-hoc signed plugins.
