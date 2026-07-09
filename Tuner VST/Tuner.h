@@ -33,6 +33,7 @@
 #endif
 
 #include "IPlug_include_in_plug_hdr.h"
+#include "TunerAnalysis.h"   // round-11: split out host-free detector
 #include "FaustCompat.h"
 #include "IControls.h"
 
@@ -41,95 +42,6 @@ const int kNumPresets = 4;
 using namespace iplug;
 using namespace igraphics;
 
-namespace TunerAnalysis {
-
-constexpr int kBufferSize       = 2048;
-constexpr int kMinLag           = 32;
-constexpr int kMaxLag           = 1024;
-constexpr int kMedianSize       = 7;
-constexpr int kAnalysisStride   = 1024;
-
-struct Result {
-  std::atomic<double> pitchHz   { 0.0 };
-  std::atomic<double> cents     { 0.0 };
-  std::atomic<double> clarity   { 0.0 };
-  std::atomic<double> level     { 0.0 };
-  std::atomic<int>    noteIndex { -1 };
-  std::atomic<int>    octave    { 4 };
-};
-
-// Lightweight timer for the analysis path.  Accumulates microseconds per
-// RunAnalysis() pass; the UI thread (OnIdle) drains the average via
-// ReadAndReset().  Not thread-safe for concurrent Begin/End + Read (Begin/End
-// always run on the audio thread, ReadAndReset always on the UI thread --
-// atomicity of double reads is not required because the value is only used
-// for developer diagnostics and a single torn read is harmless).
-struct AnalysisProfiler {
-  void Begin() { mStart = std::chrono::steady_clock::now(); }
-  void End() {
-    auto end = std::chrono::steady_clock::now();
-    double us = std::chrono::duration<double, std::micro>(end - mStart).count();
-    mTotalUs += us;
-    mCount++;
-  }
-  double ReadAndReset() {
-    double avg = (mCount > 0) ? (mTotalUs / mCount) : 0.0;
-    mTotalUs = 0.0;
-    mCount = 0;
-    return avg;
-  }
-private:
-  std::chrono::steady_clock::time_point mStart;
-  double mTotalUs = 0.0;
-  int mCount = 0;
-};
-
-class Detector {
-public:
-  void Init(int sampleRate);
-  void Reset();
-  void PushSample(double mono);
-  Result& GetResult() { return mResult; }
-  const Result& GetResult() const { return mResult; }
-  void SetSmoothing(double s)        { mSmooth = s; }
-  void SetA4Reference(double hz, bool instant = false) {
-    mA4RefTarget.store(hz, std::memory_order_relaxed);
-    if (instant) mA4Ref = hz;
-  }
-
-  // Read by the plugin (UI thread) to drain the analysis-path profiler.
-  AnalysisProfiler& Profiler() { return mProfiler; }
-
-private:
-  void RunAnalysis();
-  double DetectYIN(double& clarityOut);
-  double DetectMPM(double& clarityOut);
-  double RefineLagNeville(const double* y, int bestLag) const;
-  double MedianFilter(double candidate);
-  double SmoothPitch(double candidate);
-  double SmoothCents(double candidate);
-  double NoteFromPitch(double hz, int& noteIdxOut, int& octaveOut) const;
-
-  std::array<double, kBufferSize> mBuffer{};
-  int    mWriteIdx     = 0;
-  int    mSampleCount  = 0;
-  int    mSamplesSince = 0;
-  double mSampleRate   = 48000.0;
-  double mSmooth       = 0.55;
-  double mA4Ref        = 440.0;
-  std::atomic<double> mA4RefTarget{440.0};
-
-  std::array<double, kMedianSize> mMedianBuf{};
-  int mMedianIdx = 0;
-
-  double mLastPitch = 0.0;
-  double mLastCents = 0.0;
-
-  Result mResult;
-  AnalysisProfiler mProfiler;
-};
-
-} // namespace TunerAnalysis
 
 
 // =============================================================================
