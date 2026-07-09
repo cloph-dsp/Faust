@@ -146,14 +146,24 @@ jobs:
         working-directory: Grungr
         run: |
           set -euo pipefail
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
           SRC="$GITHUB_WORKSPACE/iPlug2/Examples/IPlugEffect"
+          echo "SRC=$SRC"
+          echo "Checking paths:"
+          ls -la "$SRC/build-win/vst3/x64/Release/" 2>/dev/null || echo "Release dir not found"
           mkdir -p artifacts/vst3 artifacts/clap
           # IPlugEffect template emits IPlugEffect.vst3 / IPlugEffect.clap — rename to Grungr.
           # Try IPlugEffect name first; fall back to Grungr if TargetName=$(BINARY_NAME) propagated.
           VST3_SRC=
           for v in IPlugEffect Grungr; do
-            if [[ -e "$SRC/build-win/vst3/x64/Release/${v}.vst3" ]]; then VST3_SRC="$SRC/build-win/vst3/x64/Release/${v}.vst3"; break; fi
+            echo "Trying: $SRC/build-win/vst3/x64/Release/${v}.vst3"
+            if [[ -e "$SRC/build-win/vst3/x64/Release/${v}.vst3" ]]; then
+              echo "Found: $v"
+              VST3_SRC="$SRC/build-win/vst3/x64/Release/${v}.vst3"
+              break
+            fi
           done
+          echo "VST3_SRC=$VST3_SRC"
           [[ -n "$VST3_SRC" ]] && cp -R "$VST3_SRC" artifacts/vst3/Grungr.vst3
           CLAP_SRC=
           for c in IPlugEffect Grungr; do
