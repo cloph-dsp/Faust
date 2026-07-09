@@ -62,6 +62,10 @@ jobs:
           cp GrungrIPlug2UI.cpp "$DST/GrungrIPlug2UI.cpp"
           cp GrungrIPlug2UI.h   "$DST/GrungrIPlug2UI.h"
           cp config.h          "$DST/config.h"
+          # Faust runtime shim — replaces faust/dsp/dsp.h, faust/gui/MapUI.h,
+          # faust/gui/meta.h. Without this, the staged IPlugEffect build fails
+          # with C1083: Cannot open include file: 'faust/dsp/dsp.h'.
+          cp GrungrFaustCompat.h "$DST/GrungrFaustCompat.h"
 
           # DSP include: preserve relative "DSP/GrungrFaustDSP.h" used by Grungr.cpp
           cp DSP/GrungrFaustDSP.h "$DST/DSP/GrungrFaustDSP.h"
@@ -214,6 +218,10 @@ jobs:
           cp GrungrIPlug2UI.cpp "$DST/GrungrIPlug2UI.cpp"
           cp GrungrIPlug2UI.h   "$DST/GrungrIPlug2UI.h"
           cp config.h          "$DST/config.h"
+          # Faust runtime shim — replaces faust/dsp/dsp.h, faust/gui/MapUI.h,
+          # faust/gui/meta.h. Without this, the staged IPlugEffect build fails
+          # with 'faust/dsp/dsp.h' file not found.
+          cp GrungrFaustCompat.h "$DST/GrungrFaustCompat.h"
 
           cp DSP/GrungrFaustDSP.h "$DST/DSP/GrungrFaustDSP.h"
 

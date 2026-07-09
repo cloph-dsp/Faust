@@ -9,9 +9,7 @@
 #define FAUSTFLOAT double
 #endif
 
-#include "faust/dsp/dsp.h"
-#include "faust/gui/MapUI.h"
-#include "faust/gui/meta.h"
+#include "GrungrFaustCompat.h"
 
 #include "DSP/GrungrFaustDSP.h"
 #endif
