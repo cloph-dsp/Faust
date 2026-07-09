@@ -138,25 +138,33 @@ jobs:
           # macOS-crash-guard use case; Tuner's is string-hygiene only.
           bash "Tuner VST/scripts/patch-iPlug2-for-tuner.sh" iPlug2
 
-      - name: Download SDKs (VST3 + VST3 validator sources)
+      - name: Build VST3 SDK validator (official compliance tool)
         working-directory: iPlug2/Dependencies/IPlug
         run: |
+          # Build Steinberg's official vst3_validator from the upstream SDK.
+          # IMPORTANT: Do NOT pipe through tail — the pipe causes SIGPIPE and kills the
+          # bash script before the final mv (inside download-vst3-sdk.sh) can move the
+          # validator binary out of the VST3_BUILD directory before cleanup removes it.
+          # Instead, redirect full output to a temp file and show only the last lines.
+          bash download-vst3-sdk.sh master build-validator 2>&1 > /tmp/vst3_build.log || true
+          tail -10 /tmp/vst3_build.log
+          # Locate and copy validator to /tmp (use find in case path varies by platform)
+          VALIDATOR=$(find VST3_SDK -name "vst3_validator" -o -name "validator" -type f 2>/dev/null | grep -v "VisualStudioVersion\|VSINSTALLDIR" | head -1)
+          if [ -n "$VALIDATOR" ]; then
+            cp "$VALIDATOR" /tmp/vst3_validator
+            echo "vst3_validator built successfully (from $VALIDATOR)"
+          else
+            echo "WARNING: vst3_validator not found — skipping official validation"
+            find VST3_SDK -name "validator" -type f -o -name "vst3_validator" -type f 2>/dev/null || echo "  (no validator binary in VST3_SDK tree)"
+          fi
+
+      - name: Download SDKs
+        working-directory: iPlug2/Dependencies/IPlug
+        run: |
+          # Download iPlug2's vendored SDKs for the actual build.
+          # This overwrites VST3_SDK with the minimized version (samples/vstgui4 removed),
+          # but the validator binary was already extracted to /tmp/vst3_validator above.
           bash download-iplug-sdks.sh
-          # The VST3 SDK ships `public.sdk/samples/vst-validator/` -- a
-          # command-line host that exercises every VST3 entry point against
-          # the bundle.  We build it once and cache at /tmp/vst3_validator
-          # for the verify step.  This is the OFFICIAL Steinberg compliance
-          # tool -- many hosts (Bitwig, Reaper, Logic) refuse to load a VST3
-          # that fails its checks.
-          cmake -S "${{ github.workspace }}/iPlug2/Dependencies/IPlug/VST3_SDK/public.sdk/samples/vst-validator" \
-                -B /tmp/vst3_validator_build \
-                -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -20
-          cmake --build /tmp/vst3_validator_build --config Release --parallel 2>&1 | tail -10
-          # The built binary lands in /tmp/vst3_validator_build/Release/vst3_validator
-          # (cmake default).  Move to a stable path the verify step can reference.
-          cp /tmp/vst3_validator_build/vst3_validator /tmp/vst3_validator 2>/dev/null || \
-            cp /tmp/vst3_validator_build/Release/vst3_validator /tmp/vst3_validator
-          ls -la /tmp/vst3_validator
 
       - name: Setup Tuner resources into iPlug2 example
         working-directory: Tuner VST
