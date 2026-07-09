@@ -138,12 +138,17 @@ jobs:
           SRC="$GITHUB_WORKSPACE/iPlug2/Examples/IPlugEffect"
           mkdir -p artifacts/vst3 artifacts/clap
           # IPlugEffect template emits IPlugEffect.vst3 / IPlugEffect.clap — rename to Grungr.
-          if [[ -d "$SRC/build-win/vst3/x64/Release/IPlugEffect.vst3" ]]; then
-            cp -R "$SRC/build-win/vst3/x64/Release/IPlugEffect.vst3" artifacts/vst3/Grungr.vst3
-          fi
-          if [[ -f "$SRC/build-win/clap/x64/Release/IPlugEffect.clap" ]]; then
-            cp "$SRC/build-win/clap/x64/Release/IPlugEffect.clap" artifacts/clap/Grungr.clap
-          fi
+          # Try IPlugEffect name first; fall back to Grungr if TargetName=$(BINARY_NAME) propagated.
+          VST3_SRC=
+          for v in IPlugEffect Grungr; do
+            if [[ -d "$SRC/build-win/vst3/x64/Release/${v}.vst3" ]]; then VST3_SRC="$SRC/build-win/vst3/x64/Release/${v}.vst3"; break; fi
+          done
+          [[ -n "$VST3_SRC" ]] && cp -R "$VST3_SRC" artifacts/vst3/Grungr.vst3
+          CLAP_SRC=
+          for c in IPlugEffect Grungr; do
+            if [[ -f "$SRC/build-win/clap/x64/Release/${c}.clap" ]]; then CLAP_SRC="$SRC/build-win/clap/x64/Release/${c}.clap"; break; fi
+          done
+          [[ -n "$CLAP_SRC" ]] && cp "$CLAP_SRC" artifacts/clap/Grungr.clap
 
       - name: Verify VST3 binary
         shell: bash
@@ -420,7 +425,7 @@ jobs:
           # AUv2 — adds AudioComponents entry + view class for AU registration
           PL="$PROD/Grungr.component/Contents/Info.plist"
           $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph-dsp.audiounit.Grungr" "$PL"
-          $PLISTBUDDY -c "Add :AudioComponents array" "$PL"
+          $PLISTBUDDY -c "Add :AudioComponents array" "$PL" 2>/dev/null || $PLISTBUDDY -c "Set :AudioComponents array" "$PL"
           $PLISTBUDDY -c "Add :AudioComponents:0 dict" "$PL"
           $PLISTBUDDY -c "Add :AudioComponents:0:type string aufx" "$PL"
           $PLISTBUDDY -c "Add :AudioComponents:0:subtype string GRNR" "$PL"
