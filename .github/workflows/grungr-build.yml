@@ -81,32 +81,39 @@ jobs:
 
       - name: Find MSBuild via vswhere
         id: msbuild
-        shell: bash
+        shell: pwsh
         run: |
-          MSBUILD=$(vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | head -n 1)
-          if [[ -z "$MSBUILD" ]]; then
-            echo "MSBuild not found via vswhere; falling back to BuildTools path"
-            MSBUILD="C:\Program Files\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
-          fi
-          echo "MSBUILD=$MSBUILD" >> "$GITHUB_OUTPUT"
-          echo "Found MSBuild: $MSBUILD"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if (-not $msbuild) {
+            $msbuild = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\*\MSBuild\Current\Bin\MSBuild.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $msbuild) {
+            throw "MSBuild not found"
+          }
+          echo "MSBUILD=$msbuild" >> "$env:GITHUB_OUTPUT"
+          echo "Found MSBuild: $msbuild"
 
       - name: Build VST3 (Windows)
-        shell: bash
+        shell: pwsh
+        working-directory: Grungr
         run: |
-          cd "$GITHUB_WORKSPACE/iPlug2/Examples/IPlugEffect"
-          "${{ steps.msbuild.outputs.MSBUILD }}" projects/IPlugEffect-vst3.vcxproj \
-            /p:Configuration=Release /p:Platform=x64 \
-            "/p:SolutionDir=$GITHUB_WORKSPACE/iPlug2/Examples/IPlugEffect\\" \
+          $msbuild = "${{ steps.msbuild.outputs.MSBUILD }}"
+          $solutionDir = (Resolve-Path "../iPlug2/Examples/IPlugEffect").Path + "\"
+          & $msbuild "../iPlug2/Examples/IPlugEffect/projects/IPlugEffect-vst3.vcxproj" `
+            /p:Configuration=Release /p:Platform=x64 `
+            "/p:SolutionDir=$solutionDir" `
             /v:m /m
 
       - name: Build CLAP (Windows)
-        shell: bash
+        shell: pwsh
+        working-directory: Grungr
         run: |
-          cd "$GITHUB_WORKSPACE/iPlug2/Examples/IPlugEffect"
-          "${{ steps.msbuild.outputs.MSBUILD }}" projects/IPlugEffect-clap.vcxproj \
-            /p:Configuration=Release /p:Platform=x64 \
-            "/p:SolutionDir=$GITHUB_WORKSPACE/iPlug2/Examples/IPlugEffect\\" \
+          $msbuild = "${{ steps.msbuild.outputs.MSBUILD }}"
+          $solutionDir = (Resolve-Path "../iPlug2/Examples/IPlugEffect").Path + "\"
+          & $msbuild "../iPlug2/Examples/IPlugEffect/projects/IPlugEffect-clap.vcxproj" `
+            /p:Configuration=Release /p:Platform=x64 `
+            "/p:SolutionDir=$solutionDir" `
             /v:m /m
 
       - name: Stage outputs
@@ -255,56 +262,62 @@ jobs:
           XCCONFIG_EOF
 
       - name: Build VST3 (macOS, universal)
+        working-directory: Grungr
         run: |
-          set -o pipefail
-          xcodebuild \
-            -project iPlug2/Examples/IPlugEffect/projects/IPlugEffect-macOS.xcodeproj \
-            -scheme "IPlugEffect - VST3" \
+          cd ../iPlug2/Examples/IPlugEffect
+          xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
+            -scheme "macOS-VST3" \
             -configuration Release \
             -arch x86_64 -arch arm64 \
-            -derivedDataPath "$GITHUB_WORKSPACE/Grungr/build-mac" \
+            BUILD_DIR="$GITHUB_WORKSPACE/Grungr/build-mac" \
+            VST3_PATH="$GITHUB_WORKSPACE/Grungr/build-mac/Products" \
             ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee /tmp/xcb-vst3.log | tail -n 80
+            build > /tmp/xcb-vst3.log 2>&1
+          tail -n 30 /tmp/xcb-vst3.log
           echo "---VST3 build OK---"
 
       - name: Build CLAP (macOS, universal)
+        working-directory: Grungr
         run: |
-          set -o pipefail
-          xcodebuild \
-            -project iPlug2/Examples/IPlugEffect/projects/IPlugEffect-macOS.xcodeproj \
-            -scheme "IPlugEffect - CLAP" \
+          cd ../iPlug2/Examples/IPlugEffect
+          xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
+            -scheme "macOS-CLAP" \
             -configuration Release \
             -arch x86_64 -arch arm64 \
-            -derivedDataPath "$GITHUB_WORKSPACE/Grungr/build-mac" \
+            BUILD_DIR="$GITHUB_WORKSPACE/Grungr/build-mac" \
+            CLAP_PATH="$GITHUB_WORKSPACE/Grungr/build-mac/Products" \
             ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee /tmp/xcb-clap.log | tail -n 80
+            build > /tmp/xcb-clap.log 2>&1
+          tail -n 30 /tmp/xcb-clap.log
           echo "---CLAP build OK---"
 
       - name: Build AUv2 (macOS, universal)
+        working-directory: Grungr
         run: |
-          set -o pipefail
-          xcodebuild \
-            -project iPlug2/Examples/IPlugEffect/projects/IPlugEffect-macOS.xcodeproj \
-            -scheme "IPlugEffect - AU" \
+          cd ../iPlug2/Examples/IPlugEffect
+          xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
+            -scheme "macOS-AUv2" \
             -configuration Release \
             -arch x86_64 -arch arm64 \
-            -derivedDataPath "$GITHUB_WORKSPACE/Grungr/build-mac" \
+            BUILD_DIR="$GITHUB_WORKSPACE/Grungr/build-mac" \
+            AU_PATH="$GITHUB_WORKSPACE/Grungr/build-mac/Products" \
             ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee /tmp/xcb-au.log | tail -n 80
+            build > /tmp/xcb-au.log 2>&1
+          tail -n 30 /tmp/xcb-au.log
           echo "---AU build OK---"
 
       - name: Locate build outputs
         id: locate
         run: |
           set -euo pipefail
-          BUILD="$GITHUB_WORKSPACE/Grungr/build-mac"
-          # Xcode puts products in Build/Products/Release/ when using -derivedDataPath
-          VST3=$(find "$BUILD/Build/Products/Release" -maxdepth 1 -name "*.vst3" -type d | head -n 1)
-          CLAP=$(find "$BUILD/Build/Products/Release" -maxdepth 1 -name "*.clap" -type d | head -n 1)
-          AU=$(find   "$BUILD/Build/Products/Release" -maxdepth 1 -name "*.component" -type d | head -n 1)
+          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Products"
+          # xcodebuild with BUILD_DIR + VST3_PATH/CLAP_PATH/AU_PATH places bundles here.
+          VST3=$(find "$PROD" -maxdepth 1 -name "*.vst3" -type d | head -n 1)
+          CLAP=$(find "$PROD" -maxdepth 1 -name "*.clap" -type d | head -n 1)
+          AU=$(find   "$PROD" -maxdepth 1 -name "*.component" -type d | head -n 1)
           echo "VST3=$VST3" >> "$GITHUB_OUTPUT"
           echo "CLAP=$CLAP" >> "$GITHUB_OUTPUT"
           echo "AU=$AU" >> "$GITHUB_OUTPUT"
@@ -315,7 +328,7 @@ jobs:
       - name: Rename bundles to Grungr
         run: |
           set -euo pipefail
-          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Build/Products/Release"
+          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Products"
           [[ -d "$PROD/IPlugEffect.vst3"      ]] && mv "$PROD/IPlugEffect.vst3"      "$PROD/Grungr.vst3"
           [[ -d "$PROD/IPlugEffect.clap"      ]] && mv "$PROD/IPlugEffect.clap"      "$PROD/Grungr.clap"
           [[ -d "$PROD/IPlugEffect.component" ]] && mv "$PROD/IPlugEffect.component" "$PROD/Grungr.component"
@@ -330,7 +343,7 @@ jobs:
       - name: Fix plist values for Grungr
         run: |
           set -euo pipefail
-          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Build/Products/Release"
+          PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Products"
           PLISTBUDDY=/usr/libexec/PlistBuddy
 
           # Common keys applied to every bundle
