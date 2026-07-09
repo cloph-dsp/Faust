@@ -188,7 +188,8 @@ jobs:
         shell: bash
         working-directory: Grungr
         run: |
-          nm -gU artifacts/vst3/Grungr.vst3 | grep -q GetPluginFactory
+          # -g = global symbols, look for GetPluginFactory
+          nm -g artifacts/vst3/Grungr.vst3 | grep -q GetPluginFactory
 
       - name: Verify CLAP clap_entry export
         shell: bash
