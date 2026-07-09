@@ -1,27 +1,30 @@
 // =============================================================================
-// TunerAnalysis.cpp - implementation of the host-free TunerAnalysis namespace.
+// TunerAnalysis_impl.h - inline implementations for the host-free detector.
+//
+// Included at the bottom of TunerAnalysis.h so the entire algorithm is
+// header-only -- the build system never has to compile a separate .cpp.
+// All Detector methods are declared inline to satisfy ODR when the header
+// is included in multiple translation units (e.g. the standalone smoke
+// test + the iPlugEffect example build).
 //
 // These algorithms were originally inlined in Tuner.cpp inside the
-// `namespace TunerAnalysis { ... }` block (lines 102..337 of the original
-// pre-refactor Tuner.cpp).  Splitting them into a dedicated TU makes them
-// linkable from a stand-alone smoke test (tests/detector_smoke.cpp) without
-// pulling in iPlug2 / Win32 / Cocoa headers.
+// `namespace TunerAnalysis { ... }` block.  Splitting them out makes
+// them includable from a stand-alone unit test without dragging in
+// iPlug2 / Win32 / Cocoa headers.
 //
-// All math here is DSP / signal analysis -- no UI, no host glue.  Methods
-// are real-time safe on the audio thread (no allocation, bounded branches,
+// All math is DSP / signal analysis -- no UI, no host glue.  Methods are
+// real-time safe on the audio thread (no allocation, bounded branches,
 // NaN/Inf clamp at input boundary).
 // =============================================================================
 
-#include "TunerAnalysis.h"
-
 namespace TunerAnalysis {
 
-void Detector::Init(int sampleRate) {
+inline void Detector::Init(int sampleRate) {
   mSampleRate = sampleRate;
   Reset();
 }
 
-void Detector::Reset() {
+inline void Detector::Reset() {
   mBuffer.fill(0.0);
   mWriteIdx = 0;
   mSampleCount = 0;
@@ -38,7 +41,7 @@ void Detector::Reset() {
   mResult.octave.store(4);
 }
 
-void Detector::PushSample(double mono) {
+inline void Detector::PushSample(double mono) {
   if (!std::isfinite(mono)) mono = 0.0;  // RT-3: guard NaN/Inf before writing to ring buffer
   mBuffer[mWriteIdx] = mono;
   mWriteIdx = (mWriteIdx + 1) % kBufferSize;
@@ -52,7 +55,7 @@ void Detector::PushSample(double mono) {
   }
 }
 
-double Detector::DetectYIN(double& clarityOut) {
+inline double Detector::DetectYIN(double& clarityOut) {
   const int N = kBufferSize;
   const int maxLag = std::min<int>(kMaxLag, N - 2);
   const int minLag = kMinLag;
@@ -96,7 +99,7 @@ double Detector::DetectYIN(double& clarityOut) {
   return mSampleRate / refined;
 }
 
-double Detector::RefineLagNeville(const double* y, int bestLag) const {
+inline double Detector::RefineLagNeville(const double* y, int bestLag) const {
   if (bestLag < 1 || bestLag > kMaxLag - 2) return (double)bestLag;
   const double w0 = 1.0 / (1.0 + std::abs(y[bestLag - 1]));
   const double w1 = 1.0 / (1.0 + std::abs(y[bestLag]));
@@ -105,7 +108,7 @@ double Detector::RefineLagNeville(const double* y, int bestLag) const {
   return ((-1.0) * w0 + 0.0 * w1 + 1.0 * w2) / wsum + (double)bestLag;
 }
 
-double Detector::DetectMPM(double& clarityOut) {
+inline double Detector::DetectMPM(double& clarityOut) {
   const int N = kBufferSize;
   const int maxLag = std::min<int>(kMaxLag, N / 2);
   const int minLag = kMinLag;
@@ -150,7 +153,7 @@ double Detector::DetectMPM(double& clarityOut) {
   return mSampleRate / (double)bestTau;
 }
 
-double Detector::MedianFilter(double candidate) {
+inline double Detector::MedianFilter(double candidate) {
   if (candidate <= 0.0) return 0.0;
   mMedianBuf[mMedianIdx] = candidate;
   mMedianIdx = (mMedianIdx + 1) % kMedianSize;
@@ -169,7 +172,7 @@ double Detector::MedianFilter(double candidate) {
   return copy[kMedianSize / 2];
 }
 
-double Detector::SmoothPitch(double candidate) {
+inline double Detector::SmoothPitch(double candidate) {
   if (!std::isfinite(candidate) || candidate <= 0.0) { mLastPitch = 0.0; return 0.0; }
   if (mLastPitch <= 0.0) { mLastPitch = candidate; return candidate; }
   const double ratio = candidate / mLastPitch;
@@ -182,7 +185,7 @@ double Detector::SmoothPitch(double candidate) {
   return mLastPitch;
 }
 
-double Detector::SmoothCents(double candidate) {
+inline double Detector::SmoothCents(double candidate) {
   if (!std::isfinite(candidate)) { mLastCents = 0.0; return 0.0; }
   const double absCents = std::abs(candidate);
   const double alpha = 1.0 / (1.0 + 0.05 * absCents) * (1.0 - 0.95 * mSmooth);
@@ -190,7 +193,7 @@ double Detector::SmoothCents(double candidate) {
   return mLastCents;
 }
 
-double Detector::NoteFromPitch(double hz, int& noteIdxOut, int& octaveOut) const {
+inline double Detector::NoteFromPitch(double hz, int& noteIdxOut, int& octaveOut) const {
   if (hz <= 0.0) { noteIdxOut = -1; octaveOut = 4; return 0.0; }
   const double midi = 69.0 + 12.0 * std::log2(hz / mA4Ref);
   const int midiRound = (int)std::round(midi);
@@ -199,7 +202,7 @@ double Detector::NoteFromPitch(double hz, int& noteIdxOut, int& octaveOut) const
   return (midi - midiRound) * 100.0;
 }
 
-void Detector::RunAnalysis() {
+inline void Detector::RunAnalysis() {
   mProfiler.Begin();
   double yClarity = 0.0, mClarity = 0.0;
   const double yinHz  = DetectYIN(yClarity);

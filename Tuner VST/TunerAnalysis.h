@@ -6,9 +6,11 @@
 // Design intent: every algorithm that does pure DSP / signal analysis lives
 // here, with NO iPlug2 / VST3 / Win32 / Cocoa headers.  This file is
 // includable from a stand-alone unit test (Tuner VST/tests/detector_smoke),
-// without dragging in the iPlug2 framework.  The trade-off is light -- the
-// host-free path costs nothing per call (we already pay the includes once
-// inside Tuner.h via TunerAnalysis.cpp's include of this header).
+// without dragging in the iPlug2 framework.  It is header-only: the impl
+// lives in TunerAnalysis_impl.h, which is included at the bottom of this
+// file so consumers see one logical translation unit.  The header-only
+// shape sidesteps the vcxproj / xcodeproj edit that would otherwise be
+// required to add a new .cpp file to the iPlugEffect example build.
 //
 // The atomic Result struct is the audio->UI hand-off: the audio thread
 // populates pitchHz / cents / clarity / level / noteIndex / octave atomically
@@ -20,7 +22,7 @@
 //   - no std::nth_element (replaced with bounded partial sort in
 //     Detector::MedianFilter)
 //   - all branches are bounded
-//   - NaN/Inf are clamped at the input boundary (Detector::PushSample line 1)
+//   - NaN/Inf are clamped at the input boundary (Detector::PushSample)
 // =============================================================================
 
 #include <atomic>
@@ -126,3 +128,8 @@ private:
 };
 
 } // namespace TunerAnalysis
+
+// Inline impl file -- everything below is part of the public header so the
+// host-free smoke test (and the iPlugEffect example build, which never sees
+// a separate TunerAnalysis.cpp) can link without a separate TU.
+#include "TunerAnalysis_impl.h"

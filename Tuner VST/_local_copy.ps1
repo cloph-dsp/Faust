@@ -8,10 +8,12 @@ Copy-Item -Force "$src\TunerDSP.h"         "$dst\TunerDSP.h"
 Copy-Item -Force "$src\TunerDSP.dsp"       "$dst\TunerDSP.dsp"
 Copy-Item -Force "$src\TunerDSP_gen.h"     "$dst\TunerDSP_gen.h"
 Copy-Item -Force "$src\FaustCompat.h"      "$dst\FaustCompat.h"
-# Detector split: refactor extracted host-free detector into its own TU
-# so a host-free smoke test can compile it.  vcxproj compiles both files.
-Copy-Item -Force "$src\TunerAnalysis.h"    "$dst\TunerAnalysis.h"
-Copy-Item -Force "$src\TunerAnalysis.cpp"  "$dst\TunerAnalysis.cpp"
+# Detector split: refactor extracted host-free detector into a HEADER-ONLY
+# module (TunerAnalysis.h pulls in TunerAnalysis_impl.h).  No separate .cpp
+# means no vcxproj / xcodeproj edit to add a new TU -- the iPlugEffect
+# example build sees only a header dependency.
+Copy-Item -Force "$src\TunerAnalysis.h"      "$dst\TunerAnalysis.h"
+Copy-Item -Force "$src\TunerAnalysis_impl.h" "$dst\TunerAnalysis_impl.h"
 Copy-Item -Force "$src\config\IPlugEffect-win.props" "$dst\config\IPlugEffect-win.props"
 Copy-Item -Force "$src\scripts\prebuild-win.bat"  "$dst\scripts\prebuild-win.bat"
 Copy-Item -Force "$src\scripts\postbuild-win.bat" "$dst\scripts\postbuild-win.bat"

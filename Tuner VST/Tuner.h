@@ -36,9 +36,10 @@
 #include "FaustCompat.h"
 #include "IControls.h"
 
-// TunerAnalysis::Detector class declarations moved to a separate header so
-// the detector can be linked without iPlug2 (host-free smoke test).  See
-// TunerAnalysis.h / TunerAnalysis.cpp for the algorithm.
+// TunerAnalysis::Detector pulled out of Tuner.cpp into a header-only
+// module so the detector can be linked without iPlug2 (host-free smoke
+// test, see Tuner VST/tests/detector_smoke.cpp).  Header-only means no
+// separate .cpp / vcxproj / xcodeproj edit to add a new TU.
 #include "TunerAnalysis.h"
 
 const int kNumPresets = 4;

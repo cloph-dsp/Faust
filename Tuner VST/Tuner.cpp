@@ -99,10 +99,12 @@ FAUSTFLOAT* TunerDSPWrapper::GetZone(const char* label) {
 // YIN + MPM each cost O(N*maxLag) = 2048*1024 ≈ 2.1M ops; ~100M ops/sec on
 // the audio thread.
 
-// TunerAnalysis::Detector now lives in TunerAnalysis.h (declarations) and
-// TunerAnalysis.cpp (implementations).  This split allows the detector to
-// be linked stand-alone from a host-free smoke test (tests/detector_smoke.cpp)
-// that does NOT include iPlug2 or any host platform headers.
+// TunerAnalysis::Detector now lives in TunerAnalysis.h (header-only: it
+// includes TunerAnalysis_impl.h at the bottom for the inline impls).  This
+// shape allows the detector to be linked stand-alone from a host-free smoke
+// test (tests/detector_smoke.cpp) that does NOT include iPlug2 or any host
+// platform headers, AND keeps the iPlugEffect example build dependency-free
+// of new vcxproj / xcodeproj entries.
 #include "TunerAnalysis.h"
 
 

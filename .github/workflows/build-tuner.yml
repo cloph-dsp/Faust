@@ -56,10 +56,13 @@ jobs:
           Copy-Item -Force "TunerDSP_gen.h"     "$dst/TunerDSP_gen.h"
           Copy-Item -Force "FaustCompat.h"      "$dst/FaustCompat.h"
           # Detector split: refactor extracted host-free detector from
-          # Tuner.cpp into its own TU so a host-free smoke test can
-          # compile it.  The vcxproj compiles both files into IPlugEffect.obj.
-          Copy-Item -Force "TunerAnalysis.h"    "$dst/TunerAnalysis.h"
-          Copy-Item -Force "TunerAnalysis.cpp"  "$dst/TunerAnalysis.cpp"
+          # Tuner.cpp into a header-only module (TunerAnalysis.h +
+          # TunerAnalysis_impl.h) so a host-free smoke test can compile
+          # it WITHOUT adding a new .cpp entry to the vcxproj / xcodeproj.
+          # The header-only shape means the iPlugEffect example build sees
+          # only a header dependency; no separate TU to compile.
+          Copy-Item -Force "TunerAnalysis.h"        "$dst/TunerAnalysis.h"
+          Copy-Item -Force "TunerAnalysis_impl.h"   "$dst/TunerAnalysis_impl.h"
           Copy-Item -Force "config\IPlugEffect-win.props" "$dst\config\IPlugEffect-win.props"
           Copy-Item -Force "scripts\prebuild-win.bat"    "$dst\scripts\prebuild-win.bat"
           Copy-Item -Force "scripts\postbuild-win.bat"   "$dst\scripts\postbuild-win.bat"
@@ -184,10 +187,13 @@ jobs:
           cp TunerDSP_gen.h          "$dst/TunerDSP_gen.h"
           cp FaustCompat.h           "$dst/FaustCompat.h"
           # Detector split: refactor extracted host-free detector from
-          # Tuner.cpp into its own TU so a host-free smoke test can
-          # compile it.  Xcode project compiles both files together.
+          # Tuner.cpp into a header-only module (TunerAnalysis.h +
+          # TunerAnalysis_impl.h) so a host-free smoke test can compile
+          # it WITHOUT adding a new .cpp entry to the vcxproj / xcodeproj.
+          # Header-only means the iPlugEffect example build sees only a
+          # header dependency; no separate TU to compile.
           cp TunerAnalysis.h         "$dst/TunerAnalysis.h"
-          cp TunerAnalysis.cpp       "$dst/TunerAnalysis.cpp"
+          cp TunerAnalysis_impl.h    "$dst/TunerAnalysis_impl.h"
           cp config/IPlugEffect-mac.xcconfig "$dst/config/IPlugEffect-mac.xcconfig"
           [ -f Tuner.entitlements ]  && cp Tuner.entitlements "$dst/Tuner.entitlements"
           cp resources/*             "$dst/resources/" 2>/dev/null || true
@@ -420,12 +426,14 @@ jobs:
         # pitchHz ~ 440, noteIndex == 9 (A), clarity > 0.5.
         # Failure here means Draw() in iPlug2 would show "-" / "------" /
         # needle at centre -- exactly the user's symptom.
+        # TunerAnalysis is header-only: TunerAnalysis.h includes its
+        # TunerAnalysis_impl.h at the bottom, so the test compiles from
+        # the single .cpp only.
         run: |
           TEST_SRC="Tuner VST/tests/detector_smoke.cpp"
-          DET_SRC="Tuner VST/TunerAnalysis.cpp"
 
-          if [ ! -f "$TEST_SRC" ] || [ ! -f "$DET_SRC" ]; then
-            echo "SKIP: smoke test sources missing"
+          if [ ! -f "$TEST_SRC" ]; then
+            echo "SKIP: smoke test source missing"
             exit 0
           fi
 
@@ -433,7 +441,7 @@ jobs:
           clang++ -std=c++17 -O2 -Wall -Wno-unused-function \
                   -I "Tuner VST" \
                   -o /tmp/tuner_smoke \
-                  "$TEST_SRC" "$DET_SRC" 2>&1 || {
+                  "$TEST_SRC" 2>&1 || {
             echo "FAIL: detector smoke test compile failed"
             exit 1
           }

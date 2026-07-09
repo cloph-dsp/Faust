@@ -27,10 +27,11 @@
 //      stops reporting valid Hz.
 //
 // Pure C++17, no dependencies on iPlug2 / VST3 SDK / Cocoa / Win32.
+// TunerAnalysis is header-only: TunerAnalysis.h includes its TunerAnalysis_impl.h
+// at the bottom, so the test compiles from the single .cpp only.
 //
 // Compile (standalone, no iPlug2 framework):
-//   clang++ -std=c++17 -O2 -fno-exceptions -Wall -Werror \
-//     -o detector_smoke detector_smoke.cpp TunerAnalysis.cpp -lpthread
+//   clang++ -std=c++17 -O2 -Wall -I "Tuner VST" -o detector_smoke detector_smoke.cpp
 // =============================================================================
 
 #include "TunerAnalysis.h"
@@ -91,25 +92,50 @@ int main() {
   // stuck at center, because level=0 means RunAnalysis gates rawPitch to
   // 0.0 on every pass.
   double runningRms = 0.0;
+  // CRITICAL: phase must be continuous across feed() calls.  The ring
+  // buffer holds the last kBufferSize=2048 samples, so a discontinuity
+  // at the boundary of two feed calls lands inside the analysis window
+  // and produces a non-sinusoidal signal that YIN/MPM cannot lock onto.
+  double phase = 0.0;
   auto feed = [&](int n, double freq, double amplitude) {
     const double sr = 48000.0;
+    // Match Tuner::ProcessBlock rmsCoeff -- IPlug gets it from
+    // GetSampleRate() via the FAUST wrapper, falling back to a
+    // roughly 50ms time constant.  For 48 kHz that resolves to
+    // exp(-1 / (0.050 * 48000)) ≈ 0.99958.
+    const double rmsCoeff = std::exp(-1.0 / (0.050 * 48000.0));
+    const double phaseInc = 2.0 * 3.141592653589793 * freq / sr;
     for (int i = 0; i < n; ++i) {
-      const double mono = amplitude * std::sin(2.0 * 3.141592653589793 * freq * i / sr);
+      const double mono = amplitude * std::sin(phase);
       det.PushSample(mono);
       const double sq = mono * mono;
-      // Match Tuner::ProcessBlock rmsCoeff -- IPlug gets it from
-      // GetSampleRate() via the FAUST wrapper, falling back to a
-      // roughly 50ms time constant.  For 48 kHz that resolves to
-      // exp(-1 / (0.050 * 48000)) ≈ 0.99958.
-      const double rmsCoeff = std::exp(-1.0 / (0.050 * 48000.0));
       runningRms = rmsCoeff * sq + (1.0 - rmsCoeff) * runningRms;
+      phase += phaseInc;
     }
+    // End of block: write level to detector (matches Tuner::ProcessBlock).
+    // The first RunAnalysis pass in any feed call runs against the level
+    // value written at the END of the *previous* feed call -- same
+    // one-block latency as the real plugin.  This is why the test needs
+    // at least TWO feed calls (or a single feed large enough to trigger
+    // multiple analysis passes at kAnalysisStride=1024).
     const double lvl = std::min(1.0, std::max(0.0, std::sqrt(runningRms)));
     det.GetResult().level.store(lvl);
   };
 
   // ---- Test A: feed a clean 440 Hz sine, expect valid pitch ----
-  std::printf("[2/3] Feed 8192 samples of 440 Hz sine @ -12 dBFS\n");
+  // We need TWO feed calls so that:
+  //   - First call fills the buffer (kBufferSize=2048 samples) and
+  //     writes level=0.127 at the end.  During this call, RunAnalysis
+  //     passes fire at stride 1024, but they read level=0 (the initial
+  //     value before our first .store()), so the level-gate zeros out
+  //     rawPitch.
+  //   - Second call's RunAnalysis passes see level=0.127 (written at
+  //     the end of the first call) and the gate lets the real pitch
+  //     through.
+  // This mirrors the real plugin's one-block latency: ProcessBlock N+1's
+  // analysis sees the level written at the end of ProcessBlock N.
+  std::printf("[2/3] Feed two blocks of 440 Hz sine @ -12 dBFS\n");
+  feed(8192, 440.0, std::pow(10.0, -12.0 / 20.0));
   feed(8192, 440.0, std::pow(10.0, -12.0 / 20.0));
 
   const Result& r = det.GetResult();
