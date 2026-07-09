@@ -9,11 +9,11 @@
 // =============================================================================
 
 #define PLUG_NAME "Tuner"
-#define PLUG_MFR "CLOPH"
-#define PLUG_VERSION_HEX      0x00010100
-#define PLUG_VERSION_STR "1.1.0"
-#define PLUG_UNIQUE_ID        'TnR1'
-#define PLUG_MFR_ID           'CLPH'
+#define PLUG_MFR "cloph"
+#define PLUG_VERSION_HEX 0x00010000
+#define PLUG_VERSION_STR "1.0.0"
+#define PLUG_UNIQUE_ID 'TnR1'
+#define PLUG_MFR_ID 'Clph'
 
 // I/O.  A tuner is stereo input (we don't have to be, but matches the
 // source Cmajor patch which was stereo-in / stereo-out pass-through).
@@ -95,13 +95,13 @@
 
 // Bundle name -- used in CFBundleIdentifier on macOS / iOS.
 #define BUNDLE_NAME "Tuner"
-#define BUNDLE_MFR "CLOPH"
-#define BUNDLE_DOMAIN "com.cloph"
+#define BUNDLE_MFR "cloph-dsp"
+#define BUNDLE_DOMAIN "com"
 
 #define PLUG_SHARED_RESOURCES 0
-#define PLUG_URL_STR          ""
-#define PLUG_EMAIL_STR        ""
-#define PLUG_COPYRIGHT_STR "Copyright (C) CLOPH"
+#define PLUG_URL_STR "https://cloph.gumroad.com"
+#define PLUG_EMAIL_STR "pedrocastromusic@gmail.com"
+#define PLUG_COPYRIGHT_STR "Copyright 2026 cloph"
 #define SHARED_RESOURCES_SUBPATH PLUG_NAME
 
 // Resource compiler substitution.  resources/main.rc contains lines like
