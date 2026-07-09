@@ -303,11 +303,11 @@ jobs:
              VST3_PATH="$GITHUB_WORKSPACE/Grungr/build-mac/Products" \
              ONLY_ACTIVE_ARCH=NO \
              CODE_SIGNING_ALLOWED=NO \
-             build > /tmp/xcb-vst3.log 2>&1 || EXIT=$?
-           echo "---xcodebuild exit: ${EXIT}---"
-           tail -n 50 /tmp/xcb-vst3.log
-           if [ "$EXIT" -ne 0 ]; then exit "$EXIT"; fi
-           echo "---VST3 build OK---"
+build > /tmp/xcb-vst3.log 2>&1 || EXIT=$?
+            echo "---xcodebuild exit: ${EXIT}---"
+            tail -n 500 /tmp/xcb-vst3.log
+            if [ "$EXIT" -ne 0 ]; then exit "$EXIT"; fi
+            echo "---VST3 build OK---"
 
       - name: Build CLAP (macOS, universal)
         working-directory: Grungr
@@ -322,11 +322,11 @@ jobs:
              CLAP_PATH="$GITHUB_WORKSPACE/Grungr/build-mac/Products" \
              ONLY_ACTIVE_ARCH=NO \
              CODE_SIGNING_ALLOWED=NO \
-             build > /tmp/xcb-clap.log 2>&1 || EXIT=$?
-           echo "---xcodebuild exit: ${EXIT}---"
-           tail -n 50 /tmp/xcb-clap.log
-           if [ "$EXIT" -ne 0 ]; then exit "$EXIT"; fi
-           echo "---CLAP build OK---"
+build > /tmp/xcb-clap.log 2>&1 || EXIT=$?
+            echo "---xcodebuild exit: ${EXIT}---"
+            tail -n 500 /tmp/xcb-clap.log
+            if [ "$EXIT" -ne 0 ]; then exit "$EXIT"; fi
+            echo "---CLAP build OK---"
 
       - name: Build AUv2 (macOS, universal)
         working-directory: Grungr
@@ -341,11 +341,11 @@ jobs:
              AU_PATH="$GITHUB_WORKSPACE/Grungr/build-mac/Products" \
              ONLY_ACTIVE_ARCH=NO \
              CODE_SIGNING_ALLOWED=NO \
-             build > /tmp/xcb-au.log 2>&1 || EXIT=$?
-           echo "---xcodebuild exit: ${EXIT}---"
-           tail -n 50 /tmp/xcb-au.log
-           if [ "$EXIT" -ne 0 ]; then exit "$EXIT"; fi
-           echo "---AUv2 build OK---"
+build > /tmp/xcb-au.log 2>&1 || EXIT=$?
+            echo "---xcodebuild exit: ${EXIT}---"
+            tail -n 500 /tmp/xcb-au.log
+            if [ "$EXIT" -ne 0 ]; then exit "$EXIT"; fi
+            echo "---AUv2 build OK---"
 
       - name: Locate build outputs
         id: locate
