@@ -567,6 +567,24 @@ int Tuner::UnserializeState(const IByteChunk& chunk, int startPos) {
   return pos;
 }
 
+void Tuner::OnRestoreState() {
+  // RT-5 / state-restore: iPlug2's default OnRestoreState only pushes
+  // restored parameter values to the GUI delegate. It does NOT re-init the
+  // Detector's mSampleRate. When a host (Bitwig is the known offender)
+  // skips IAudioProcessor::setupProcessing() because the project's sample
+  // rate matches the previous session, OnReset() never fires and the
+  // Detector keeps the SR it had when the project was last saved -- which
+  // can be different from the current session's SR (e.g. 48000 saved,
+  // 44100 active). YIN/MPM then search the wrong lag range, fail to find
+  // pitch, atomics stay at zero, and the GUI shows no values even though
+  // audio is flowing. Symptom: deleting and re-inserting the plugin fixes
+  // it (fresh instances go through setupProcessing and OnReset).
+  iplug::Plugin::OnRestoreState();  // parent sends restored params to GUI
+  mDetector.Init(GetSampleRate());
+  OnParamChange(kParamSmoothing);
+  OnParamChange(kParamA4Ref);
+}
+
 void Tuner::OnReset() {
   mDSP->Init(GetSampleRate());
   mDetector.Init(GetSampleRate());

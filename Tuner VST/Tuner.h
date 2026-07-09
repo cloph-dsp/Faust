@@ -132,6 +132,7 @@ public:
 
   bool SerializeState(IByteChunk& chunk) const override;
   int UnserializeState(const IByteChunk& chunk, int startPos) override;
+  void OnRestoreState() override;
   void OnParamChange(int paramIdx) override;
   void OnReset() override;
   void OnActivate(bool active) override;
