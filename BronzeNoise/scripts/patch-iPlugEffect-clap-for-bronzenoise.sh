@@ -51,24 +51,44 @@ python3 - "$VCXPROJ" "$MARKER" "$FFT_REL_PATH" <<'PYEOF'
 import sys, re
 vcxproj, marker, fft_rel = sys.argv[1:4]
 src = open(vcxproj).read()
-# Locate a stable anchor in <ClCompile Include=...> form. Use the IPlugCLAP.cpp
-# entry as our insertion site (last iPlug-path ClCompile, followed by the
-# IPlugVST3_ProcessorBase.cpp, IPlugEditorDelegate.cpp entries etc.).
+# Anchor: insert just BEFORE the IPlugCLAP.cpp line.
 needle = '<ClCompile Include="..\\..\\..\\IPlug\\CLAP\\IPlugCLAP.cpp" />'
-patch = (
-    f'<ClCompile Include="{fft_rel}">\n'
-    f'      <PreprocessorDefinitions>%(PreprocessorDefinitions)</PreprocessorDefinitions>\n'
-    f'    </ClCompile>\n'
-    f'    <ClCompile Include="{fft_rel}" />\n'
-    f'    <!-- BronzeNoiseMarker:{marker} fft.c added for BronzeNoise (WDL_fft symbols) -->\n'
-    f'    {needle}'
-)
 if needle not in src:
     print('ERROR: anchor needle not found in vcxproj')
     sys.exit(1)
-src = src.replace(needle, patch, 1)
-open(vcxproj, 'w').write(src)
-print(f'patch: inserted fft.c ClCompile entry with marker {marker}')
+
+# First, remove ALL prior <ClCompile Include=.../WDL/fft.c .../> lines to prevent
+# duplicate-object-file errors (MSB8027) and Permission denied (C1083) on .obj locks.
+# Match the entry forms: simple <ClCompile Include="..../WDL/fft.c" /> and the
+# extended form with nested Configuration elements. We strip lines that contain
+# the WDL fft.c path anywhere.
+lines = src.split('\n')
+# Track which lines to remove (preserve comment lines that mention fft.c by name)
+fft_path_re = re.compile(r'..[/\\]..[/\\]..[/\\]WDL[/\\]fft\.c', re.IGNORECASE)
+filtered = [line for line in lines if not (
+    ('<ClCompile Include=' in line and fft_path_re.search(line))
+    or (line.strip().endswith('</ClCompile>') and any('fft.c' in l for l in lines[max(0, lines.index(line)-5):lines.index(line)+1]))
+)]
+src = '\n'.join(filtered)
+
+# Find the canonical marker that we add next to our insertion; if it's already
+# there (from a prior run that worked), strip the entire marker line too so we
+# get back to a clean baseline before re-inserting.
+src = re.sub(r'\s*<!--\s*BronzeNoiseMarker:[^>]*-->\s*', '\n', src)
+
+# Now insert exactly one ClCompile entry before the IPlugCLAP needle.
+patch = (
+    f'<!-- BronzeNoiseMarker:{marker} fft.c added for BronzeNoise (WDL_fft symbols) -->\n'
+    f'    <ClCompile Include="{fft_rel}" />\n'
+    f'    {needle}'
+)
+new = src.replace(needle, patch, 1)
+occurrences = sum(1 for line in new.split('\n') if fft_path_re.search(line))
+if occurrences != 1:
+    print(f'ERROR: expected exactly 1 fft.c ClCompile entry, found {occurrences}')
+    sys.exit(1)
+open(vcxproj, 'w').write(new)
+print(f'patch: inserted (unique) fft.c ClCompile entry with marker {marker}')
 PYEOF
 
 if ! grep -q "$MARKER" "$VCXPROJ"; then
