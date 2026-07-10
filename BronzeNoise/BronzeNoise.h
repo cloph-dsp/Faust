@@ -80,6 +80,9 @@ public:
   // Latency readout label (updated dynamically in OnReset when FFT size changes).
   // NB: ITextControl is not available in headers (IGraphics_include_in_plug_src.h is .cpp-only), so store as base IControl*.
   IControl* mLatencyLabel = nullptr;
+  // Spectrum visualizer (cached pointer so the audio->UI publish path skips the
+  // dynamic_cast scan). Nulled in OnParentWindowResize before RemoveAllControls().
+  IControl* mVisControl = nullptr;
 #endif
 
 private:

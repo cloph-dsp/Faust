@@ -851,7 +851,7 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
   // Visualizer fills the band between knobs (top) and bars (bottom), shrunk to leave meter channels.
   const IRECT visRect(bounds.L + meterW + meterGap, knobY + knobSize + 12.f,
                       bounds.R - meterW - meterGap, barsTop - 12.f);
-  pGraphics->AttachControl(new SpectrumVisualizerControl(visRect, uiFont));
+  pGraphics->AttachControl(mVisControl = new SpectrumVisualizerControl(visRect, uiFont));
 
   auto attachKnob = [&](const IRECT& r, int paramIdx, const char* label, const char* tip) {
     IControl* knob = nullptr;
@@ -917,6 +917,14 @@ void BronzeNoise::OnParentWindowResize(int width, int height)
   const float scaleX = static_cast<float>(width) / static_cast<float>(PLUG_WIDTH) / screenScale;
   const float scaleY = static_cast<float>(height) / static_cast<float>(PLUG_HEIGHT) / screenScale;
   const float scale = Clip(std::min(scaleX, scaleY), 0.6f, 1.6f);
+
+  // CRITICAL: null out member pointers BEFORE RemoveAllControls() because that
+  // deletes every attached control. Any in-flight OnIdle/Draw between this point
+  // and the end of LayoutUI() would dereference dangling pointers and crash.
+  mInputMeter = nullptr;
+  mOutputMeter = nullptr;
+  mLatencyLabel = nullptr;
+  mVisControl = nullptr;
 
   GetUI()->RemoveAllControls();
   GetUI()->Resize(PLUG_WIDTH, PLUG_HEIGHT, scale, false);
@@ -1605,14 +1613,8 @@ void BronzeNoise::ProcessHop(int channelCount)
   if (mVisUpdateCounter >= skipCount) {
     mVisUpdateCounter = 0;
 
-    if (IGraphics* g = GetUI()) {
-      for (int i = 0; i < g->NControls(); ++i) {
-        if (auto* vis = dynamic_cast<SpectrumVisualizerControl*>(g->GetControl(i))) {
-          vis->SetData(beforeSpec, afterSpec, referenceSpec, freqSpec, visBands);
-          break;
-        }
-      }
-    }
+    if (mVisControl)
+      static_cast<SpectrumVisualizerControl*>(mVisControl)->SetData(beforeSpec, afterSpec, referenceSpec, freqSpec, visBands);
   }
 }
 
