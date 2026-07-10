@@ -43,7 +43,8 @@ jobs:
       - name: Build VST3 (Release x64)
         working-directory: BronzeNoise
         run: |
-          $project = "projects/BronzeNoise-vst3.vcxproj"
+          Set-Location "${{ github.workspace }}\BronzeNoise"
+          $project = "projects\BronzeNoise-vst3.vcxproj"
           $solutionDir = "${{ github.workspace }}\"
           msbuild $project /p:Configuration=Release /p:Platform=x64 "/p:SolutionDir=$solutionDir" /v:m
 
@@ -52,7 +53,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BronzeNoise-Windows-VST3
-          path: build-win/BronzeNoise.vst3
+          path: BronzeNoise/build-win/BronzeNoise.vst3
           if-no-files-found: error
 
       - name: Windows PE binary-string hygiene check
