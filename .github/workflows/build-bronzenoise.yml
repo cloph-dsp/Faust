@@ -54,6 +54,30 @@ jobs:
           path: build-win/BronzeNoise.vst3
           if-no-files-found: error
 
+      - name: Windows PE binary-string hygiene check
+        if: always()
+        shell: pwsh
+        run: |
+          $ERRORS = 0
+          function Error($msg) { Write-Host "ERROR: $msg" -ForegroundColor Red; $script:ERRORS++ }
+          $targets = @(
+            "build-win/BronzeNoise.vst3",
+            "BronzeNoise/build-win/clap/x64/Release/BronzeNoise.clap"
+          )
+          foreach ($t in $targets) {
+            if (-not (Test-Path $t)) { Write-Host "SKIP: $t not built"; continue }
+            $hits = Select-String -Path $t -Pattern 'AcmeInc|IPlugEffect|com\.AcmeInc' -CaseSensitive:$false | Select-Object -First 5
+            if ($hits) {
+              Write-Host "Template strings found in $t"
+              $hits | ForEach-Object { Write-Host "    $($_.Line.Trim())" }
+              Error "Binary contains iPlug2 template strings: $t"
+            } else {
+              Write-Host "clean: $t"
+            }
+          }
+          if ($ERRORS -gt 0) { Write-Host "WINDOWS HYGIENE FAILED: $ERRORS error(s)"; exit 1 }
+          Write-Host "WINDOWS HYGIENE PASSED"
+
       # -----------------------------------------------------------------------
       # CLAP build -- clone iPlug2, stage BronzeNoise sources, build example
       # project IPlugEffect-clap.vcxproj.  Mirrors the Tuner workflow pattern.
@@ -137,7 +161,7 @@ jobs:
         working-directory: BronzeNoise
         run: |
           dst="../iPlug2/Examples/IPlugEffect"
-cp BronzeNoise.cpp               "$dst/IPlugEffect.cpp"
+          cp BronzeNoise.cpp               "$dst/IPlugEffect.cpp"
           cp BronzeNoise.h                 "$dst/IPlugEffect.h"
           cp BronzeNoise.h                 "$dst/BronzeNoise.h"
           cp config.h                      "$dst/config.h"
@@ -232,6 +256,12 @@ cp BronzeNoise.cpp               "$dst/IPlugEffect.cpp"
             error "Info.plist still contains template values"
           fi
 
+          # Binary-string hygiene: scan compiled Mach-O for stale iPlug2 templates.
+          BAD=$(strings "$VST3_BIN" | grep -ciE "AcmeInc|com\.AcmeInc" || true)
+          if [ "$BAD" -gt 0 ]; then
+            error "Found $BAD template string(s) in VST3 binary (AcmeInc residue)"
+          fi
+
           if [ "$ERRORS" -ne 0 ]; then
             echo "VERIFICATION FAILED: $ERRORS error(s)"
             exit 1
@@ -284,6 +314,35 @@ cp BronzeNoise.cpp               "$dst/IPlugEffect.cpp"
             exit 1
           fi
           echo "ALL LOAD TESTS PASSED"
+
+      - name: Run VST3 SDK official validator (Steinberg compliance)
+        if: always()
+        run: |
+          # Build Steinberg's official vst3_validator from the iPlug2-vendored
+          # VST3 SDK; then run it on the built bundle. Matches the Tuner CI
+          # convention so a Steinberg-grade validator approves the binary before
+          # shipping.
+          VST3_BUNDLE="BronzeNoise/build-mac/Products/BronzeNoise.vst3"
+          if [ ! -d "$VST3_BUNDLE" ]; then echo "SKIP: VST3 bundle missing"; exit 0; fi
+
+          pushd iPlug2/Dependencies/IPlug > /dev/null
+          bash download-vst3-sdk.sh master build-validator 2>&1 > /tmp/vst3_build.log || true
+          tail -5 /tmp/vst3_build.log
+          popd > /dev/null
+
+          VALIDATOR=$(find iPlug2/Dependencies/IPlug -name "vst3_validator" -type f 2>/dev/null | head -1)
+          if [ -z "$VALIDATOR" ]; then
+            echo "WARNING: vst3_validator binary not produced -- skipping official validation"
+            exit 0
+          fi
+          cp "$VALIDATOR" /tmp/vst3_validator
+          chmod +x /tmp/vst3_validator
+
+          echo "Running Steinberg vst3_validator on $VST3_BUNDLE..."
+          /tmp/vst3_validator "$VST3_BUNDLE" 2>&1
+          if [ $? -eq 0 ]; then echo "VST3 VALIDATOR: PASSED"
+          else echo "VST3 VALIDATOR: FAILED"; exit 1
+          fi
 
       - name: Strip quarantine xattrs VST3
         if: always()
