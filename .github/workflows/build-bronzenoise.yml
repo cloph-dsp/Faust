@@ -37,10 +37,11 @@ jobs:
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
 
-      # -----------------------------------------------------------------------
+      # ---------------------------------------------------------------------------
       # EXISTING VST3 build (preserved as-is -- uses local vcxproj directly)
-      # -----------------------------------------------------------------------
+      # ---------------------------------------------------------------------------
       - name: Build VST3 (Release x64)
+        working-directory: BronzeNoise
         run: |
           $project = "projects/BronzeNoise-vst3.vcxproj"
           $solutionDir = "${{ github.workspace }}\"
@@ -56,13 +57,14 @@ jobs:
 
       - name: Windows PE binary-string hygiene check
         if: always()
+        working-directory: BronzeNoise
         shell: pwsh
         run: |
           $ERRORS = 0
           function Error($msg) { Write-Host "ERROR: $msg" -ForegroundColor Red; $script:ERRORS++ }
           $targets = @(
             "build-win/BronzeNoise.vst3",
-            "BronzeNoise/build-win/clap/x64/Release/BronzeNoise.clap"
+            "build-win/clap/x64/Release/BronzeNoise.clap"
           )
           foreach ($t in $targets) {
             if (-not (Test-Path $t)) { Write-Host "SKIP: $t not built"; continue }
