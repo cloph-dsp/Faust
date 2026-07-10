@@ -228,7 +228,7 @@ private:
   void DrawWarmWash(igraphics::IGraphics& g) const
   {
     const igraphics::IColor goldCast(255, 248, 198, 96);
-    g.FillRect(goldCast, mRECT, &BLEND_05);
+    g.FillRect(goldCast, mRECT, &BLEND_10);
   }
 
   void DrawVignette(igraphics::IGraphics& g) const
@@ -240,7 +240,7 @@ private:
     const float diag = std::sqrt(w * w + h * h);
 
     const igraphics::IColor dark(255, 0, 0, 0);
-    g.FillCircle(dark, cx, cy, diag * 0.55f, &BLEND_05);
+    g.FillCircle(dark, cx, cy, diag * 0.55f, &BLEND_10);
   }
 
   void DrawGrain(igraphics::IGraphics& g, float w, float h) const
@@ -260,7 +260,7 @@ private:
         const igraphics::IColor grain(255, brightness, brightness - tint / 2, brightness - tint);
         const float x = mRECT.L + col * kCellSize;
         const float y = mRECT.T + row * kCellSize;
-        g.FillRect(grain, igraphics::IRECT(x, y, x + kCellSize, y + kCellSize), &BLEND_05);
+        g.FillRect(grain, igraphics::IRECT(x, y, x + kCellSize, y + kCellSize), &BLEND_10);
       }
     }
   }
@@ -1254,7 +1254,7 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
                                   backgroundBounds.R - stripeHInset,
                                   stripeB);
 
-  r.titleFontSize = (variant == LayoutVariant::Compact) ? 52.f : (variant == LayoutVariant::Spacious) ? 84.f : 68.f;
+  r.titleFontSize = (variant == LayoutVariant::Compact) ? 58.f : (variant == LayoutVariant::Spacious) ? 90.f : 76.f;
   const float titleH = r.titleFontSize * 1.16f;
   const float ledStripY = backgroundBounds.T + backgroundBounds.H() * kLedYNorm;
 
@@ -1273,7 +1273,7 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
   const float titleMaxY = std::max(titleMinY, titleBandBottom - titleH * 0.5f);
   const float titleY = std::clamp((titleBandTop + titleBandBottom) * 0.5f,
                                   titleMinY,
-                                  titleMaxY);
+                                  titleMaxY) + 6.f;
 
   const float titleCenterX = backgroundBounds.MW();
   float titleLogoH = titleH;
@@ -1288,7 +1288,7 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
                              titleCenterX + (titleLogoW * 0.5f),
                              titleY + (titleLogoH * 0.5f));
 
-  const float logoH = std::clamp(rawToggleH * 0.95f, knobSize * 0.43f, knobSize * 0.53f);
+  const float logoH = std::clamp(rawToggleH * 0.82f, knobSize * 0.34f, knobSize * 0.44f);
   const float logoW = logoH * kClophLogoAspect;
   const float rawToggleLeftInset = rawCenterX - (rawToggleW * 0.5f) - backgroundBounds.L;
   const float logoRight = backgroundBounds.R - rawToggleLeftInset;
