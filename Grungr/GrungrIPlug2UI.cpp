@@ -228,7 +228,7 @@ private:
   void DrawWarmWash(igraphics::IGraphics& g) const
   {
     const igraphics::IColor goldCast(255, 248, 198, 96);
-    g.FillRect(goldCast, mRECT, &BLEND_10);
+    g.FillRect(goldCast, mRECT, &IBlend(EBlend::Default, 0.07f));
   }
 
   void DrawVignette(igraphics::IGraphics& g) const
@@ -240,7 +240,7 @@ private:
     const float diag = std::sqrt(w * w + h * h);
 
     const igraphics::IColor dark(255, 0, 0, 0);
-    g.FillCircle(dark, cx, cy, diag * 0.55f, &BLEND_10);
+    g.FillCircle(dark, cx, cy, diag * 0.55f, &IBlend(EBlend::Default, 0.07f));
   }
 
   void DrawGrain(igraphics::IGraphics& g, float w, float h) const
@@ -260,7 +260,7 @@ private:
         const igraphics::IColor grain(255, brightness, brightness - tint / 2, brightness - tint);
         const float x = mRECT.L + col * kCellSize;
         const float y = mRECT.T + row * kCellSize;
-        g.FillRect(grain, igraphics::IRECT(x, y, x + kCellSize, y + kCellSize), &BLEND_10);
+        g.FillRect(grain, igraphics::IRECT(x, y, x + kCellSize, y + kCellSize), &IBlend(EBlend::Default, 0.07f));
       }
     }
   }
@@ -1254,7 +1254,7 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
                                   backgroundBounds.R - stripeHInset,
                                   stripeB);
 
-  r.titleFontSize = (variant == LayoutVariant::Compact) ? 58.f : (variant == LayoutVariant::Spacious) ? 90.f : 76.f;
+  r.titleFontSize = (variant == LayoutVariant::Compact) ? 62.f : (variant == LayoutVariant::Spacious) ? 96.f : 82.f;
   const float titleH = r.titleFontSize * 1.16f;
   const float ledStripY = backgroundBounds.T + backgroundBounds.H() * kLedYNorm;
 
@@ -1273,7 +1273,7 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
   const float titleMaxY = std::max(titleMinY, titleBandBottom - titleH * 0.5f);
   const float titleY = std::clamp((titleBandTop + titleBandBottom) * 0.5f,
                                   titleMinY,
-                                  titleMaxY) + 6.f;
+                                  titleMaxY) + 3.f;
 
   const float titleCenterX = backgroundBounds.MW();
   float titleLogoH = titleH;
