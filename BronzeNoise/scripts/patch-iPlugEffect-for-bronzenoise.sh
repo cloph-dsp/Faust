@@ -26,11 +26,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-# CI layout: workspace-root contains both BronzeNoise/ and iPlug2/. From
-# BronzeNoise/scripts the iPlug2 path resolves to BronzeNoise/../../iPlug2.
-# Allow PBXPROJ_OVERRIDE env override for ad-hoc local layouts.
-PBXPROJ="${PBXPROJ_OVERRIDE:-$PROJECT_ROOT/../../iPlug2/Examples/IPlugEffect/projects/IPlugEffect-macOS.xcodeproj/project.pbxproj}"
+# BronzeNoise/scripts/ lives two levels below the CI workspace root:
+#   <workspace>/BronzeNoise/scripts/patch-...sh
+# So we go up two levels to reach the workspace root where iPlug2/ is a sibling
+# of BronzeNoise/.  PBXPROJ_OVERRIDE lets ad-hoc local layouts bypass this.
+WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PBXPROJ="${PBXPROJ_OVERRIDE:-$WORKSPACE_ROOT/iPlug2/Examples/IPlugEffect/projects/IPlugEffect-macOS.xcodeproj/project.pbxproj}"
 
 # BronzeNoise-distinguishable IDs (4FBAAxxx prefix avoids collision with
 # existing iPlug2 IDs which use 4Fxxxxxx patterns).
