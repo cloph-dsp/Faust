@@ -19,6 +19,13 @@ BINARY_NAME = BronzeNoise
 EXTRA_INC_PATHS = $(IGRAPHICS_INC_PATHS)
 EXTRA_LIB_PATHS = $(IGRAPHICS_LIB_PATHS)
 
+// BronzeNoise uses WDL FFT (WDL_fft_init / WDL_fft / WDL_fft_permute) inside ProcessHop / OnReset.
+// IPlugEffect's xcodeproj sources list doesn't include fft.c, so we append it via OTHER_CPLUSPLUSFLAGS
+// and rely on a setup step that copies iPlug2/WDL/fft.c to $(SRCROOT)/wdl_fft.c.
+// ponytail: This avoids editing the upstream IPlugEffect-macOS.xcodeproj project file (the pbxproj
+// would otherwise need 20 fft.c-related entries per the IPlugVisualizer pattern).
+EXTRA_CPLUSPLUSFLAGS = $(SRCROOT)/wdl_fft.c
+
 // Metal/MetalKit for IGRAPHICS_METAL, OpenGL retained for legacy SWELL/windowing fallback.
 EXTRA_LNK_FLAGS = -framework Metal -framework MetalKit -framework OpenGL
 

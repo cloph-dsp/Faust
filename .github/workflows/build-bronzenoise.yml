@@ -173,6 +173,11 @@ jobs:
           cp config.h                      "$dst/config.h"
           # Stage proven Tuner-pattern xcconfig (mirrors Tuner VST workflow).
           cp config/BronzeNoise-mac.xcconfig "$dst/config/IPlugEffect-mac.xcconfig"
+          # Copy WDL FFT source so BronzeNoise-mac.xcconfig's OTHER_CPLUSPLUSFLAGS can pick it up.
+          # BronzeNoise uses WDL_fft_init / WDL_fft / WDL_fft_permute in ProcessHop and OnReset;
+          # IPlugEffect's xcodeproj sources list doesn't include WDL/fft.c, so we inline it via
+          # $(SRCROOT)/wdl_fft.c and stage a copy here.
+          cp ../iPlug2/WDL/fft.c "$dst/wdl_fft.c"
           cp resources/* "$dst/resources/" 2>/dev/null || true
           cd "$dst/resources"
           for f in IPlugEffect-*.plist; do
