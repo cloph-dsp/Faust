@@ -45,9 +45,12 @@ jobs:
         run: |
           Set-Location "${{ github.workspace }}\BronzeNoise"
           Get-ChildItem .
+          # Path is relative to BronzeNoise/ (SolutionDir = BronzeNoise/) so the
+          # $(SolutionDir)config\BronzeNoise-win.props import resolves correctly.
+          Set-Location "${{ github.workspace }}\BronzeNoise"
           Get-ChildItem projects
           $project = "${{ github.workspace }}\BronzeNoise\projects\BronzeNoise-vst3.vcxproj"
-          $solutionDir = "${{ github.workspace }}\"
+          $solutionDir = (Resolve-Path ".").Path + "\"
           if (-not (Test-Path $project)) { Write-Host "MISSING: $project"; exit 2 }
           msbuild $project /p:Configuration=Release /p:Platform=x64 "/p:SolutionDir=$solutionDir" /v:m
 
