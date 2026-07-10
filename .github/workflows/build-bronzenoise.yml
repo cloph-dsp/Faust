@@ -145,6 +145,14 @@ jobs:
             }
           }
 
+      - name: Patch IPlugEffect-clap vcxproj for WDL FFT (BronzeNoise, Windows)
+        # BronzeNoise uses WDL_fft_init/WDL_fft/WDL_fft_permute in ProcessHop/OnReset.
+        # IPlugEffect-clap.vcxproj doesn't include fft.c, so the Windows CLAP build
+        # fails with LNK2001 unresolved externals. Patches the vcxproj to add it.
+        # Idempotent, mirrors the macOS pbxproj patcher pattern.
+        run: |
+          bash BronzeNoise/scripts/patch-iPlugEffect-clap-for-bronzenoise.sh
+
       - name: Build CLAP
         working-directory: BronzeNoise
         run: |
