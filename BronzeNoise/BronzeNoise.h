@@ -55,7 +55,7 @@ class IOMeterControl;
 using namespace iplug;
 using namespace igraphics;
 
-class BronzeNoise final : public Plugin
+class BronzeNoise final : public iplug::Plugin
 {
 public:
   BronzeNoise(const InstanceInfo& info);

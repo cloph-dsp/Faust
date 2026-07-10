@@ -146,11 +146,6 @@ jobs:
           }
 
       - name: Build CLAP
-        # CLAP build currently fails with `Plugin<...> is not a direct or virtual base of 'BronzeNoise'`
-        # when IPlug2's IPlug_include_in_plug_hdr.h aliases `Plugin = IPlugCLAP` for CLAP builds.
-        # Tracked as a known issue. VST3 + AUv2 are the production targets; CLAP can be re-enabled
-        # once the IPlug2/CLAP/inheritance issue is resolved.
-        continue-on-error: true
         working-directory: BronzeNoise
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -414,8 +409,6 @@ jobs:
       # CLAP build -- same xcodeproj, different scheme
       # -----------------------------------------------------------------------
       - name: Build CLAP
-        # See Windows CLAP comment above. Same known IPlug2 inheritance issue.
-        continue-on-error: true
         run: |
           cd iPlug2/Examples/IPlugEffect
           xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \

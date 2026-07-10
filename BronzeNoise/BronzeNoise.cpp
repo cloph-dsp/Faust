@@ -679,7 +679,7 @@ float InterpolateLogTable(float frequencyHz,
 }
 
  BronzeNoise::BronzeNoise(const InstanceInfo& info)
- : Plugin(info, MakeConfig(kNumParams, kNumPresets))
+ : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
   GetParam(kAmount)->InitPercentage("Amount", 100.0);
   GetParam(kTarget)->InitEnum("Target", kTargetBronze, {"Loud", "Violet", "White", "Red", "Orange", "Pink", "Bronze", "Brown", "Olive", "Blue"});
