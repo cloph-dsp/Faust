@@ -228,7 +228,7 @@ private:
   void DrawWarmWash(igraphics::IGraphics& g) const
   {
     const igraphics::IColor goldCast(255, 248, 198, 96);
-    g.FillRect(goldCast, mRECT, &BLEND_25);
+    g.FillRect(goldCast, mRECT, &BLEND_05);
   }
 
   void DrawVignette(igraphics::IGraphics& g) const
@@ -240,15 +240,12 @@ private:
     const float diag = std::sqrt(w * w + h * h);
 
     const igraphics::IColor dark(255, 0, 0, 0);
-    g.FillCircle(dark, cx, cy, diag * 0.55f, &BLEND_25);
-
-    const igraphics::IColor highlight(255, 255, 220, 160);
-    g.FillCircle(highlight, cx, cy, diag * 0.10f, &BLEND_25);
+    g.FillCircle(dark, cx, cy, diag * 0.55f, &BLEND_05);
   }
 
   void DrawGrain(igraphics::IGraphics& g, float w, float h) const
   {
-    constexpr int kCellSize = 3;
+    constexpr int kCellSize = 5;
     const int cols = static_cast<int>(w) / kCellSize + 1;
     const int rows = static_cast<int>(h) / kCellSize + 1;
 
@@ -263,7 +260,7 @@ private:
         const igraphics::IColor grain(255, brightness, brightness - tint / 2, brightness - tint);
         const float x = mRECT.L + col * kCellSize;
         const float y = mRECT.T + row * kCellSize;
-        g.FillRect(grain, igraphics::IRECT(x, y, x + kCellSize, y + kCellSize), &BLEND_25);
+        g.FillRect(grain, igraphics::IRECT(x, y, x + kCellSize, y + kCellSize), &BLEND_05);
       }
     }
   }
