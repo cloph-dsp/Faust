@@ -7,8 +7,15 @@
 #include <cstring>
 #include <string>
 
-#include <xmmintrin.h>
-#include <pmmintrin.h>
+// SSE intrinsics are x86/x64-only. On Apple Silicon (arm64) Clang defines
+// __SSE__=0 and rejects these headers with "This header is only meant to be
+// used on x86 and x64 architecture" errors. macOS math library handles
+// denormal flushing at the OS level on arm64 (no SSE FTZ needed), so
+// gating is safe — the runtime _mm_setcsr calls become no-ops there.
+#ifdef __SSE__
+  #include <xmmintrin.h>
+  #include <pmmintrin.h>
+#endif
 
 // ponytail: Two-channel peak meter with peak-hold indicator. 0 dBFS at top, 60 dB at bottom.
 // Linear peak tracks the audio thread atomics (via SetLevels from OnIdle); peak hold sticks for ~1.5s then releases.
@@ -1611,10 +1618,12 @@ void BronzeNoise::ProcessHop(int channelCount)
 
 void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
-  // CPU-level denormal protection: flush denormals to zero (FTZ) and set denormals are zero (DAZ)
-  // This prevents DSP performance stalls from subnormal floating-point values.
+  // CPU-level denormal protection: flush denormals to zero (FTZ) and set denormals are zero (DAZ).
+  // SSE intrinsics are x86/x64-only; on arm64 macOS math library handles this at OS level.
+#ifdef __SSE__
   _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
   _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+#endif
 
   const int activeInputChannels = NInChansConnected();
   const int activeOutputChannels = NOutChansConnected();
