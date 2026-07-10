@@ -227,10 +227,10 @@ private:
 
   void DrawWarmWash(igraphics::IGraphics& g) const
   {
-    const igraphics::IColor goldCast = WithAlpha(igraphics::IColor(255, 245, 210, 130), 18);
+    const igraphics::IColor goldCast = WithAlpha(igraphics::IColor(255, 245, 210, 130), 42);
     g.FillRect(goldCast, mRECT, &BLEND_05);
 
-    const igraphics::IColor shadowLift = WithAlpha(igraphics::IColor(255, 35, 20, 5), 10);
+    const igraphics::IColor shadowLift = WithAlpha(igraphics::IColor(255, 35, 20, 5), 26);
     g.FillRect(shadowLift, mRECT, &BLEND_05);
   }
 
@@ -242,17 +242,17 @@ private:
     const float h = mRECT.H();
     const float diag = std::sqrt(w * w + h * h);
 
-    const igraphics::IColor midTint = WithAlpha(igraphics::IColor(255, 12, 6, 0), 24);
-    g.FillCircle(midTint, cx, cy, diag * 0.38f, &BLEND_05);
+    const igraphics::IColor midTint = WithAlpha(igraphics::IColor(255, 12, 6, 0), 48);
+    g.FillCircle(midTint, cx, cy, diag * 0.40f, &BLEND_05);
 
-    const igraphics::IColor edgeTint = WithAlpha(igraphics::IColor(255, 0, 0, 0), 64);
-    g.FillCircle(edgeTint, cx, cy, diag * 0.55f, &BLEND_05);
+    const igraphics::IColor edgeTint = WithAlpha(igraphics::IColor(255, 0, 0, 0), 128);
+    g.FillCircle(edgeTint, cx, cy, diag * 0.60f, &BLEND_05);
   }
 
   void DrawGrain(igraphics::IGraphics& g, float w, float h) const
   {
-    constexpr int kCellSize = 4;
-    constexpr int kAlphaBase = 24;
+    constexpr int kCellSize = 2;
+    constexpr int kAlphaBase = 48;
     const int cols = static_cast<int>(w) / kCellSize + 1;
     const int rows = static_cast<int>(h) / kCellSize + 1;
 
