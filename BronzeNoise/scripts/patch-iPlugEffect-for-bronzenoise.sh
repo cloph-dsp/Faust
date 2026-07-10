@@ -1,137 +1,110 @@
 #!/bin/bash
+# ============================================================================
 # patch-iPlugEffect-for-bronzenoise.sh
 #
-# Injects WDL/fft.c into iPlug2's IPlugEffect-macOS.xcodeproj so the macOS
-# build links against WDL_fft_init / WDL_fft / WDL_fft_permute symbols used by
-# BronzeNoise::ProcessHop and BronzeNoise::OnReset.
+# Adds WDL/fft.c (path: ../../../WDL/fft.c) as a Sources build entry to the
+# iPlug2 IPlugEffect-macOS.xcodeproj's project.pbxproj. BronzeNoise uses
+# WDL FFT symbols (WDL_fft_init, WDL_fft, WDL_fft_permute) in ProcessHop
+# and OnReset, but the upstream IPlugEffect project does not compile fft.c,
+# causing link errors when building the macOS-VST3 / macOS-CLAP / macOS-AUv2
+# schemes.
 #
-# Pattern: mirrors scripts/patch-iPlug2-for-freeze95.sh in this repo
-# (Freeze95 patches iPlug2 sources for hardened-runtime safety; BronzeNoise
-# patches the IPlugEffect example xcodeproj to add WDL fft.c).
+# Mirrors the Freeze95 scripts/patch-iPlug2-for-freeze95.sh pattern.
+# Idempotent (skips when marker UUID is present), .bak preserved.
 #
-# Idempotent: re-running is safe (skips if patched UUID marker is present).
-# Tested against upstream iPlug2/Examples/IPlugEffect-macOS.xcodeproj.
-#
-# Usage: from CI setup step, AFTER iPlug2 is cloned into ./iPlug2:
-#   bash scripts/patch-iPlugEffect-for-bronzenoise.sh
-#
+# Reference implementation that DOES compile fft.c:
+#   iPlug2/Examples/IPlugVisualizer/projects/IPlugVisualizer-macOS.xcodeproj
+# ============================================================================
 set -euo pipefail
 
-PBP_PATH="iPlug2/Examples/IPlugEffect/projects/IPlugEffect-macOS.xcodeproj/project.pbxproj"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PBXPROJ="$PROJECT_ROOT/iPlug2/Examples/IPlugEffect/projects/IPlugEffect-macOS.xcodeproj/project.pbxproj"
 
-if [ ! -f "$PBP_PATH" ]; then
-  echo "ERROR: $PBP_PATH not found. Run from workspace root after iPlug2 clone."
+# BronzeNoise-distinguishable IDs (4FBAAxxx prefix avoids collision with
+# iPlug2 IDs which are 4Fxxxxxx patterns).
+FFT_FILE_REF="4FBAA0012D1588B8009EF4AA"
+FFT_BUILD_VST3="4FBAA0022D1588B8009EF4AA"
+FFT_BUILD_CLAP="4FBAA0032D1588B8009EF4AA"
+FFT_BUILD_AUV2="4FBAA0042D1588B8009EF4AA"
+FFT_REL_PATH="../../../WDL/fft.c"
+
+echo "=== Patching IPlugEffect for BronzeNoise (WDL fft.c) ==="
+echo "  Target pbxproj: $PBXPROJ"
+
+if [ ! -f "$PBXPROJ" ]; then
+  echo "ERROR: pbxproj not found. Run from a checkout where iPlug2/ is a sibling of BronzeNoise/scripts/."
   exit 1
 fi
 
-# Deterministic UUIDs (24 hex chars like Apple's, but chosen to avoid collision
-# with the project's existing UUIDs -- which are uppercase hex across various ranges).
-# BronzeNoise-specific prefix "4F5AE2" -- "AB" ID block (free per IPlugVisualizer).
-FILE_REF_ID="4F5AE2922D1588B8009EF4AA"
-BUILD_FILE_IDS=(
-  "4F5AE2932D1588B8009EF4AA"
-  "4F5AE2942D1588B8009EF4AA"
-  "4F5AE2952D1588B8009EF4AA"
-)
-SCHEME_BUILD_PHASE_IDS=(
-  "4F3862EE2014BBEC0009F402"  # macOS-VST3 Sources phase (matches IPlugEffect.cpp phase anchor)
-  "4F5C5F6C21BED08700E024A7"  # macOS-CLAP  Sources phase
-  "4F3EE1E6231438D000004786"  # macOS-AUv2  Sources phase (re-use existing framework phase ID — see comment below)
-)
-
-# Idempotency: if the FileReference UUID already appears, skip the patch.
-if grep -q "$FILE_REF_ID" "$PBP_PATH"; then
-  echo "patch: FFT.c entry already present in pbxproj, skipping"
+if grep -q "$FFT_FILE_REF" "$PBXPROJ"; then
+  echo "  Already patched (found $FFT_FILE_REF). Nothing to do."
   exit 0
 fi
 
-# 1. PBXFileReference entry: declares fft.c lives at ../../../WDL/fft.c
-cat > /tmp/fft_fileref.txt <<EOF
-		${FILE_REF_ID} /* fft.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = fft.c; path = ../../../WDL/fft.c; sourceTree = "<group>"; };
-EOF
+cp "$PBXPROJ" "$PBXPROJ.bak"
+chmod u+w "$PBXPROJ"
 
-# 2. PBXBuildFile entries: 3 entries, one per scheme × Sources phase
-cat > /tmp/fft_buildfiles.txt <<EOF
-		${BUILD_FILE_IDS[0]} /* fft.c in Sources */ = {isa = PBXBuildFile; fileRef = ${FILE_REF_ID} /* fft.c */; };
-		${BUILD_FILE_IDS[1]} /* fft.c in Sources */ = {isa = PBXBuildFile; fileRef = ${FILE_REF_ID} /* fft.c */; };
-		${BUILD_FILE_IDS[2]} /* fft.c in Sources */ = {isa = PBXBuildFile; fileRef = ${FILE_REF_ID} /* fft.c */; };
-EOF
-
-# Find the PBXSourcesBuildPhase UUID for each scheme by walking the
-# corresponding PBXNativeTarget's buildPhases list. We then add our
-# BuildFile UUID to those phases' files lists.
-python3 - "$PBP_PATH" "${BUILD_FILE_IDS[@]}" <<'PYEOF'
+python3 - "$PBXPROJ" "$FFT_FILE_REF" "$FFT_BUILD_VST3" "$FFT_BUILD_CLAP" "$FFT_BUILD_AUV2" "$FFT_REL_PATH" <<'PYEOF'
 import sys, re
+pbp, ff, vst3, clap, auv2, relpath = sys.argv[1:7]
+src = open(pbp).read()
 
-pbp_path = sys.argv[1]
-build_file_ids = sys.argv[2:]
-src = open(pbp_path, 'r').read()
-
-# Inject PBXFileReference: append at end of PBXFileReference section.
-fileref_id = "4F5AE2922D1588B8009EF4AA"
-fileref_block = (
-    f"\t\t{fileref_id} /* fft.c */ = {{isa = PBXFileReference; "
+# 1. PBXFileReference: insert fft.c ref right after the IPlugPaths.mm ref
+needle = "4F5F344020C0226200487201 /* IPlugPaths.mm */ = {isa = PBXFileReference;"
+patch  = (
+    f"\t\t{ff} /* fft.c */ = {{isa = PBXFileReference; "
     f"lastKnownFileType = sourcecode.c.c; name = fft.c; path = "
-    f"../../../WDL/fft.c; sourceTree = \"<group>\"; }};\n"
+    f"{relpath}; sourceTree = \"<group>\"; }};\n"
 )
-src = src.replace(
-    "/* End PBXFileReference section */",
-    fileref_block + "/* End PBXFileReference section */",
+src = src.replace(needle, needle + "\n" + patch.rstrip("\n"), 1)
+
+# 2. PBXBuildFile (3 entries) before the End PBXBuildFile marker.
+build_block = (
+    f"\t\t{vst3} /* fft.c in Sources */ = {{isa = PBXBuildFile; fileRef = {ff} /* fft.c */; }};\n"
+    f"\t\t{clap} /* fft.c in Sources */ = {{isa = PBXBuildFile; fileRef = {ff} /* fft.c */; }};\n"
+    f"\t\t{auv2} /* fft.c in Sources */ = {{isa = PBXBuildFile; fileRef = {ff} /* fft.c */; }};\n"
 )
+src = src.replace("/* End PBXBuildFile section */",
+                  build_block + "/* End PBXBuildFile section */", 1)
 
-# Inject 3 PBXBuildFile entries at end of PBXBuildFile section.
-buildfile_block = ""
-for bfid in build_file_ids:
-    buildfile_block += (
-        f"\t\t{bfid} /* fft.c in Sources */ = "
-        f"{{isa = PBXBuildFile; fileRef = {fileref_id} /* fft.c */; }};\n"
-    )
-src = src.replace(
-    "/* End PBXBuildFile section */",
-    buildfile_block + "/* End PBXBuildFile section */",
-)
+# 3. Append fft.c to each of the 3 PBXSourcesBuildPhase files = ( ... ) lists.
+#    Each scheme's Sources-phase block contains a unique identifier of its
+#    last file entry (we use IPlugVST3.cpp / IPlugCLAP.cpp / IPlugAU.cpp).
+markers = [
+    (vst3,  "4F1A527E205D911A00CF2908 /* IPlugVST3.cpp in Sources */,"),
+    (clap,  "4FD869DA27206169005A5F28 /* IPlugCLAP.cpp in Sources */,"),
+    (auv2,  "4F1A528C205D916F00CF2908 /* IPlugAU.cpp in Sources */,"),
+]
 
-# Find the 3 target Sources phases by following each scheme.
-# Schemes we need: macOS-VST3, macOS-CLAP, macOS-AUv2.
-target_names = ["macOS-VST3", "macOS-CLAP", "macOS-AUv2"]
-phase_ids = []
-
-for target_name in target_names:
-    # Match the PBXNativeTarget block whose productName matches the scheme.
-    # Then grab the SECOND entry in buildPhases (Sources phase comes after
-    # the resources/frameworks phases per IPlugEffect order).
-    m = re.search(
-        r"PBXNativeTarget section.*?" + re.escape(f"name = {target_name};") +
-        r".*?buildPhases = \((.*?)\);",
-        src, re.S,
-    )
-    if not m:
-        print(f"WARN: target {target_name} not found, skipping", file=sys.stderr)
+# But the same string can appear in BOTH the PBXBuildFile section AND the
+# PBXSourcesBuildPhase files = (...) list. We must only patch the SECOND
+# occurrence (the files list entry), not the PBXBuildFile declaration.
+patches = 0
+for bfid, marker in markers:
+    occurrences = [i for i in range(len(src)) if src.startswith(marker, i)]
+    if len(occurrences) < 2:
+        print(f"WARN: only {len(occurrences)} occurrence(s) of {marker[:30]}..., skipping")
         continue
-    phases = re.findall(r"(\w{24})\s*/\*\s*\w+\s*\*/", m.group(1))
-    if len(phases) < 2:
-        # fall back: take last phase as Sources (IPlugEffect order: framework→resources→sources).
-        sources_phase = phases[-1]
-    else:
-        sources_phase = phases[-1]
-    phase_ids.append((target_name, sources_phase))
+    target_pos = occurrences[1]  # second occurrence = inside files = (...) list
+    end_of_marker = target_pos + len(marker)
+    insert_text = f"\n\t\t\t\t{bfid} /* fft.c in Sources */,"
+    src = src[:end_of_marker] + insert_text + src[end_of_marker:]
+    patches += 1
 
-# Append the build-file UUID to each Sources phase's files = ( ... ) list.
-for target_name, phase_id in phase_ids:
-    # Match the PBXSourcesBuildPhase whose first comment contains the phase_id UUID,
-    # then locate its closing "files = ( ... );" and append our build-file id.
-    pattern = (
-        rf"({phase_id} /\*[^*]*\*/ = {{\s*isa = PBXSourcesBuildFilePhase;"
-        rf".*?files = \(\s*\n)(.*?)(\n\s*\);)"
-    )
-    m = re.search(pattern, src, re.S)
-    if not m:
-        print(f"WARN: Sources phase {phase_id} for {target_name} not found", file=sys.stderr)
-        continue
-    bfid = build_file_ids[target_names.index(target_name)]
-    new_body = m.group(2) + f"\n\t\t\t\t{bfid} /* fft.c in Sources */,"
-    src = src[:m.start()] + m.group(1) + new_body + m.group(3) + src[m.end():]
-
-open(pbp_path, 'w').write(src)
-print(f"patch: inserted fft.c entries into {len(phase_ids)} sources phases")
+open(pbp, 'w').write(src)
+print(f"patch: file ref + 3 build files + {patches}/{len(markers)} sources phases")
 PYEOF
+
+for ID in "$FFT_FILE_REF" "$FFT_BUILD_VST3" "$FFT_BUILD_CLAP" "$FFT_BUILD_AUV2"; do
+  if ! grep -q "$ID" "$PBXPROJ"; then
+    echo "ERROR: expected ID $ID missing after patch. Restoring backup."
+    mv "$PBXPROJ.bak" "$PBXPROJ"
+    exit 1
+  fi
+done
+
+echo "  Inserted PBXFileReference + 3 PBXBuildFile entries."
+echo "  Linked fft.c into macOS-VST3, macOS-CLAP, macOS-AUv2 Sources phases."
+echo "  Backup: $PBXPROJ.bak"
+echo "=== Done ==="
