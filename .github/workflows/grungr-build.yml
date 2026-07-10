@@ -2,7 +2,7 @@ name: Build Grungr (VST3 + CLAP + AUv2)
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/grungr-90s-photo-overlay]
     paths:
       - 'Grungr/**'
       - '.github/workflows/grungr-build.yml'
