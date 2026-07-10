@@ -173,16 +173,20 @@ jobs:
           cp config.h                      "$dst/config.h"
           # Stage proven Tuner-pattern xcconfig (mirrors Tuner VST workflow).
           cp config/BronzeNoise-mac.xcconfig "$dst/config/IPlugEffect-mac.xcconfig"
-          # Copy WDL FFT source so BronzeNoise-mac.xcconfig's OTHER_CPLUSPLUSFLAGS can pick it up.
-          # BronzeNoise uses WDL_fft_init / WDL_fft / WDL_fft_permute in ProcessHop and OnReset;
-          # IPlugEffect's xcodeproj sources list doesn't include WDL/fft.c, so we inline it via
-          # $(SRCROOT)/wdl_fft.c and stage a copy here.
-          cp ../iPlug2/WDL/fft.c "$dst/wdl_fft.c"
           cp resources/* "$dst/resources/" 2>/dev/null || true
           cd "$dst/resources"
           for f in IPlugEffect-*.plist; do
             [ -f "$f" ] && cp "$f" "BronzeNoise${f#IPlugEffect}" || true
           done
+
+      - name: Patch IPlugEffect xcodeproj for WDL FFT (BronzeNoise)
+        # BronzeNoise uses WDL_fft_init / WDL_fft / WDL_fft_permute in ProcessHop/OnReset.
+        # IPlugEffect's xcodeproj doesn't include fft.c, so we patch the pbxproj to add it
+        # as a Sources build entry for the 3 macOS schemes (VST3, CLAP, AUv2).
+        # Idempotent, mirrors Freeze95 scripts/patch-iPlug2-for-freeze95.sh pattern.
+        run: |
+          chmod +x BronzeNoise/scripts/patch-iPlugEffect-for-bronzenoise.sh
+          bash BronzeNoise/scripts/patch-iPlugEffect-for-bronzenoise.sh
 
       - name: Build VST3
         run: |
