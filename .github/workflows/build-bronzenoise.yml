@@ -204,6 +204,9 @@ jobs:
         # IPlugEffect's xcodeproj doesn't include fft.c, so we patch the pbxproj to add it
         # as a Sources build entry for the 3 macOS schemes (VST3, CLAP, AUv2).
         # Idempotent, mirrors Freeze95 scripts/patch-iPlug2-for-freeze95.sh pattern.
+        # Pass absolute pbxproj path so the script's path computation is unambiguous.
+        env:
+          PBXPROJ_OVERRIDE: ${{ github.workspace }}/iPlug2/Examples/IPlugEffect/projects/IPlugEffect-macOS.xcodeproj/project.pbxproj
         run: |
           chmod +x BronzeNoise/scripts/patch-iPlugEffect-for-bronzenoise.sh
           bash BronzeNoise/scripts/patch-iPlugEffect-for-bronzenoise.sh
