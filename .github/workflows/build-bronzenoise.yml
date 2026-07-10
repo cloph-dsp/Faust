@@ -38,6 +38,23 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       # ---------------------------------------------------------------------------
+      # Clone iPlug2 framework (BronzeNoise's local vcxproj's BronzeNoise-win.props
+      # imports $(IPLUG2_ROOT)\common-win.props from iPlug2 -- must be present).
+      # ---------------------------------------------------------------------------
+      - name: Checkout iPlug2 framework (Windows)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "iPlug2")) {
+            git clone --depth 1 --shallow-submodules https://github.com/iPlug2/iPlug2.git iPlug2
+          }
+          Write-Host "iPlug2 SHA: $(git -C iPlug2 rev-parse HEAD)"
+
+      - name: Download SDKs (VST3, Windows)
+        shell: bash
+        working-directory: iPlug2/Dependencies/IPlug
+        run: bash download-iplug-sdks.sh
+
+      # ---------------------------------------------------------------------------
       # EXISTING VST3 build (preserved as-is -- uses local vcxproj directly)
       # ---------------------------------------------------------------------------
       - name: Build VST3 (Release x64)
