@@ -81,7 +81,7 @@ static const igraphics::IColor kTokenRawHardwareSlotHighlight(158, 184, 145, 132
 static const igraphics::IColor kTokenRawHardwareHandleFill(255, 95, 84, 82);
 static const igraphics::IColor kTokenRawHardwareHandleEdge(250, 224, 198, 202);
 static const igraphics::IColor kTokenRawHardwareHandleGrip(200, 44, 37, 38);
-// LCD readout theme — black panel + red 7-segment style digits + subtle red glow.
+// LCD readout theme Ã¢â‚¬â€ black panel + red 7-segment style digits + subtle red glow.
 static const igraphics::IColor kTokenLcdBackground(255, 8, 4, 4);
 static const igraphics::IColor kTokenLcdBorder(255, 26, 8, 8);
 static const igraphics::IColor kTokenLcdText(255, 255, 60, 36);
@@ -228,7 +228,8 @@ private:
   void DrawWarmWash(igraphics::IGraphics& g) const
   {
     const igraphics::IColor goldCast(255, 248, 198, 96);
-    g.FillRect(goldCast, mRECT, &IBlend(EBlend::Default, 0.07f));
+    const igraphics::IBlend blend(igraphics::EBlend::Default, 0.07f);
+    g.FillRect(goldCast, mRECT, &blend);
   }
 
   void DrawVignette(igraphics::IGraphics& g) const
@@ -240,7 +241,8 @@ private:
     const float diag = std::sqrt(w * w + h * h);
 
     const igraphics::IColor dark(255, 0, 0, 0);
-    g.FillCircle(dark, cx, cy, diag * 0.55f, &IBlend(EBlend::Default, 0.07f));
+    const igraphics::IBlend blend(igraphics::EBlend::Default, 0.07f);
+    g.FillCircle(dark, cx, cy, diag * 0.55f, &blend);
   }
 
   void DrawGrain(igraphics::IGraphics& g, float w, float h) const
@@ -248,6 +250,7 @@ private:
     constexpr int kCellSize = 5;
     const int cols = static_cast<int>(w) / kCellSize + 1;
     const int rows = static_cast<int>(h) / kCellSize + 1;
+    const igraphics::IBlend blend(igraphics::EBlend::Default, 0.07f);
 
     uint32_t state = mSeed;
     for (int row = 0; row < rows; ++row) {
@@ -260,7 +263,7 @@ private:
         const igraphics::IColor grain(255, brightness, brightness - tint / 2, brightness - tint);
         const float x = mRECT.L + col * kCellSize;
         const float y = mRECT.T + row * kCellSize;
-        g.FillRect(grain, igraphics::IRECT(x, y, x + kCellSize, y + kCellSize), &IBlend(EBlend::Default, 0.07f));
+        g.FillRect(grain, igraphics::IRECT(x, y, x + kCellSize, y + kCellSize), &blend);
       }
     }
   }
@@ -350,7 +353,7 @@ public:
       }
     }
     else {
-      // Fast press, slow release — asymmetric spring rates.
+      // Fast press, slow release Ã¢â‚¬â€ asymmetric spring rates.
       const float rate = (targetDown > mVisualDown) ? 0.38f : 0.14f;
       const float diff = targetDown - mVisualDown;
 
@@ -397,7 +400,7 @@ public:
     g.FillCircle(mLedBezelOuter, ledX, ledY, ledOuterR * 1.25f, &mBlend);
     g.FillCircle(mLedBezelInner, ledX, ledY, ledOuterR, &mBlend);
 
-    // Glow halo — layered falloff for a realistic light spread.
+    // Glow halo Ã¢â‚¬â€ layered falloff for a realistic light spread.
     if (mVisualDown > 0.01f) {
       float pulse = 1.f;
 
@@ -442,7 +445,7 @@ public:
                                      mLedLensHighlight.B);
     g.FillCircle(hiColor2, ledX - ledInnerR * 0.22f, ledY - ledInnerR * 0.26f, hiR, &mBlend);
 
-    // Stomp ripple — expands and fades from click point over the tread.
+    // Stomp ripple Ã¢â‚¬â€ expands and fades from click point over the tread.
     if (!mReduceMotion && mRippleT > 0.001f) {
       static constexpr float kTreadRelY =
           (kTreadTopNorm - kStompTopNorm) / (kStompBottomNorm - kStompTopNorm);
@@ -476,7 +479,7 @@ public:
       SetDirty(false);
     }
 
-    // Shoe sole overlay — fades in/out, depth-shifted by the cave-in offset.
+    // Shoe sole overlay Ã¢â‚¬â€ fades in/out, depth-shifted by the cave-in offset.
     if (mPressT > 0.001f) {
       if (mShoeSoleSVG.IsValid()) {
         static constexpr float kTreadRelY =
@@ -816,7 +819,7 @@ private:
   int GetMode() const
   {
     // 0 = RAW, 1 = MOD, 2 = BASS
-    // InitEnum maps indices to normalized values: 0→0.0, 1→0.5, 2→1.0
+    // InitEnum maps indices to normalized values: 0Ã¢â€ â€™0.0, 1Ã¢â€ â€™0.5, 2Ã¢â€ â€™1.0
     const double val = GetValue();
     if (val < 1.0 / 3.0) return 0;
     if (val < 2.0 / 3.0) return 1;
@@ -827,7 +830,7 @@ private:
   {
     const int currentMode = GetMode();
     // Cycle: RAW(0) -> MOD(1) -> BASS(2) -> RAW(0)
-    // Use normalized values for 3-value InitEnum: 0→0.0, 1→0.5, 2→1.0
+    // Use normalized values for 3-value InitEnum: 0Ã¢â€ â€™0.0, 1Ã¢â€ â€™0.5, 2Ã¢â€ â€™1.0
     const double nextValue = (currentMode == 0) ? 0.5
                            : (currentMode == 1) ? 1.0
                            : 0.0;
@@ -902,7 +905,7 @@ public:
     // Outer black panel.
     g.FillRoundRect(mBgColor, mRECT, cornerRadius, &mBlend);
 
-    // Inner beveled edge — gives the LCD a slight inset look.
+    // Inner beveled edge Ã¢â‚¬â€ gives the LCD a slight inset look.
     const igraphics::IRECT innerRect(mRECT.L + 1.0f, mRECT.T + 1.0f,
                                      mRECT.R - 1.0f, mRECT.B - 1.0f);
     g.DrawRoundRect(mBorderColor, innerRect,
@@ -915,7 +918,7 @@ public:
                                  mRECT.R - cornerRadius, hiY + 1.f);
     g.FillRect(mHighlightColor, topHi, &mBlend);
 
-    // Text rect — padding keeps digits off the LCD bezel.
+    // Text rect Ã¢â‚¬â€ padding keeps digits off the LCD bezel.
     const float padX = std::clamp(mRECT.W() * 0.06f, 3.f, 8.f);
     const float padY = std::clamp(mRECT.H() * 0.12f, 2.f, 5.f);
     const igraphics::IRECT textRect(mRECT.L + padX,
@@ -934,7 +937,7 @@ public:
       txt = "0";
     }
 
-    // Soft red glow — two passes with increasing offset and decreasing opacity.
+    // Soft red glow Ã¢â‚¬â€ two passes with increasing offset and decreasing opacity.
     igraphics::IText glowOuter = mText;
     glowOuter.mFGColor = mGlowColor.WithOpacity(0.30f);
     g.DrawText(glowOuter, txt, textRect.GetTranslated(-1.f, 0.f), &mBlend);
@@ -1028,7 +1031,7 @@ private:
 // ISVGKnobControl stores mSVG and mStartAngle/mEndAngle as PRIVATE with no
 // public setters, and its Draw() uses its own private members.  We subclass,
 // store our own SVG+angles copy, and override Draw() to use our values so
-// the knob rotates 0°–270° (matching the SVG artwork) instead of -135°–135°.
+// the knob rotates 0Ã‚Â°Ã¢â‚¬â€œ270Ã‚Â° (matching the SVG artwork) instead of -135Ã‚Â°Ã¢â‚¬â€œ135Ã‚Â°.
 class ConfiguredSVGKnobControl final : public ISVGKnobControl
 {
 public:
@@ -1699,7 +1702,7 @@ void BuildOrRelayout(igraphics::IGraphics* pGraphics,
     return;
   }
 
-  // Roboto-Regular MUST be loaded first — it is DEFAULT_FONT and every iPlug2
+  // Roboto-Regular MUST be loaded first Ã¢â‚¬â€ it is DEFAULT_FONT and every iPlug2
   // vector control (IVKnobControl, IVToggleControl, ITextControl, etc.) will
   // crash on first draw if it cannot find this font handle in NanoVG.
   pGraphics->LoadFont("Roboto-Regular", ROBOTO_FN);
@@ -1980,4 +1983,3 @@ bool HandleGlobalKey(igraphics::IGraphics* pGraphics,
 
 }  // namespace ui
 }  // namespace grungr
-
