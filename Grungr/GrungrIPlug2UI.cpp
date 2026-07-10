@@ -3,6 +3,8 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <vector>
 
 #ifdef OS_WIN
 #ifndef NOMINMAX
@@ -190,6 +192,89 @@ private:
   float mCornerRadius;
   igraphics::IColor mFillColor;
   igraphics::IColor mHighlightColor;
+};
+
+class NinetiesPhotoOverlay final : public igraphics::IControl
+{
+public:
+  NinetiesPhotoOverlay(const igraphics::IRECT& bounds, uint32_t seed)
+  : IControl(bounds, -1)
+  , mSeed(seed ? seed : 0x9E3779B1u)
+  {
+    mDblAsSingleClick = false;
+    mIgnoreMouse = true;
+    SetTooltip("90s photo overlay (Kodak Gold 200, late afternoon)");
+  }
+
+  void Draw(igraphics::IGraphics& g) override
+  {
+    const float w = mRECT.W();
+    const float h = mRECT.H();
+    if (w <= 1.f || h <= 1.f) {
+      return;
+    }
+
+    DrawWarmWash(g);
+    DrawVignette(g);
+    DrawGrain(g, w, h);
+  }
+
+private:
+  static igraphics::IColor WithAlpha(const igraphics::IColor& c, int a)
+  {
+    return igraphics::IColor(a, c.R, c.G, c.B);
+  }
+
+  void DrawWarmWash(igraphics::IGraphics& g) const
+  {
+    const igraphics::IColor goldCast = WithAlpha(igraphics::IColor(255, 245, 210, 130), 18);
+    g.FillRect(goldCast, mRECT, &BLEND_05);
+
+    const igraphics::IColor shadowLift = WithAlpha(igraphics::IColor(255, 35, 20, 5), 10);
+    g.FillRect(shadowLift, mRECT, &BLEND_05);
+  }
+
+  void DrawVignette(igraphics::IGraphics& g) const
+  {
+    const float cx = mRECT.MW();
+    const float cy = mRECT.MH();
+    const float w = mRECT.W();
+    const float h = mRECT.H();
+    const float diag = std::sqrt(w * w + h * h);
+
+    const igraphics::IColor midTint = WithAlpha(igraphics::IColor(255, 12, 6, 0), 24);
+    g.FillCircle(midTint, cx, cy, diag * 0.38f, &BLEND_05);
+
+    const igraphics::IColor edgeTint = WithAlpha(igraphics::IColor(255, 0, 0, 0), 64);
+    g.FillCircle(edgeTint, cx, cy, diag * 0.55f, &BLEND_05);
+  }
+
+  void DrawGrain(igraphics::IGraphics& g, float w, float h) const
+  {
+    constexpr int kCellSize = 4;
+    constexpr int kAlphaBase = 24;
+    const int cols = static_cast<int>(w) / kCellSize + 1;
+    const int rows = static_cast<int>(h) / kCellSize + 1;
+
+    uint32_t state = mSeed;
+    for (int row = 0; row < rows; ++row) {
+      for (int col = 0; col < cols; ++col) {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        const int brightness = 190 + static_cast<int>((state >> 24) & 0x1Fu);
+        const int tint = static_cast<int>((state >> 16) & 0x0Fu) - 7;
+        const igraphics::IColor grain = WithAlpha(
+            igraphics::IColor(255, brightness, brightness - tint / 2, brightness - tint),
+            kAlphaBase);
+        const float x = mRECT.L + col * kCellSize;
+        const float y = mRECT.T + row * kCellSize;
+        g.FillRect(grain, igraphics::IRECT(x, y, x + kCellSize, y + kCellSize), &BLEND_05);
+      }
+    }
+  }
+
+  uint32_t mSeed;
 };
 
 class AnimatedStompBypassControl final : public igraphics::IControl
@@ -999,7 +1084,8 @@ enum ECtrlTags {
   kTagLoudValue,
   kTagKnobStripe,
   kTagBypassToggle,
-  kTagRawToggle
+  kTagRawToggle,
+  kTagPhotoOverlay
 };
 
 enum class LayoutVariant {
@@ -1292,6 +1378,10 @@ void Relayout(igraphics::IGraphics& g, const LayoutRects& layout)
 
   SetBoundsIfPresent(g, kTagBypassToggle, layout.bypassToggle);
   SetBoundsIfPresent(g, kTagRawToggle, layout.rawToggle);
+
+  if (auto* pOverlay = g.GetControlWithTag(kTagPhotoOverlay)) {
+    pOverlay->SetTargetAndDrawRECTs(g.GetBounds());
+  }
 }
 
 FontLoadState LoadFonts(igraphics::IGraphics& g, const Assets& assets)
@@ -1857,6 +1947,8 @@ LayoutRects layout = MakeLayout(uiBounds, backgroundBounds, ResolveLayoutVariant
   if (hasLogoSVG) {
     pGraphics->AttachControl(new StrokedSVGControl(layout.logo, logoSVG), kTagLogo);
   }
+
+  pGraphics->AttachControl(new NinetiesPhotoOverlay(uiBounds, 0xC0FFEE17u), kTagPhotoOverlay);
 
   ApplyRuntimeStyle(*pGraphics);
 }
