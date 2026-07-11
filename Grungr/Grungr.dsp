@@ -148,7 +148,7 @@ stage2_lp_hz = 8400.0 - 1600.0 * drive_core - enhanced_stage2_lp_trim_hz - bass_
 stage3_hpf_hz = 110.0 + 20.0 * drive_core + enhanced_stage3_hpf_boost_hz + bass_stage3_hpf_boost_hz;
 stage3_lp_hz = 11200.0 - 1800.0 * drive_core - 900.0 * grunge_edge - enhanced_stage3_lp_trim_hz - bass_stage3_lp_trim_hz;
 tone_mid_scoop_db = stock_mid_scoop_db + drive_tone_t * (0.95 - 0.55 * grunge_drive) + bass_mid_scoop_trim_db;
-presence_peak_hz = 1450.0;
+presence_peak_hz = lininterp(1450.0, 2400.0, voicing_blend);
 presence_peak_q = 0.72;
 presence_peak_db = drive_tone_t * face_air * (0.70 - 0.30 * grunge_drive) + enhanced_presence_trim_db;
 output_lp_hz = stock_output_lp_hz - drive_tone_t * face_air * (900.0 * grunge_drive + 650.0 * grunge_edge) - enhanced_tight_t * face_air * (350.0 + 850.0 * grunge_edge);
@@ -190,11 +190,45 @@ hybrid_ground_clip = \(x).(
 // Signal Path
 //============================================================================
 
+// In mod mode, attenuate loud transients before the input clipper to prevent
+// splat from hard pick attacks. Fast peak follower (1 ms / 50 ms); engages
+// only when signal envelope exceeds ~-8 dBFS, then ramps up to 0.7 (-3 dB)
+// reduction. RAW mode: voicing_blend=0 -> depth=0, signal unchanged.
+mod_transient_attenuate = _
+    <: _, (an.amp_follower_ud(0.001, 0.05) : -(0.4) : clip01 : *(voicing_blend * 0.7) : *(-1.0) : +(1.0))
+    : *;
+
+// In mod mode, blend a small amount of tanh saturation in parallel with the
+// stage2 output for subtle even-harmonic richness (tube-style warmth). RAW
+// mode: voicing_blend=0 -> warmth contribution is 0, signal unchanged.
+mod_tanh_warmth = _
+    <: _, (*(0.4) : ma.tanh : *(0.05 * voicing_blend))
+    : +;
+
+// In mod mode, engage a gentle lookahead limiter then a noise gate to control
+// peaks and suppress hiss/hum during silent passages. Limiter: 5 ms lookahead,
+// ceiling -0.5 dBFS (linear 0.944), 1 ms attack, 10 ms hold, 50 ms release.
+// Gate: hold 10 ms, release 80 ms, threshold -50 dB, 2:1 expansion. RAW mode
+// bypassed entirely. These are mono (applied per channel via the outer par).
+mod_limiter = ba.bypass1(1.0 - mod_active,
+    co.limiter_lad_mono(0.005, 0.944, 0.001, 0.01, 0.05));
+
+mod_noise_gate = ba.bypass1(1.0 - mod_active,
+    co.expander_N_chan(2.0, -50.0, -30.0, 0.005, 0.01, 0.08, 6.0, 0, 0.5, _, 1024, 1));
+
+// In mod mode, apply a soft-knee makeup curve at output: signum(x) * |x|^0.97
+// which gently boosts small signals and slightly attenuates large ones
+// (mastering-style leveling curve). signum preserves stereo polarity.
+pow097(x) = x ^ 0.97;
+mod_makeup_curve = ba.bypass1(1.0 - mod_active,
+    \(x).(ma.signum(x) * pow097(abs(x))));
+
 input_buffer = _
     : *(instrument_trim)
     : fi.highpass(1, stock_input_hpf_hz + enhanced_input_hpf_hz)
     : fi.highpass(2, mod_sub_hpf_hz)
     : fi.lowpass(1, stock_input_lp_hz)
+    : mod_transient_attenuate
     : centered_soft_clip(1.8, 0.40 + 0.07 * grunge_drive - 0.03 * enhanced_tight_t, 0.01);
 
 first_opamp_stage = _
@@ -212,7 +246,8 @@ second_opamp_stage = _
     : opamp_slew
     : centered_soft_clip(stage2_clip_threshold, (1.10 + 0.10 * grunge_drive) * (1.0 - 0.16 * voicing_blend), stage2_clip_bias)
     : fi.dcblocker
-    : fi.lowpass(2, stage2_lp_hz - 300.0);
+    : fi.lowpass(2, stage2_lp_hz - 300.0)
+    : mod_tanh_warmth;
 
 third_opamp_stage = _
     : fi.highpass(1, stage3_hpf_hz)
@@ -220,8 +255,10 @@ third_opamp_stage = _
     : opamp_slew
     : dynamic_sag(power_sag, stage_sag_floor)
     : fi.high_shelf(mod_preemph_db, mod_preemph_hz)
+    : fi.highshelf(3, mod_preemph_db, mod_preemph_hz * 1.2)
     : hybrid_ground_clip
     : fi.high_shelf(mod_deemph_db, mod_preemph_hz)
+    : fi.highshelf(3, mod_deemph_db, mod_preemph_hz * 1.2)
     : fi.lowpass(2, stage3_lp_hz)
     : fi.dcblocker;
 
@@ -230,7 +267,8 @@ tone_stack = _
     : fi.high_shelf(high_shelf_db, stock_high_hz)
     : fi.peak_eq_cq(tone_mid_scoop_db, stock_mid_hz, stock_mid_q)
     : fi.peak_eq_cq(presence_peak_db, presence_peak_hz, presence_peak_q)
-    : fi.peak_eq_cq(im_notch_db, 55.0, 2.5);
+    : fi.peak_eq_cq(im_notch_db, 55.0, 2.5)
+    : fi.peak_eq_cq(-voicing_blend * 2.5, 320.0, 1.1);
 
 output_buffer = _
     : tone_stack
@@ -239,10 +277,14 @@ output_buffer = _
     : fi.high_shelf(enhanced_fizz_trim_db + bass_fizz_trim_db, bass_fizz_shelf_hz)
     : fi.peak_eq_cq(mod_hf_im_notch_db, mod_hf_im_notch_hz, mod_hf_im_notch_q)
     : fi.lowpass(2, output_lp_hz)
+    : fi.lowpass(2, output_lp_hz * (1.0 - 0.10 * voicing_blend))
     : *(output_gain)
     : opamp_slew
     : dynamic_sag(0.5 * power_sag, output_sag_floor)
-    : centered_soft_clip(1.12, 0.64 + 0.09 * grunge_drive + 0.12 * voicing_blend + 0.04 * voicing_blend * enhanced_edge_t, 0.0);
+    : centered_soft_clip(1.12, 0.64 + 0.09 * grunge_drive + 0.12 * voicing_blend + 0.04 * voicing_blend * enhanced_edge_t, 0.0)
+    : mod_limiter
+    : mod_noise_gate
+    : mod_makeup_curve;
 
 grunge_process = _
     : input_buffer
