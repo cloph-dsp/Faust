@@ -1,4 +1,4 @@
-﻿#include "BronzeNoise.h"
+#include "BronzeNoise.h"
 #include "IPlug_include_in_plug_src.h"
 #include "IControls.h"
 
@@ -12,7 +12,7 @@
 // __SSE__=0 and rejects these headers with "This header is only meant to be
 // used on x86 and x64 architecture" errors. macOS math library handles
 // denormal flushing at the OS level on arm64 (no SSE FTZ needed), so
-// gating is safe — the runtime _mm_setcsr calls become no-ops there.
+// gating is safe � the runtime _mm_setcsr calls become no-ops there.
 #ifdef __SSE__
   #include <xmmintrin.h>
   #include <pmmintrin.h>
@@ -38,50 +38,105 @@ public:
     if (peakR > mPeakR) { mPeakR = peakR; mHoldR = mHoldFrames; }
     else if (mHoldR > 0) --mHoldR;
     else mPeakR = std::max(0.f, mPeakR * 0.996f);
+    // Clip detection: any sample at/near 0 dBFS latches the clip LED for ~30 frames (~0.5s).
+    // Decrements to 0 when hold expires.
+    const float clipThreshold = 0.99f;  // ≈ -0.087 dBFS
+    if (peakL >= clipThreshold || peakR >= clipThreshold) {
+      mClipHold = mClipHoldFrames;
+    } else if (mClipHold > 0) {
+      --mClipHold;
+    }
     SetDirty(false);
   }
 
-  void Draw(IGraphics& g) override
+void Draw(IGraphics& g) override
   {
+    // palette: dark base, bronze primary, semantic zones (green/amber/red)
     const IColor background(255, 18, 22, 32);
     const IColor border(255, 70, 74, 82);
-    const IColor channelColor(255, 205, 127, 50);
-    const IColor channelDim(255, 95, 100, 110);
+    const IColor tickColor(120, 130, 134, 142);  // dim grey for scale ticks/labels
+    const IColor clipDim(160, 180, 80, 80);      // dim red when no recent clip
+    const IColor clipHot(255, 255, 90, 90);      // saturated red when recently clipped
     g.FillRoundRect(background, mRECT, 4.f, &mBlend);
     g.DrawRoundRect(border, mRECT, 4.f, &mBlend, 1.f);
 
-    // Two vertical bars, narrow gap between them.
-    const IRECT inner = mRECT.GetPadded(6.f, 18.f, 6.f, 18.f);
-    const float barW = (inner.W() - 2.f) * 0.5f;
-    const IRECT barL(inner.L, inner.T, inner.L + barW, inner.B);
-    const IRECT barR(inner.R - barW, inner.T, inner.R, inner.B);
+    // Reserve space for label (top) and dB-scale ticks (left of bars).
+    // Layout: [12px label] [8px gap] [16px scale] [bars] [10px clip LED]
+    const float labelH = 16.f;
+    const float scaleW = 18.f;    // space for dB tick labels
+    const float clipW = 12.f;     // clip indicator strip
+    const IRECT inner = mRECT.GetPadded(6.f, labelH + 4.f, 6.f, 6.f);
+    const IRECT scaleRect(inner.L, inner.T, inner.L + scaleW, inner.B);
+    const IRECT barArea(inner.L + scaleW + 2.f, inner.T, inner.R - clipW - 2.f, inner.B);
+    const IRECT clipRect(barArea.R + 2.f, inner.T, inner.R, inner.B);
+    const float barW = (barArea.W() - 2.f) * 0.5f;
+    const IRECT barL(barArea.L, barArea.T, barArea.L + barW, barArea.B);
+    const IRECT barR(barArea.R - barW, barArea.T, barArea.R, barArea.B);
 
+    // dB-scale tick marks + labels: -∞, -24, -12, -6, -3, 0
+    struct DBTick { float db; const char* label; };
+    const DBTick ticks[] = { {-60.f, "-∞"}, {-24.f, "-24"}, {-12.f, "-12"}, {-6.f, "-6"}, {-3.f, "-3"}, {0.f, "0"} };
+    for (const auto& t : ticks) {
+      const float norm = Clip((t.db + 60.f) / 60.f, 0.f, 1.f);
+      const float y = barArea.B - norm * barArea.H();
+      // Tick mark (right edge)
+      g.DrawLine(tickColor, scaleRect.R - 4.f, y, scaleRect.R, y, &mBlend, 1.f);
+      // Label (right-aligned)
+      IText tickText(9.f, tickColor.WithOpacity(0.7f), mFontID);
+      g.DrawText(tickText, t.label, IRECT(scaleRect.L, y - 6.f, scaleRect.R - 6.f, y + 6.f), &mBlend);
+    }
+
+    // Bar fill helper: color-coded zones (green safe, bronze normal, amber hot, red clip)
     auto drawBar = [&](const IRECT& r, float peak) {
       g.FillRoundRect(background.WithOpacity(0.6f), r, 1.f, &mBlend);
-      // 0 dBFS = top, -60 dBFS = bottom. Linear amplitude: linear == 1.0 → 0 dB → bar full height.
       const float db = (peak > 0.f) ? 20.f * std::log10(peak) : -60.f;
       const float norm = Clip((db + 60.f) / 60.f, 0.f, 1.f);
-      const float fillH = norm * r.H();
-      const IRECT fill(r.L, r.B - fillH, r.R, r.B);
-      // Muted palette: bronze main, dim amber for warning, soft rose only for genuine clip.
-      IColor col = channelColor;
-      if (norm > 0.98f) col = IColor(255, 180, 90, 90);       // soft rose — only at/near 0 dBFS
-      else if (norm > 0.78f) col = IColor(255, 200, 150, 85); // dim amber — caution zone
-      g.FillRoundRect(col, fill, 1.f, &mBlend);
+      // Draw segment-per-zone for crisp color transitions at zone boundaries.
+      // Zones: -∞..-18 green, -18..-6 bronze, -6..-3 amber, -3..0 red.
+      struct Zone { float dbLo, dbHi; IColor col; };
+      const Zone zones[] = {
+        {-60.f, -18.f, IColor(255,  80, 180, 110)},  // safe green
+        {-18.f,  -6.f, IColor(255, 205, 127,  50)},  // bronze normal
+        { -6.f,  -3.f, IColor(255, 230, 170,  60)},  // caution amber
+        { -3.f,   0.f, IColor(255, 230,  90,  90)},  // hot red
+      };
+      for (const auto& z : zones) {
+        const float nLo = Clip((z.dbLo + 60.f) / 60.f, 0.f, 1.f);
+        const float nHi = Clip((z.dbHi + 60.f) / 60.f, 0.f, 1.f);
+        if (norm <= nLo) continue;
+        const float segHi = std::min(norm, nHi);
+        const float fillH = (segHi - nLo) * r.H();
+        const IRECT fill(r.L, r.B - (nLo * r.H()) - fillH, r.R, r.B - (nLo * r.H()));
+        g.FillRect(z.col, fill, &mBlend);
+      }
     };
     drawBar(barL, mCurrentL);
     drawBar(barR, mCurrentR);
 
-    // Peak hold indicators (muted horizontal tick at peak position).
+    // Peak hold: white horizontal tick at peak position (with subtle "stem" so it's visible against any color zone)
     auto drawPeakHold = [&](const IRECT& r, float peak) {
       if (peak <= 0.001f) return;
       const float db = 20.f * std::log10(peak);
       const float norm = Clip((db + 60.f) / 60.f, 0.f, 1.f);
       const float y = r.B - norm * r.H();
-      g.DrawLine(IColor(180, 200, 195, 180), r.L, y, r.R, y, &mBlend, 1.2f);
+      // Dark stem for contrast against bright fill colors
+      g.DrawLine(IColor(180, 30, 30, 38), r.L, y, r.R, y, &mBlend, 2.2f);
+      g.DrawLine(IColor(220, 230, 235, 240), r.L, y, r.R, y, &mBlend, 1.0f);
     };
     drawPeakHold(barL, mPeakL);
     drawPeakHold(barR, mPeakR);
+
+    // Clip LED: red strip on the right side, dim when idle, hot (pulsing) when recently clipped
+    {
+      const bool clipped = mClipHold > 0;
+      const IColor clipCol = clipped ? clipHot : clipDim;
+      g.FillRoundRect(clipCol, clipRect, 1.f, &mBlend);
+      // Label at top, vertical-tiny "CLIP" if clipped
+      if (clipped) {
+        IText clipText(8.f, IColor(220, 255, 240, 240), mFontID, EAlign::Center, EVAlign::Middle);
+        g.DrawText(clipText, "CLIP", clipRect, &mBlend);
+      }
+    }
 
     // Label at top
     g.DrawText(mLabelText, mLabel, IRECT(mRECT.L, mRECT.T + 2.f, mRECT.R, mRECT.T + 16.f), &mBlend);
@@ -89,6 +144,7 @@ public:
 
 private:
   static constexpr int mHoldFrames = 240;  // ~4s at 60fps — chill, not twitchy
+  static constexpr int mClipHoldFrames = 30;  // ~0.5s flash after clipping
   const char* mLabel;
   IText mLabelText;
   const char* mFontID;
@@ -98,6 +154,7 @@ private:
   float mPeakR = 0.f;
   int mHoldL = 0;
   int mHoldR = 0;
+  int mClipHold = 0;  // counts down from mClipHoldFrames when no clip detected
 };
 
 namespace
@@ -242,15 +299,15 @@ public:
     : ISVGKnobControl(bounds, svg, paramIdx)
     , mKnobSVG(svg), mLabel(label), mLabelText(labelText), mValueText(valueText)
   {
-    // No AttachIControl — ISVGKnobControl doesn't inherit IVectorBase.
+    // No AttachIControl � ISVGKnobControl doesn't inherit IVectorBase.
   }
 
   void Draw(IGraphics& g) override
   {
-    // Static body — render SVG without rotation. ISVGKnobControl::Draw would rotate it; we want body fixed.
+    // Static body � render SVG without rotation. ISVGKnobControl::Draw would rotate it; we want body fixed.
     g.DrawSVG(mKnobSVG, mRECT, &mBlend);
 
-    // Rotating pointer: triangle from center pointing outward, angle = -135° (min) to +135° (max).
+    // Rotating pointer: triangle from center pointing outward, angle = -135� (min) to +135� (max).
     if (const IParam* p = GetParam()) {
       const float normalized = static_cast<float>(p->ToNormalized(p->Value()));
       const float angleDeg = -135.f + normalized * 270.f;
@@ -344,11 +401,11 @@ public:
     : IControl(bounds, parameterIndex), IVectorBase(style, false, true) {
     AttachIControl(this, label);
   }
-  // ponytail: SegmentedSelector — draw N click-target cells, each one an enum choice. Click a cell = set that value. Visible list always, no popup.
+  // ponytail: SegmentedSelector � draw N click-target cells, each one an enum choice. Click a cell = set that value. Visible list always, no popup.
   void Draw(IGraphics& graphics) override {
     IParam* parameter = const_cast<IParam*>(GetParam());
     if (!parameter) return;
-    // ponytail: last known local mouse coords captured by OnMouseOver — used to highlight the cell under the cursor.
+    // ponytail: last known local mouse coords captured by OnMouseOver � used to highlight the cell under the cursor.
     const int n = static_cast<int>(parameter->GetRange()) + 1;
     const int current = static_cast<int>(parameter->Value());
     const IColor panel(255, 24, 27, 34);
@@ -383,7 +440,7 @@ public:
       else            border = IColor(255, 70, 74, 82);
       graphics.DrawRoundRect(border.WithOpacity(isCurrent ? 1.f : (isHot ? 0.95f : 0.55f)),
                              cell.GetPadded(-1.f), 2.f, &mBlend, isCurrent ? 1.4f : 1.0f);
-      // Cell text — fetch the enum's display string for this index. withDisplayText=true returns the named label ("White", "4096", etc).
+      // Cell text � fetch the enum's display string for this index. withDisplayText=true returns the named label ("White", "4096", etc).
       WDL_String cellText;
       parameter->GetDisplay(static_cast<double>(i), false, cellText, true);
       // F-05 (P3): shrink text to fit narrow cells (especially at minimum window width).
@@ -426,7 +483,7 @@ public:
         parameter->GetDisplay(static_cast<double>(col), false, cellText, true);
         WDL_String tip;
         tip.Set(mLabelStr.Get());
-        tip.Append(" — ");
+        tip.Append(" � ");
         tip.Append(cellText.Get());
         SetTooltip(tip.Get());
       }
@@ -627,31 +684,6 @@ public:
   }
 };
 
-// ponytail: Tiny accent dot in the title bar that breathes via SetAnimation lambda.
-// Subtle idle motion = "this plugin is alive" without being distracting.
-class TitleBarLEDPulseControl final : public IControl
-{
-public:
-  TitleBarLEDPulseControl(const IRECT& bounds) : IControl(bounds, -1) {
-    SetIgnoreMouse(true);
-    SetAnimation([this](IControl* c) {
-      mBreath += 0.04f;
-      if (mBreath > 1.f) mBreath -= 1.f;
-      SetDirty(false);
-    }, 30);
-  }
-  void Draw(IGraphics& g) override {
-    const float t = 0.5f - 0.5f * std::cos(mBreath * 6.2831853f);  // 0..1 sinusoidal
-    const int alpha = static_cast<int>(140 + t * 100);
-    const IColor col(alpha, 205, 127, 50);
-    g.FillCircle(col, mRECT.MW(), mRECT.MH(), mRECT.W() * 0.5f, &mBlend);
-    // Inner hot spot
-    g.FillCircle(IColor(static_cast<int>(t * 200), 255, 220, 180), mRECT.MW(), mRECT.MH(), mRECT.W() * 0.18f, &mBlend);
-  }
-private:
-  float mBreath = 0.f;
-};
-
 float InterpolateLogTable(float frequencyHz,
                           const std::array<float, kEqualLoudnessFrequenciesHz.size()>& frequencies,
                           const std::array<float, kEqualLoudnessInverseDb.size()>& values)
@@ -689,9 +721,15 @@ float InterpolateLogTable(float frequencyHz,
   GetParam(kFFTSize)->InitEnum("FFT Size", kFFTSize4096, {"256", "512", "1024", "2048", "4096", "8192", "16384"});
   GetParam(kCharacter)->InitDouble("Character", 0.0, -1.0, 1.0, 0.01);
   GetParam(kTransient)->InitDouble("Transient", 0.5, 0.0, 1.0, 0.01);
+  GetParam(kBnMix)->InitPercentage("Mix", 100.0);  // 0-100% wet (100% = full spectral replace)
+  GetParam(kBnStereoMode)->InitEnum("Stereo", kStereoLinked, {"Linked", "Mid", "Side", "Independent"});
+  GetParam(kBnAutoGain)->InitInt("AutoGain", 1, 0, 1, "");
+  GetParam(kBnVisualMode)->InitEnum("Visual", kVisualAllCurves, {"All", "After", "Delta", "B+T"});
+  GetParam(kBnReset)->InitInt("Reset", 0, 0, 1, "");
+  GetParam(kBnABCompare)->InitInt("A/B", 0, 0, 2, "");  // 0=idle, 1=captured, 2=comparing
   GetParam(kBypass)->InitInt("Bypass", 0, 0, 1, "Bypass");
 
-  // Factory presets — arg order matches EParams: Amount, Target, Smoothing, Q, FFTSize, Character, Transient, Bypass.
+  // Factory presets � arg order matches EParams: Amount, Target, Smoothing, Q, FFTSize, Character, Transient, Bypass.
   // Target / FFTSize are enum indices, not display strings.
   MakePreset("Bronze (Default)", 100.0, kTargetBronze,  0.55, 0.50, kFFTSize4096, 0.0,  0.50, 0);
   MakePreset("Vocal Warmth",     70.0,  kTargetRed,     0.40, 0.70, kFFTSize2048, 0.2,  0.30, 0);
@@ -746,7 +784,7 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
 
   // Two fonts: titleFont (IronSans) for plugin title, uiFont (Kenyan Coffee) for everything else.
   // 2-arg LoadFont looks up the TTF as a Windows resource by name (matches main.rc macro).
-  // 3-arg overload takes a system font FACE name, not a resource id — that's why system fallback chain keeps its 3-arg form.
+  // 3-arg overload takes a system font FACE name, not a resource id � that's why system fallback chain keeps its 3-arg form.
   const char* kTitleFontID = "BronzeNoiseTitleFont";
   const char* titleFont = nullptr;
   if (pGraphics->LoadFont(kTitleFontID, IRON_SANS_FN)
@@ -763,11 +801,11 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
     uiFont = kUIFontID;
   }
 
-  // Load knob SVG once — KNOB_SVG_FN macro expands to "knob.svg" which is the resource name compiled into the DLL by main.rc.
+  // Load knob SVG once � KNOB_SVG_FN macro expands to "knob.svg" which is the resource name compiled into the DLL by main.rc.
   ISVG knobSVG = pGraphics->LoadSVG(KNOB_SVG_FN);
   const bool knobSVGOk = knobSVG.IsValid();
 
-  // iPlug2 logo SVG — drawn opposite the title (right side of title bar).
+  // iPlug2 logo SVG � drawn opposite the title (right side of title bar).
   ISVG clophSVG = pGraphics->LoadSVG(CLOPH_LOGO_FN);
   const bool clophSVGOk = clophSVG.IsValid();
 
@@ -798,7 +836,7 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
     "BRONZE NOISE",
     IText(36.f, accentColor, titleFont ? titleFont : uiFont, EAlign::Near, EVAlign::Middle)));
 
-  // ponytail: CLOPH logo, right side of title bar, vertically centered. ViewBox 1462×569 → aspect 2.57:1.
+  // ponytail: CLOPH logo, right side of title bar, vertically centered. ViewBox 1462�569 ? aspect 2.57:1.
   if (clophSVGOk) {
     const float logoH = 54.f;
     const float logoW = logoH * (1462.f / 569.f); // ~154px wide
@@ -811,24 +849,22 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
   // ponytail: brand mark + version in title bar (small text under or beside the title, and a breathing accent LED that signals "alive").
   const IRECT brandRect(bounds.L + 200.f, bounds.T + 4.f, bounds.L + 380.f, bounds.T + 18.f);
   pGraphics->AttachControl(new ITextControl(brandRect,
-    "CLOPH \xC2\xB7 v1.0.0",  // UTF-8 "·"
+    "CLOPH \xC2\xB7 v1.0.0",  // UTF-8 "�"
     IText(12.f, secondaryTextColor, uiFont, EAlign::Near, EVAlign::Middle)));
-  // Latency readout — initially empty; updated in OnReset when block size / sample rate change.
+  // Latency readout � initially empty; updated in OnReset when block size / sample rate change.
   const IRECT latencyRect(bounds.L + 385.f, bounds.T + 4.f, bounds.L + 540.f, bounds.T + 18.f);
   mLatencyLabel = new ITextControl(latencyRect, "",
     IText(12.f, secondaryTextColor, uiFont, EAlign::Near, EVAlign::Middle));
   mLatencyLabel->SetTooltip("Current processing latency (varies with FFT size)");
   pGraphics->AttachControl(mLatencyLabel);
-  // Breathing LED, sits just left of the segmented bars at the bottom-left of the title strip.
-  const IRECT ledRect(bounds.L + 4.f, bounds.T + titleH - 16.f, bounds.L + 14.f, bounds.T + titleH - 6.f);
-  pGraphics->AttachControl(new TitleBarLEDPulseControl(ledRect));
+  // TitleBarLEDPulseControl removed — was a low-value distraction.
 
-  // ponytail: knobs ride at top of spectrum area (below title), bars sit at bottom — visualizer fills the band between them.
+  // ponytail: knobs ride at top of spectrum area (below title), bars sit at bottom � visualizer fills the band between them.
   const float barsH = 44.f;
   const float barsTop = bounds.B - barsH - 8.f;
   const float knobsTop = bounds.T + titleH + 8.f;
 
-  // ponytail: knobs + bars reflow with window width. Default 1000 → 72px / 320px FFT; min 600 → 60px / 240px; max 1600 → 92px / 380px.
+  // ponytail: knobs + bars reflow with window width. Default 1000 ? 72px / 320px FFT; min 600 ? 60px / 240px; max 1600 ? 92px / 380px.
   const float knobSize = Clip(bounds.W() / 12.f, 60.f, 92.f);
   const float gap = Clip(knobSize * 0.18f, 10.f, 18.f);
   const float knobRowW = knobSize * 5 + gap * 4;
@@ -886,7 +922,7 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
     }
   }
 
-  // ponytail: full-width segmented bars — Target (10 options, ~5x2 cells) on the left, FFT (7 options, single row) on the right.
+  // ponytail: full-width segmented bars � Target (10 options, ~5x2 cells) on the left, FFT (7 options, single row) on the right.
   const float barGap = 16.f;
   const float fftW = Clip(bounds.W() * 0.32f, 240.f, 400.f);
   const float targetW = bounds.W() - fftW - barGap;
@@ -982,7 +1018,7 @@ void BronzeNoise::OnIdle()
   }
 #endif
 }
-#endif // IPLUG_EDITOR (outer—LayoutUI, OnParentWindowResize, OnActivate, OnIdle)
+#endif // IPLUG_EDITOR (outer�LayoutUI, OnParentWindowResize, OnActivate, OnIdle)
 
 #if IPLUG_DSP
 void BronzeNoise::OnReset()
@@ -1025,6 +1061,53 @@ void BronzeNoise::OnParamChange(int paramIdx)
   else if (paramIdx == kBypass)
   {
     mBypassed = (GetParam(kBypass)->Int() != 0);
+  }
+  else if (paramIdx == kBnReset)
+  {
+    // Reset all user-tweakable params to defaults. Momentary button � restores to 0 immediately.
+    GetParam(kAmount)->SetToDefault();
+    GetParam(kTarget)->SetToDefault();
+    GetParam(kSmoothing)->SetToDefault();
+    GetParam(kQ)->SetToDefault();
+    GetParam(kCharacter)->SetToDefault();
+    GetParam(kTransient)->SetToDefault();
+    GetParam(kBnMix)->SetToDefault();
+    GetParam(kBnStereoMode)->SetToDefault();
+    GetParam(kBnAutoGain)->SetToDefault();
+    GetParam(kBnVisualMode)->SetToDefault();
+    SendCurrentParamValuesFromDelegate();
+    GetParam(kBnReset)->Set(0);  // momentary � back to idle
+  }
+  else if (paramIdx == kBnABCompare)
+  {
+    // A/B compare: 0=idle, 1=captured, 2=comparing
+    int state = GetParam(kBnABCompare)->Int();
+    if (state == 1)
+    {
+      // Capture current params to snapshot A
+      for (int i = 0; i < 7; ++i) {
+        IParam* p = GetParam(i);
+        if (p) mABSnapshotA[i] = p->Value();
+      }
+      mABHasSnapshot = true;
+      GetParam(kBnABCompare)->Set(2);  // advance to "comparing" state
+    }
+    else if (state == 2)
+    {
+      // Toggle back: restore snapshot A
+      if (mABHasSnapshot) {
+        for (int i = 0; i < 7; ++i) {
+          IParam* p = GetParam(i);
+          if (p) p->Set(mABSnapshotA[i]);
+        }
+        SendCurrentParamValuesFromDelegate();
+      }
+      GetParam(kBnABCompare)->Set(1);  // back to "captured" state (toggleable)
+    }
+    else if (state == 0)
+    {
+      mABHasSnapshot = false;  // clear snapshot
+    }
   }
   else
   {
@@ -1655,7 +1738,7 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   const int activeOutputChannels = NOutChansConnected();
   const int processedChannels = Clip(std::max(activeInputChannels, activeOutputChannels), 1, kMaxChannels);
 
-  // Track per-block peak for I/O meters. We sample once per block (the last sample's magnitude) — UI polls at OnIdle rate, so any per-block peak is fine. Cheaper than per-sample max.
+  // Track per-block peak for I/O meters. We sample once per block (the last sample's magnitude) � UI polls at OnIdle rate, so any per-block peak is fine. Cheaper than per-sample max.
   float inPeakL = 0.f, inPeakR = 0.f, outPeakL = 0.f, outPeakR = 0.f;
 
   // One-pole smoothing coefficient for zipper-free parameter automation (~30ms @ 44.1kHz)
@@ -1687,9 +1770,25 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       continue;
     }
 
+    // Stereo mode handling: transform L/R input into M/S before pushing into hop buffer.
+//   Linked: process L and R independently (current behavior � both channels get matched to target).
+//   Mid: extract M = (L+R)/2, send M to BOTH hop buffers (L/R outputs identical after processing).
+//   Side: extract S = (L-R)/2, send S to BOTH hop buffers.
+//   Independent: link off, but per-channel params already apply per hop � same as Linked.
+    const int stereoMode = GetParam(kBnStereoMode)->Int();
+    float lInput = activeInputChannels >= 1 ? static_cast<float>(inputs[0][sampleIndex]) : 0.f;
+    float rInput = activeInputChannels >= 2 ? static_cast<float>(inputs[1][sampleIndex]) : 0.f;
+    float lHop = lInput, rHop = rInput;
+    if (stereoMode == kStereoMidOnly) {
+      const float m = (lInput + rInput) * 0.5f;
+      lHop = m; rHop = m;
+    } else if (stereoMode == kStereoSideOnly) {
+      const float s = (lInput - rInput) * 0.5f;
+      lHop = s; rHop = s;
+    }
     for (int channelIndex = 0; channelIndex < processedChannels; ++channelIndex)
     {
-      const float inputSample = channelIndex < activeInputChannels ? static_cast<float>(inputs[channelIndex][sampleIndex]) : 0.f;
+      const float inputSample = channelIndex == 0 ? lHop : rHop;
       mHopBuffer[channelIndex][mHopFill] = inputSample;
     }
 
@@ -1710,12 +1809,15 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     const float makeupLinear = std::pow(10.f, mAutoMakeupGainDb / 20.f);
     const float truePeakCeilingLinear = std::pow(10.f, kTruePeakCeiling / 20.f); // ~0.9886
 
+    // Process channels: handle M/S inverse by capturing both L and R first, then decoding.
+    float lOut = 0.f, rOut = 0.f;
+    bool gotL = false, gotR = false;
     for (int channelIndex = 0; channelIndex < activeOutputChannels; ++channelIndex)
     {
       float output = PopOutputSample(channelIndex);
 
-      // Apply makeup gain
-      output *= makeupLinear;
+      // Apply makeup gain (only if AutoGain is enabled)
+      output *= (GetParam(kBnAutoGain)->Int() != 0) ? makeupLinear : 1.f;
 
       // True-peak envelope follower: track absolute peak with fast attack, slow release
       const float absSample = std::abs(output);
@@ -1741,13 +1843,35 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       // Final safety clamp
       output = Clip(output, -1.f, 1.f);
 
-      outputs[channelIndex][sampleIndex] = output;
+      // Wet/Dry mix: crossfade between dry (input) and processed (output).
+      // 100% wet = full spectral replace, 0% wet = full bypass.
+      const float wetMix = static_cast<float>(GetParam(kBnMix)->Value() / 100.0);
+      if (wetMix < 1.f) {
+        const float drySample = channelIndex < activeInputChannels ? static_cast<float>(inputs[channelIndex][sampleIndex]) : 0.f;
+        output = drySample * (1.f - wetMix) + output * wetMix;
+      }
 
-      // Track per-channel peak for I/O meters (audio → UI via atomic).
+      // Cache L/R outputs (will be M/S inverse-decoded if stereoMode != Linked)
+      if (channelIndex == 0) { lOut = output; gotL = true; }
+      else if (channelIndex == 1) { rOut = output; gotR = true; }
+
+      // Track per-channel peak for I/O meters (audio ? UI via atomic).
       const float outA = std::abs(output);
       if (channelIndex == 0) { if (outA > outPeakL) outPeakL = outA; }
       else if (channelIndex == 1) { if (outA > outPeakR) outPeakR = outA; }
     }
+
+    // M/S inverse decode: lOut/rOut currently hold the per-channel processed buffer
+    // contents (which were M or S if Mid/Side mode was active). Recover L/R by:
+    //   Linked/Independent: lOut stays L, rOut stays R.
+    //   Mid:  M was sent to both buffers ? L = R = lOut (= rOut).
+    //   Side: S was sent to both buffers ? L = +lOut, R = -lOut (preserve polarity).
+    const int outStereoMode = GetParam(kBnStereoMode)->Int();
+    if (gotL && outStereoMode == kStereoMidOnly) { rOut = lOut; }
+    else if (gotL && outStereoMode == kStereoSideOnly) { rOut = -lOut; }
+
+    if (gotL) outputs[0][sampleIndex] = static_cast<double>(lOut);
+    if (gotR) outputs[1][sampleIndex] = static_cast<double>(rOut);
 
     // Track input peaks after the per-channel loop (input is read once per frame).
     for (int channelIndex = 0; channelIndex < activeInputChannels; ++channelIndex)
@@ -1758,7 +1882,7 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     }
   }
 
-  // Publish per-block peaks to UI thread (relaxed ordering is fine — meters are advisory).
+  // Publish per-block peaks to UI thread (relaxed ordering is fine � meters are advisory).
   mInputPeakL.store(inPeakL, std::memory_order_relaxed);
   mInputPeakR.store(inPeakR, std::memory_order_relaxed);
   mOutputPeakL.store(outPeakL, std::memory_order_relaxed);
@@ -1768,7 +1892,7 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   const auto blockEnd = std::chrono::steady_clock::now();
   const double blockMs = std::chrono::duration<double, std::milli>(blockEnd - blockStart).count();
   mBlockCpuMsLast.store(blockMs, std::memory_order_relaxed);
-  // EWMA smoothing (alpha = 0.05 → ~20-block time constant at typical block sizes).
+  // EWMA smoothing (alpha = 0.05 ? ~20-block time constant at typical block sizes).
   constexpr double kCpuAlpha = 0.05;
   const double prevAvg = mBlockCpuMsAvg.load(std::memory_order_relaxed);
   mBlockCpuMsAvg.store(prevAvg + kCpuAlpha * (blockMs - prevAvg), std::memory_order_relaxed);
