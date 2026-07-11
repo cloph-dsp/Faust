@@ -73,6 +73,10 @@ public:
   void OnParentWindowResize(int width, int height) override;
   void OnActivate(bool active) override;
   void OnIdle() override;
+  // Crash guard: when the editor closes, iPlug2 calls IGraphics::~IGraphics ->
+  // RemoveAllControls() which deletes every control. We null our cached
+  // member pointers BEFORE OnIdle can dereference a freed IControl*.
+  void OnUIClose() override;
 
   // I/O meter control pointers (UI thread, OnIdle polls atomics and updates them).
   IOMeterControl* mInputMeter = nullptr;
@@ -181,5 +185,12 @@ private:
   std::atomic<float> mInputPeakR {0.f};
   std::atomic<float> mOutputPeakL {0.f};
   std::atomic<float> mOutputPeakR {0.f};
+
+  // CPU profiling (release-readiness): audio thread writes per-block wall time
+  // in ms; UI thread polls at OnIdle and renders a "% CPU" overlay. Real-time
+  // safe — atomics only, no allocations.
+  std::atomic<double> mBlockCpuMsLast {0.0};   // wall time of last ProcessBlock
+  std::atomic<double> mBlockCpuMsAvg {0.0};    // EWMA (alpha=0.05) for stable read
+  std::atomic<double> mHopCpuMsAvg {0.0};      // EWMA of per-hop FFT/DSP time
 #endif
 };

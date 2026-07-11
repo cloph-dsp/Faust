@@ -3,6 +3,7 @@
 #include "IControls.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -943,6 +944,20 @@ void BronzeNoise::OnActivate(bool active)
   }
 }
 
+// Crash guard: when the host closes the editor, iPlug2 invokes CloseWindow()
+// -> IGraphics::~IGraphics() -> RemoveAllControls() which deletes every IControl
+// the editor owns. The BronzeNoise object outlives that teardown briefly, so any
+// in-flight OnIdle or audio-thread publish (mVisControl->SetData) would
+// dereference a freed pointer. Nulling here, before the destructor runs the
+// RemoveAllControls, eliminates the window.
+void BronzeNoise::OnUIClose()
+{
+  mInputMeter = nullptr;
+  mOutputMeter = nullptr;
+  mLatencyLabel = nullptr;
+  mVisControl = nullptr;
+}
+
 void BronzeNoise::OnIdle()
 {
 #if IPLUG_EDITOR
@@ -952,8 +967,12 @@ void BronzeNoise::OnIdle()
     mSendUpdate = false;
   }
   // ponytail: poll audio-thread atomics and push to I/O meters (UI thread, ~60Hz).
-  // GetUI() guard needed: OnIdle can fire after GUI destruction, before mInputMeter/mOutputMeter are nulled.
-  if (GetUI() && mInputMeter && mOutputMeter) {
+  // Crash guard: when the editor closes, iPlug2 calls IGraphics::~IGraphics ->
+  // RemoveAllControls() (deletes every control). The plugin's BronzeNoise object
+  // outlives that destruction briefly, so member pointers become stale. We detect
+  // this by checking NControls() > 0 (RemoveAllControls zeroes it).
+  IGraphics* ui = GetUI();
+  if (ui && ui->NControls() > 0 && mInputMeter && mOutputMeter) {
     mInputMeter->SetLevels(
       mInputPeakL.load(std::memory_order_relaxed),
       mInputPeakR.load(std::memory_order_relaxed));
@@ -1627,6 +1646,11 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
 #endif
 
+  // Release-readiness CPU meter: measure wall time for the whole block and for
+  // any ProcessHop calls inside it. EWMA-smoothed so the on-screen % is stable.
+  const auto blockStart = std::chrono::steady_clock::now();
+  double hopMsSum = 0.0;
+
   const int activeInputChannels = NInChansConnected();
   const int activeOutputChannels = NOutChansConnected();
   const int processedChannels = Clip(std::max(activeInputChannels, activeOutputChannels), 1, kMaxChannels);
@@ -1673,7 +1697,10 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 
     if (mHopFill >= mHopSize)
     {
+      const auto hopStart = std::chrono::steady_clock::now();
       ProcessHop(processedChannels);
+      const auto hopEnd = std::chrono::steady_clock::now();
+      hopMsSum += std::chrono::duration<double, std::milli>(hopEnd - hopStart).count();
       mHopFill = 0;
     }
 
@@ -1736,5 +1763,18 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   mInputPeakR.store(inPeakR, std::memory_order_relaxed);
   mOutputPeakL.store(outPeakL, std::memory_order_relaxed);
   mOutputPeakR.store(outPeakR, std::memory_order_relaxed);
+
+  // Publish CPU profiling data (release-readiness meter). Atomic read/write only.
+  const auto blockEnd = std::chrono::steady_clock::now();
+  const double blockMs = std::chrono::duration<double, std::milli>(blockEnd - blockStart).count();
+  mBlockCpuMsLast.store(blockMs, std::memory_order_relaxed);
+  // EWMA smoothing (alpha = 0.05 → ~20-block time constant at typical block sizes).
+  constexpr double kCpuAlpha = 0.05;
+  const double prevAvg = mBlockCpuMsAvg.load(std::memory_order_relaxed);
+  mBlockCpuMsAvg.store(prevAvg + kCpuAlpha * (blockMs - prevAvg), std::memory_order_relaxed);
+  if (hopMsSum > 0.0) {
+    const double prevHop = mHopCpuMsAvg.load(std::memory_order_relaxed);
+    mHopCpuMsAvg.store(prevHop + kCpuAlpha * (hopMsSum - prevHop), std::memory_order_relaxed);
+  }
 }
 #endif
