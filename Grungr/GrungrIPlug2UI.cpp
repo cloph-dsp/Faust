@@ -1275,7 +1275,7 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
   const float titleMaxY = std::max(titleMinY, titleBandBottom - titleH * 0.5f);
   const float titleY = std::clamp((titleBandTop + titleBandBottom) * 0.5f,
                                   titleMinY,
-                                  titleMaxY) - 7.f;
+                                  titleMaxY) - 12.f;
 
   const float titleCenterX = backgroundBounds.MW();
   float titleLogoH = titleH;
@@ -1294,7 +1294,7 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
   const float logoW = logoH * kClophLogoAspect;
   const float rawToggleLeftInset = rawCenterX - (rawToggleW * 0.5f) - backgroundBounds.L;
   const float logoRight = backgroundBounds.R - rawToggleLeftInset;
-  const float logoCenterX = logoRight - (logoW * 0.5f) - 10.f;
+  const float logoCenterX = logoRight - (logoW * 0.5f) - 20.f;
   const float logoCenterY = rawCenterY + 2.f; // Sub-pixel nudge for visual baseline alignment
   r.logo = igraphics::IRECT(logoCenterX - (logoW * 0.5f),
                             logoCenterY - logoH * 0.5f,
