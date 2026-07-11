@@ -223,12 +223,78 @@ pow097(x) = x ^ 0.97;
 mod_makeup_curve = ba.bypass1(1.0 - mod_active,
     \(x).(ma.signum(x) * pow097(abs(x))));
 
+//----------------------------------------------------------------------------
+// Bass mode polish (gated on bass_active / bass_voicing_blend; transparent
+// when mode_select != 2).
+//----------------------------------------------------------------------------
+
+// T3 "Polished" — LF transient control pre-saturation. Sidechain HP'd at 35 Hz
+// so the envelope follower only sees sub-content; engagement above -6 dBFS into
+// up to -3 dB of attenuation. RAW / non-bass: voicing=0 -> gain=1, unchanged.
+bass_lf_transient_control = _
+    <: _, (fi.highpass(2, 35.0)
+              : an.amp_follower_ud(0.005, 0.08)
+              : -(0.5)
+              : clip01
+              : *(bass_voicing_blend * 0.5)
+              : *(-1.0)
+              : +(1.0))
+    : *;
+
+// T1 "Round" — parallel even-harmonic tanh in stage2 next to mod_tanh_warmth.
+// tanh(x*1.6) scaled by 0.20 * bass_voicing_blend. RAW: weight=0, no contribution.
+bass_harmonic_warmth = _
+    <: _, (*(1.6)
+              : ma.tanh
+              : *(0.20 * bass_voicing_blend))
+    : +;
+
+// T1 "Round" — LF-only even-harmonic shaper. abs+LPF+tanh generates DC + 2nd
+// harmonic content concentrated below 150 Hz (octave-down feel). Mixed at 0.18
+// on bass_voicing_blend. Complementary to bass_harmonic_warmth above.
+bass_sub_shaper = _
+    <: _, ((abs
+              : *(1.4)
+              : ma.tanh
+              : fi.lowpass(2, 150.0)
+              : *(0.18 * bass_voicing_blend)))
+    : +;
+
+// T2 "Bass-ready" — EQ foundation: +1.5 dB at 55 Hz, Q=0.7 for LF weight.
+bass_sub_shelf = fi.peak_eq_cq(bass_voicing_blend * 1.5, 55.0, 0.7);
+
+// T2 "Bass-ready" — EQ foundation: -2.0 dB at 250 Hz, Q=1.0 to clear muddiness
+// before saturation. Complements the existing 320 Hz mud-band notch (mod path).
+bass_lomid_dip = fi.peak_eq_cq(-bass_voicing_blend * 2.0, 250.0, 1.0);
+
+// T2 "Bass-ready" — top-end restraint. Modulates the LP cutoff 18 kHz -> 6 kHz
+// on bass_voicing_blend; gated on bass_active so raw / mod paths untouched.
+bass_air_cut = ba.bypass1(1.0 - bass_active,
+    fi.lowpass(2, 18000.0 - 12000.0 * bass_voicing_blend));
+
+// T3 "Polished" — lookahead limiter, slower than mod's for "round" level hold.
+// 10 ms lookahead, -0.5 dBFS ceiling (linear 0.944), 5/20/80 ms A/H/R. Mono.
+bass_lookahead_limiter = ba.bypass1(1.0 - bass_active,
+    co.limiter_lad_mono(0.010, 0.944, 0.005, 0.02, 0.08));
+
+// T3 "Polished" — subsonic expander, kills sub-bass rumble between notes. 4:1
+// expansion (vs mod's 2:1), deeper threshold (-55 dB), longer release (120 ms).
+bass_subsonic_gate = ba.bypass1(1.0 - bass_active,
+    co.expander_N_chan(4.0, -55.0, -35.0, 0.005, 0.02, 0.12, 6.0, 0, 0.5, _, 1024, 1));
+
+// T1 "Round" — mastering-style leveling curve at chain end. Reuses pow097 above;
+// mono per channel. Sits after bass_subsonic_gate so the gate's silence is
+// preserved by the curve.
+bass_makeup_curve = ba.bypass1(1.0 - bass_active,
+    \(x).(ma.signum(x) * pow097(abs(x))));
+
 input_buffer = _
     : *(instrument_trim)
     : fi.highpass(1, stock_input_hpf_hz + enhanced_input_hpf_hz)
     : fi.highpass(2, mod_sub_hpf_hz)
     : fi.lowpass(1, stock_input_lp_hz)
     : mod_transient_attenuate
+    : bass_lf_transient_control
     : centered_soft_clip(1.8, 0.40 + 0.07 * grunge_drive - 0.03 * enhanced_tight_t, 0.01);
 
 first_opamp_stage = _
@@ -247,7 +313,9 @@ second_opamp_stage = _
     : centered_soft_clip(stage2_clip_threshold, (1.10 + 0.10 * grunge_drive) * (1.0 - 0.16 * voicing_blend), stage2_clip_bias)
     : fi.dcblocker
     : fi.lowpass(2, stage2_lp_hz - 300.0)
-    : mod_tanh_warmth;
+    : mod_tanh_warmth
+    : bass_harmonic_warmth
+    : bass_sub_shaper;
 
 third_opamp_stage = _
     : fi.highpass(1, stage3_hpf_hz)
@@ -268,7 +336,9 @@ tone_stack = _
     : fi.peak_eq_cq(tone_mid_scoop_db, stock_mid_hz, stock_mid_q)
     : fi.peak_eq_cq(presence_peak_db, presence_peak_hz, presence_peak_q)
     : fi.peak_eq_cq(im_notch_db, 55.0, 2.5)
-    : fi.peak_eq_cq(-voicing_blend * 2.5, 320.0, 1.1);
+    : fi.peak_eq_cq(-voicing_blend * 2.5, 320.0, 1.1)
+    : bass_sub_shelf
+    : bass_lomid_dip;
 
 output_buffer = _
     : tone_stack
@@ -278,13 +348,17 @@ output_buffer = _
     : fi.peak_eq_cq(mod_hf_im_notch_db, mod_hf_im_notch_hz, mod_hf_im_notch_q)
     : fi.lowpass(2, output_lp_hz)
     : fi.lowpass(2, output_lp_hz * (1.0 - 0.10 * voicing_blend))
+    : bass_air_cut
     : *(output_gain)
     : opamp_slew
     : dynamic_sag(0.5 * power_sag, output_sag_floor)
     : centered_soft_clip(1.12, 0.64 + 0.09 * grunge_drive + 0.12 * voicing_blend + 0.04 * voicing_blend * enhanced_edge_t, 0.0)
     : mod_limiter
     : mod_noise_gate
-    : mod_makeup_curve;
+    : mod_makeup_curve
+    : bass_lookahead_limiter
+    : bass_subsonic_gate
+    : bass_makeup_curve;
 
 grunge_process = _
     : input_buffer
