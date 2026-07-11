@@ -49,12 +49,15 @@ TEST_CASE("Parameter mapping works through MapUI") {
     dsp.init(44100);
     MapUI ui;
     dsp.buildUserInterface(&ui);
-    
+
     ui.setParamValue("Grunge", 0.5f);
     CHECK(ui.getParamValue("Grunge") == doctest::Approx(0.5f));
-    
-    ui.setParamValue("Enhanced", 1.0f);
-    CHECK(ui.getParamValue("Enhanced") == doctest::Approx(1.0f));
+
+    ui.setParamValue("RAW Voicing", 1.0f);
+    CHECK(ui.getParamValue("RAW Voicing") == doctest::Approx(1.0f));
+
+    ui.setParamValue("Bypass", 1.0f);
+    CHECK(ui.getParamValue("Bypass") == doctest::Approx(1.0f));
 }
 
 TEST_CASE("DSP handles various block sizes without crash") {
