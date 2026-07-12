@@ -102,10 +102,10 @@ static constexpr const char* kLabelButt = "BODY";
 static constexpr const char* kLabelFace = "BITE";
 static constexpr const char* kLabelLoud = "LEVEL";
 static constexpr const char* kTitleText = "GRUNGR";
-static constexpr const char* kTooltipGrunge = "Drive (Grunge): Adds distortion and texture.";
-static constexpr const char* kTooltipButt = "Body (Butt): Adds low-end weight and thickness.";
-static constexpr const char* kTooltipFace = "Bite (Face): Adds upper-mid cut and presence.";
-static constexpr const char* kTooltipLoud = "Level (Loud): Sets the pedal output volume.";
+static constexpr const char* kTooltipGrunge = "Drive (Grunge) (0–100): Adds distortion and texture. Higher = more grit and harmonic richness.";
+static constexpr const char* kTooltipButt = "Body (Butt) (0–100): Adds low-end weight and thickness. Higher = deeper, punchier bass response.";
+static constexpr const char* kTooltipFace = "Bite (Face) (0–100): Adds upper-mid cut and presence. Higher = more attack and clarity.";
+static constexpr const char* kTooltipLoud = "Level (Loud) (0–100): Sets the pedal output volume. Match input level or boost for solo.";
 static constexpr const char* kTooltipStomp = "Stomp: Turns the effect on/off. Click or Space. Press M to reduce motion.";
 static constexpr const char* kTooltipRaw = "Voicing: RAW for open/gritty, MOD for tight/smooth, BASS for bass guitar voicing.";
 static constexpr const char* kVoicingRawText = "RAW";
@@ -428,8 +428,16 @@ public:
                    ledX, ledY, ledOuterR * 1.3f, &mBlend);
     }
 
-    // LED lens.
-    const igraphics::IColor ledColor = LerpColor(mLedOff, mLedOn, mVisualDown);
+    // LED lens with breathing animation when idle (engaged but not pulsing)
+    float ledAlpha = mVisualDown;
+    if (!mReduceMotion && mEngagePulseT < 0.001f && mVisualDown > 0.01f) {
+      // Breathing: 0.85 + 0.15 * sin(2π * 0.3 * t)
+      static constexpr float kTwoPi = 6.28318530f;
+      static constexpr float kBreathFreq = 0.3f;  // 0.3 Hz
+      const float breathMod = 0.85f + 0.15f * std::sin(kTwoPi * kBreathFreq * mBreathingT);
+      ledAlpha *= breathMod;
+    }
+    const igraphics::IColor ledColor = LerpColor(mLedOff, mLedOn, ledAlpha);
     g.FillCircle(ledColor, ledX, ledY, ledInnerR, &mBlend);
 
     // Muted specular highlight on lens (removed the harsh white glow/halo).
@@ -513,6 +521,12 @@ public:
         mEngagePulseT = 0.f;
       SetDirty(false);
     }
+
+    // Accumulate time for breathing animation (assuming ~60fps)
+    static constexpr float kFrameTime = 1.f / 60.f;
+    mBreathingT += kFrameTime;
+    if (mBreathingT > 1000.f)
+      mBreathingT = 0.f;  // wrap to prevent float precision issues
 
 
   }
@@ -600,6 +614,7 @@ private:
   float mRippleT = 0.f;
   float mRippleX = 0.f;
   float mRippleY = 0.f;
+  float mBreathingT = 0.f;  // idle animation time accumulator
   igraphics::IColor mLedBezelOuter;
   igraphics::IColor mLedBezelInner;
   igraphics::IColor mLedOn;
@@ -617,6 +632,9 @@ private:
   const char* mFontID = "Roboto-Regular";
 };
 
+// 3-brick toggle plate voicing selector: inline 3-cell click-target bar
+// using existing rawHardwarePlate* materials. Active cell has deeper shadow
+// + warm white LED indicator. Click anywhere on a cell to switch directly.
 class VoicingSelectControl final : public igraphics::IControl
 {
 public:
@@ -637,146 +655,118 @@ public:
     mMetalPlate = palette.rawHardwarePlateOuter;
     mPlateInset = palette.rawHardwarePlateInner;
     mMetalStroke = palette.rawHardwarePlateEdge;
-    mSlotFill = palette.rawHardwareSlotFill;
-    mSlotHighlight = palette.rawHardwareSlotHighlight;
-    mSliderCap = palette.rawHardwareHandleFill;
-    mSliderEdge = palette.rawHardwareHandleEdge;
-    mHandleGrip = palette.rawHardwareHandleGrip;
+    mLedOn = igraphics::IColor(255, 255, 250, 240);  // warm white LED
     mFocusRing = palette.focusRing;
   }
 
   void Draw(igraphics::IGraphics& g) override
   {
     const int mode = GetMode();
-    const float labelW = std::clamp(mRECT.W() * 0.38f, 48.f, 108.f);
-    const float sideGap = std::max(6.f, mRECT.W() * 0.045f);
-    const igraphics::IRECT labelRect(mRECT.L, mRECT.T, mRECT.L + labelW, mRECT.B);
-    const igraphics::IRECT switchArea(labelRect.R + sideGap, mRECT.T, mRECT.R, mRECT.B);
+    const float cellGap = std::max(3.f, mRECT.W() * 0.04f);
+    const float cellW = (mRECT.W() - 2.f * cellGap) / 3.f;
+    const float cellH = mRECT.H();
 
-    const float switchW = std::clamp(switchArea.W() * 0.94f, 60.f, 150.f);
-    const float switchH = std::clamp(switchArea.H() * 0.62f, 24.f, 46.f);
-    const float centerX = switchArea.MW();
-    const float centerY = switchArea.MH();
+    // Draw 3 cells side-by-side
+    for (int i = 0; i < 3; ++i) {
+      const float cellX = mRECT.L + cellGap + i * (cellW + cellGap);
+      const igraphics::IRECT cellRect(cellX, mRECT.T, cellX + cellW, mRECT.T + cellH);
+      const bool isActive = (i == mode);
+      const bool isHovered = GetMouseIsOver() && GetMouseRect().Overlap(cellRect);
 
-    const igraphics::IRECT topPlate(centerX - switchW * 0.5f,
-                                    centerY - switchH * 0.5f,
-                                    centerX + switchW * 0.5f,
-                                    centerY + switchH * 0.5f);
+      // Depression animation offset (1-2px on press)
+      const float pressOffset = (mPressT > 0.001f && mPressedCell == i) ? (mPressT * 1.5f) : 0.f;
+      const igraphics::IRECT drawRect = cellRect.GetTranslated(0.f, pressOffset);
 
-    const float plateCorner = std::max(2.4f, topPlate.H() * 0.18f);
-    g.FillRoundRect(mMetalPlate, topPlate, plateCorner, &mBlend);
+      // Plate colors: active = deeper, inactive = raised
+      const igraphics::IColor plateOuter = isActive
+          ? mMetalPlate.WithContrast(-0.12f)  // darker when active
+          : mMetalPlate;
+      const igraphics::IColor plateInner = isActive
+          ? mPlateInset.WithContrast(-0.08f)
+          : mPlateInset;
+      const igraphics::IColor strokeColor = mMetalStroke.WithOpacity(isActive ? 0.85f : 0.65f);
 
-    const float insetPad = std::max(1.2f, topPlate.H() * 0.08f);
-    const igraphics::IRECT insetPlate(topPlate.L + insetPad,
-                                      topPlate.T + insetPad,
-                                      topPlate.R - insetPad,
-                                      topPlate.B - insetPad);
-    g.FillRoundRect(mPlateInset,
-                    insetPlate,
-                    std::max(1.8f, plateCorner - insetPad),
-                    &mBlend);
+      const float plateCorner = std::max(2.f, cellH * 0.18f);
 
-    const float frameThickness = std::max(1.0f, mRECT.W() * 0.014f);
-    const float frameBoost = GetMouseIsOver() ? 0.18f : 0.f;
-    g.DrawRoundRect(mMetalStroke.WithOpacity(0.72f + frameBoost),
-                    topPlate,
-                    plateCorner,
-                    &mBlend,
-                    frameThickness);
+      // Outer plate (shadow for depth)
+      g.FillRoundRect(plateOuter, drawRect, plateCorner, &mBlend);
 
-    const float slotW = insetPlate.W() * 0.56f;
-    const float slotH = insetPlate.H() * 0.25f;
-    const igraphics::IRECT slotRect(insetPlate.MW() - slotW * 0.5f,
-                                    insetPlate.MH() - slotH * 0.5f,
-                                    insetPlate.MW() + slotW * 0.5f,
-                                    insetPlate.MH() + slotH * 0.5f);
-    g.FillRoundRect(mSlotFill,
-                    slotRect,
-                    std::max(1.0f, slotRect.H() * 0.45f),
-                    &mBlend);
+      // Inner inset plate
+      const float insetPad = std::max(1.f, cellH * 0.06f);
+      const igraphics::IRECT insetRect(drawRect.L + insetPad,
+                                        drawRect.T + insetPad,
+                                        drawRect.R - insetPad,
+                                        drawRect.B - insetPad);
+      g.FillRoundRect(plateInner, insetRect, std::max(1.5f, plateCorner - insetPad), &mBlend);
 
-    g.DrawRoundRect(mSlotHighlight.WithOpacity(0.3f),
-                    slotRect,
-                    std::max(1.0f, slotRect.H() * 0.45f),
-                    &mBlend,
-                    1.0f);
+      // Border stroke
+      const float frameThickness = std::max(0.8f, mRECT.W() * 0.012f);
+      g.DrawRoundRect(strokeColor, drawRect, plateCorner, &mBlend, frameThickness);
 
-    const float sliderSize = std::clamp(insetPlate.H() * 0.46f, 12.f, 20.f);
-    const float travel = (slotRect.W() - sliderSize) * 0.5f;
-    float sliderX;
-    // 3 positions: left=RAW(0), center=MOD(1), right=BASS(2)
-    if (mode == 0)
-      sliderX = slotRect.MW() - travel;
-    else if (mode == 1)
-      sliderX = slotRect.MW();
-    else
-      sliderX = slotRect.MW() + travel;
+      // Draw label in center of cell
+      const char* label = (i == 0) ? kVoicingRawText
+                        : (i == 1) ? kVoicingModText
+                        : kVoicingBassText;
 
-    const igraphics::IRECT sliderRect(sliderX - sliderSize * 0.5f,
-                                      insetPlate.MH() - sliderSize * 0.5f,
-                                      sliderX + sliderSize * 0.5f,
-                                      insetPlate.MH() + sliderSize * 0.5f);
-    g.FillRect(mSliderCap, sliderRect, &mBlend);
-    g.DrawRect(mSliderEdge,
-               sliderRect,
-               &mBlend,
-               std::max(1.0f, frameThickness));
+      // Scale font to fit cell
+      igraphics::IRECT measureRect = drawRect;
+      igraphics::IText testText(16.f, mLabelColor.WithOpacity(0.90f), mFontID,
+                                igraphics::EAlign::Center, igraphics::EVAlign::Middle);
+      g.MeasureText(testText, label, measureRect);
+      float labelW = measureRect.W();
+      float fontSize = 16.f;
+      if (labelW > drawRect.W() * 0.85f && labelW > 0.001f) {
+        fontSize = std::clamp(16.f * (drawRect.W() * 0.85f / labelW), 10.f, 16.f);
+      }
 
-    const float gripInset = std::max(2.0f, sliderRect.W() * 0.26f);
-    const float gripW = std::max(1.2f, sliderRect.W() * 0.08f);
-    const igraphics::IRECT leftGrip(sliderRect.L + gripInset,
-                                    sliderRect.T + 2.f,
-                                    sliderRect.L + gripInset + gripW,
-                                    sliderRect.B - 2.f);
-    const igraphics::IRECT rightGrip(sliderRect.R - gripInset - gripW,
-                                     sliderRect.T + 2.f,
-                                     sliderRect.R - gripInset,
-                                     sliderRect.B - 2.f);
-    g.FillRect(mHandleGrip, leftGrip, &mBlend);
-    g.FillRect(mHandleGrip, rightGrip, &mBlend);
+      igraphics::IText labelText(fontSize, mLabelColor.WithOpacity(0.90f), mFontID,
+                                  igraphics::EAlign::Center, igraphics::EVAlign::Middle);
+      g.DrawText(labelText, label, drawRect, &mBlend);
 
-    const char* stateLabel = (mode == 0) ? kVoicingRawText
-                            : (mode == 1) ? kVoicingModText
-                            : kVoicingBassText;
-    const float maxStateWidth = labelRect.W() * 0.92f;
+      // Active cell LED indicator at bottom-center
+      if (isActive) {
+        const float ledR = std::max(2.5f, cellW * 0.08f);
+        const float ledX = drawRect.MW();
+        const float ledY = drawRect.B - insetPad - ledR - 2.f;
 
-    igraphics::IRECT measureRect = labelRect;
-    igraphics::IText testText(16.f, mLabelColor.WithOpacity(0.90f), mFontID, igraphics::EAlign::Center, igraphics::EVAlign::Middle);
-    g.MeasureText(testText, kVoicingRawText, measureRect);
-    float rawW = measureRect.W();
-    g.MeasureText(testText, kVoicingModText, measureRect);
-    float modW = measureRect.W();
-    g.MeasureText(testText, kVoicingBassText, measureRect);
-    float bassW = measureRect.W();
+        // LED glow
+        const igraphics::IColor ledGlow = mLedOn.WithOpacity(0.35f);
+        g.FillCircle(ledGlow, ledX, ledY, ledR * 2.0f, &mBlend);
 
-    float maxStrW = std::max({rawW, modW, bassW});
-    float stateSize = 16.f;
-    if (maxStrW > maxStateWidth && maxStrW > 0.001f) {
-      stateSize = std::clamp(16.f * (maxStateWidth / maxStrW), 10.f, 16.f);
+        // LED lens
+        g.FillCircle(mLedOn, ledX, ledY, ledR, &mBlend);
+
+        // LED highlight
+        const igraphics::IColor ledHi(200, 255, 255, 250);
+        g.FillCircle(ledHi, ledX - ledR * 0.25f, ledY - ledR * 0.25f, ledR * 0.4f, &mBlend);
+      }
     }
 
-    igraphics::IText stateText(stateSize, mLabelColor.WithOpacity(0.90f), mFontID, igraphics::EAlign::Center, igraphics::EVAlign::Middle);
-    g.DrawText(stateText, stateLabel, labelRect, &mBlend);
-
+    // Focus ring around entire control
     const float hoverStrength = GetMouseIsOver() ? 0.35f : 0.f;
     const float focusStrength = std::clamp(hoverStrength + mKeyboardFocus, 0.f, 1.f);
 
     if (focusStrength > 0.001f) {
       const int focusA = static_cast<int>(kFocusAlphaBase + (kFocusAlphaRange * focusStrength));
       const igraphics::IColor focusColor(focusA, mFocusRing.R, mFocusRing.G, mFocusRing.B);
-      const igraphics::IRECT focusRect(labelRect.L,
-                                       topPlate.T - 3.f,
-                                       topPlate.R + 3.f,
-                                       topPlate.B + 4.f);
-      const float focusThickness = std::max(1.1f, mRECT.W() * 0.015f);
-      const float focusCorner = std::max(3.5f, focusRect.H() * 0.14f);
-      g.DrawRoundRect(focusColor, focusRect, focusCorner, &mBlend, focusThickness);
+      const float focusPad = 2.f;
+      const float focusThickness = std::max(1.0f, mRECT.W() * 0.012f);
+      const float focusCorner = std::max(4.f, mRECT.H() * 0.15f);
+      g.DrawRoundRect(focusColor, mRECT.GetPadded(-focusPad), focusCorner, &mBlend, focusThickness);
     }
 
     if (mKeyboardFocus > 0.001f) {
       mKeyboardFocus -= kKeyboardFocusDecayRate;
       if (mKeyboardFocus < 0.f)
         mKeyboardFocus = 0.f;
+      SetDirty(false);
+    }
+
+    // Decay press animation
+    if (mPressT > 0.001f) {
+      mPressT -= 0.08f;  // ~80ms decay (assuming 60fps)
+      if (mPressT < 0.f)
+        mPressT = 0.f;
       SetDirty(false);
     }
   }
@@ -786,7 +776,20 @@ public:
     if (mod.R)
       return;
 
-    CycleMode(false);
+    // Determine which cell was clicked
+    const float cellGap = std::max(3.f, mRECT.W() * 0.04f);
+    const float cellW = (mRECT.W() - 2.f * cellGap) / 3.f;
+
+    for (int i = 0; i < 3; ++i) {
+      const float cellX = mRECT.L + cellGap + i * (cellW + cellGap);
+      const igraphics::IRECT cellRect(cellX, mRECT.T, cellX + cellW, mRECT.T + mRECT.H());
+      if (cellRect.Contains(x, y)) {
+        mPressedCell = i;
+        mPressT = 1.f;
+        SetMode(i);
+        return;
+      }
+    }
   }
 
   bool OnKeyDown(float x, float y, const iplug::IKeyPress& key) override
@@ -795,7 +798,11 @@ public:
       return false;
 
     if (key.VK == iplug::kVK_SPACE || key.VK == iplug::kVK_RETURN) {
-      CycleMode(true);
+      // Cycle through modes on keyboard
+      const int currentMode = GetMode();
+      const int nextMode = (currentMode + 1) % 3;
+      SetMode(nextMode);
+      mKeyboardFocus = 1.f;
       return true;
     }
 
@@ -811,6 +818,7 @@ public:
   void OnMouseOut() override
   {
     IControl::OnMouseOut();
+    mPressedCell = -1;
     SetDirty(false);
   }
 
@@ -825,19 +833,11 @@ private:
     return 2;
   }
 
-  void CycleMode(bool keyboardInitiated)
+  void SetMode(int mode)
   {
-    const int currentMode = GetMode();
-    // Cycle: RAW(0) -> MOD(1) -> BASS(2) -> RAW(0)
     // Use normalized values for 3-value InitEnum: 0→0.0, 1→0.5, 2→1.0
-    const double nextValue = (currentMode == 0) ? 0.5
-                           : (currentMode == 1) ? 1.0
-                           : 0.0;
-
-    if (keyboardInitiated)
-      mKeyboardFocus = 1.f;
-
-    SetValueFromUserInput(nextValue);
+    const double value = (mode == 0) ? 0.0 : (mode == 1) ? 0.5 : 1.0;
+    SetValueFromUserInput(value);
     SetDirty(true);
   }
 
@@ -846,13 +846,106 @@ private:
   igraphics::IColor mMetalPlate;
   igraphics::IColor mPlateInset;
   igraphics::IColor mMetalStroke;
-  igraphics::IColor mSlotFill;
-  igraphics::IColor mSlotHighlight;
-  igraphics::IColor mSliderCap;
-  igraphics::IColor mSliderEdge;
-  igraphics::IColor mHandleGrip;
+  igraphics::IColor mLedOn;
   igraphics::IColor mFocusRing;
   float mKeyboardFocus = 0.f;
+  float mPressT = 0.f;  // depression animation
+  int mPressedCell = -1;
+};
+
+// Simple vertical bar meter control for I/O visualization.
+// Provides visual placeholder that can be connected to audio-thread peak values later.
+class SimpleMeterControl final : public igraphics::IControl
+{
+public:
+  SimpleMeterControl(const igraphics::IRECT& bounds,
+                    const char* label,
+                    const ThemePalette& palette,
+                    const char* fontID = nullptr)
+  : IControl(bounds, -1)
+  , mLabel(label)
+  , mFontID(fontID ? fontID : "Roboto-Regular")
+  {
+    mIgnoreMouse = true;
+    SetPalette(palette);
+  }
+
+  void SetPalette(const ThemePalette& palette)
+  {
+    mBackground = palette.vectorBG.WithContrast(-0.15f);
+    mMeterFill = palette.vectorPR;
+    mMeterHot = igraphics::IColor(255, 255, 60, 36);
+    mMeterClip = igraphics::IColor(255, 255, 90, 90);
+    mBorder = palette.focusRing;
+    mTextColor = palette.toggleLabelText;
+  }
+
+  void SetLevels(float leftLevel, float rightLevel)
+  {
+    mLevelL = leftLevel;
+    mLevelR = rightLevel;
+    SetDirty(false);
+  }
+
+  void Draw(igraphics::IGraphics& g) override
+  {
+    const float labelH = 14.f;
+    const float meterPad = 4.f;
+    const igraphics::IRECT labelRect(mRECT.L, mRECT.T, mRECT.R, mRECT.T + labelH);
+    const igraphics::IRECT meterArea(mRECT.L + meterPad,
+                                     mRECT.T + labelH + meterPad,
+                                     mRECT.R - meterPad,
+                                     mRECT.B - meterPad);
+
+    // Background
+    g.FillRoundRect(mBackground, mRECT, 3.f, &mBlend);
+    g.DrawRoundRect(mBorder.WithOpacity(0.5f), mRECT, 3.f, &mBlend, 1.f);
+
+    // Label
+    igraphics::IText labelText(9.f, mTextColor.WithOpacity(0.8f), mFontID,
+                              igraphics::EAlign::Center, igraphics::EVAlign::Middle);
+    g.DrawText(labelText, mLabel, labelRect, &mBlend);
+
+    // Meter bars (L/R)
+    const float barGap = 2.f;
+    const float barW = (meterArea.W() - barGap) * 0.5f;
+    const igraphics::IRECT barL(meterArea.L, meterArea.T, meterArea.L + barW, meterArea.B);
+    const igraphics::IRECT barR(barL.R + barGap, meterArea.T, meterArea.R, meterArea.B);
+
+    // Draw empty meter backgrounds
+    g.FillRoundRect(mBackground.WithOpacity(0.6f), barL, 2.f, &mBlend);
+    g.FillRoundRect(mBackground.WithOpacity(0.6f), barR, 2.f, &mBlend);
+
+    // Draw filled portions
+    auto drawMeterBar = [&](const igraphics::IRECT& bar, float level) {
+      if (level < 0.001f) return;
+      const float fillH = bar.H() * std::clamp(level, 0.f, 1.f);
+      const igraphics::IRECT fillRect(bar.L, bar.B - fillH, bar.R, bar.B);
+
+      // Color based on level: normal, hot (>0.7), clip (>0.95)
+      igraphics::IColor fillColor;
+      if (level > 0.95f) fillColor = mMeterClip;
+      else if (level > 0.7f) fillColor = mMeterHot;
+      else fillColor = mMeterFill;
+
+      g.FillRoundRect(fillColor, fillRect, 1.f, &mBlend);
+    };
+
+    drawMeterBar(barL, mLevelL);
+    drawMeterBar(barR, mLevelR);
+  }
+
+private:
+  const char* mLabel;
+  const char* mFontID;
+  float mLevelL = 0.f;
+  float mLevelR = 0.f;
+  igraphics::IColor mBackground;
+  igraphics::IColor mMeterFill;
+  igraphics::IColor mMeterHot;
+  igraphics::IColor mMeterClip;
+  igraphics::IColor mBorder;
+  igraphics::IColor mTextColor;
 };
 
 // LCD-style value readout: black rounded rectangle with red 7-segment style
@@ -1051,6 +1144,26 @@ public:
                      mStartAngle + GetValue() * (mEndAngle - mStartAngle), &mBlend);
   }
 
+  void OnMouseDown(float x, float y, const igraphics::IMouseMod& mod) override
+  {
+    if (mod.R) {
+      // Right-click: prompt for text entry (existing behavior)
+      PromptUserInput();
+      return;
+    }
+
+    if (mod.N && GetParam()) {
+      // Double-click (mod.N = number of clicks): reset to default
+      GetParam()->Reset();
+      SetValueFromUserInput(GetParam()->GetDefault());
+      SetDirty(true);
+      return;
+    }
+
+    // Normal click: let base class handle drag
+    ISVGKnobControl::OnMouseDown(x, y, mod);
+  }
+
 private:
   igraphics::ISVG mSVG;
   float mStartAngle = 0.f;
@@ -1063,6 +1176,7 @@ enum ECtrlTags {
   kTagUnderlay,
   kTagTitle,
   kTagLogo,
+  kTagVersion,
   kTagGrungeKnob,
   kTagButtKnob,
   kTagFaceKnob,
@@ -1078,7 +1192,9 @@ enum ECtrlTags {
   kTagKnobStripe,
   kTagBypassToggle,
   kTagRawToggle,
-  kTagPhotoOverlay
+  kTagPhotoOverlay,
+  kTagInputMeter,
+  kTagOutputMeter
 };
 
 enum class LayoutVariant {
@@ -1116,6 +1232,10 @@ struct LayoutRects {
 
   igraphics::IRECT bypassToggle;
   igraphics::IRECT rawToggle;
+
+  // I/O meters in the lower control zone
+  igraphics::IRECT inputMeter;
+  igraphics::IRECT outputMeter;
 };
 
 struct FontLoadState {
@@ -1307,6 +1427,26 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
                                     backgroundBounds.L + (backgroundBounds.W() * kStompRightNorm),
                                     backgroundBounds.T + (backgroundBounds.H() * kStompBottomNorm));
 
+  // I/O meters: place in the lower control zone, flanking the bypass toggle
+  // Reserve space at bottom (≥130-150px per user preference)
+  const float meterW = 26.f;  // ~20-30 px wide
+  const float meterGap = 8.f;
+  const float meterAreaBottom = backgroundBounds.B - 8.f;
+  const float meterAreaTop = r.bypassToggle.T - 16.f;  // Position above bypass toggle
+  const float meterH = meterAreaBottom - meterAreaTop;
+
+  // Input meter on the left side
+  r.inputMeter = igraphics::IRECT(backgroundBounds.L + 12.f,
+                                   meterAreaTop,
+                                   backgroundBounds.L + 12.f + meterW,
+                                   meterAreaBottom);
+
+  // Output meter on the right side
+  r.outputMeter = igraphics::IRECT(backgroundBounds.R - 12.f - meterW,
+                                    meterAreaTop,
+                                    backgroundBounds.R - 12.f,
+                                    meterAreaBottom);
+
   ValidateAccessibilityLayout(r, uiBounds, kMinInteractiveTargetPx);
 
   return r;
@@ -1371,6 +1511,9 @@ void Relayout(igraphics::IGraphics& g, const LayoutRects& layout)
 
   SetBoundsIfPresent(g, kTagBypassToggle, layout.bypassToggle);
   SetBoundsIfPresent(g, kTagRawToggle, layout.rawToggle);
+
+  SetBoundsIfPresent(g, kTagInputMeter, layout.inputMeter);
+  SetBoundsIfPresent(g, kTagOutputMeter, layout.outputMeter);
 
   if (auto* pOverlay = g.GetControlWithTag(kTagPhotoOverlay)) {
     pOverlay->SetTargetAndDrawRECTs(g.GetBounds());
@@ -1448,12 +1591,12 @@ igraphics::IVStyle BuildVectorKnobStyle(const ThemePalette& palette, const char*
       .WithFrameThickness(1.4f)
       .WithShadowOffset(0.f)
       .WithDrawShadows(false)
-      .WithLabelText(igraphics::IText(14.f,
+      .WithLabelText(igraphics::IText(16.f,
                                       palette.toggleLabelText,
                                       textFontID,
                                       igraphics::EAlign::Center,
                                       igraphics::EVAlign::Middle))
-      .WithValueText(igraphics::IText(14.f,
+      .WithValueText(igraphics::IText(16.f,
                                       palette.toggleValueText,
                                       textFontID,
                                       igraphics::EAlign::Center,
@@ -1934,11 +2077,39 @@ LayoutRects layout = MakeLayout(uiBounds, backgroundBounds, ResolveLayoutVariant
   pVoicing->SetTooltip(kTooltipRaw);
   pGraphics->AttachControl(pVoicing, kTagRawToggle);
 
+  // I/O meters in the lower control zone (flanking the bypass toggle area)
+  {
+    auto* pInputMeter = new SimpleMeterControl(layout.inputMeter, "IN", palette, valueFontID);
+    pInputMeter->SetTooltip("Input level (L/R)");
+    pGraphics->AttachControl(pInputMeter, kTagInputMeter);
+
+    auto* pOutputMeter = new SimpleMeterControl(layout.outputMeter, "OUT", palette, valueFontID);
+    pOutputMeter->SetTooltip("Output level (L/R)");
+    pGraphics->AttachControl(pOutputMeter, kTagOutputMeter);
+  }
+
   // Logo is attached LAST so it renders on top of the stomp bypass control,
   // whose cave-in redraws the faceplate SVG over its bounds when engaged.
   // StrokedSVGControl sets mIgnoreMouse=true, so it never blocks the stomp.
   if (hasLogoSVG) {
     pGraphics->AttachControl(new StrokedSVGControl(layout.logo, logoSVG), kTagLogo);
+  }
+
+  // Version display: small text below the logo
+  {
+    const float versionFontSize = 10.f;
+    const igraphics::IRECT versionRect(layout.logo.L,
+                                        layout.logo.B + 2.f,
+                                        layout.logo.R,
+                                        layout.logo.B + versionFontSize + 8.f);
+    const igraphics::IText versionText(versionFontSize,
+                                       palette.toggleLabelText,
+                                       valueFontID,
+                                       igraphics::EAlign::Center,
+                                       igraphics::EVAlign::Top);
+    pGraphics->AttachControl(new igraphics::ITextControl(versionRect, PLUG_VERSION_STR,
+                                                          versionText, igraphics::IColor(0, 0, 0, 0)),
+                            kTagVersion);
   }
 
   pGraphics->AttachControl(new NinetiesPhotoOverlay(uiBounds, 0xC0FFEE17u), kTagPhotoOverlay);
