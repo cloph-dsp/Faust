@@ -512,9 +512,26 @@ public:
     mAfter.fill(0.f);
     mReference.fill(0.f);
     mFreqs.fill(0.f);
+    // Default palette — matches the modern theme. Override with SetPalette() to retheme.
+    mBg          = IColor(255,  10,  12,  18);
+    mBorder      = IColor(255,  48,  54,  66);
+    mGrid        = IColor(180,  35,  42,  55);
+    mTick        = IColor(255, 200, 200, 200);
+    mBeforeCol   = IColor(180, 105, 145, 175);  // cool cyan-grey (pre-DSP)
+    mTargetCol   = IColor(255, 255, 200, 120);  // warm amber (target)
+    mAfterCol    = IColor(255, 205, 127,  50);  // bronze (post-DSP)
+    mAxisLabel   = IColor(255, 156, 161, 169);
+    mNoSignalCol = IColor(255, 140, 145, 150);
   }
   void OnInit() override {
     // Enable mouse interaction for this control
+  }
+  void SetPalette(IColor bg, IColor border, IColor grid, IColor tick,
+                   IColor before, IColor target, IColor after,
+                   IColor axisLabel, IColor noSignal) {
+    mBg = bg; mBorder = border; mGrid = grid; mTick = tick;
+    mBeforeCol = before; mTargetCol = target; mAfterCol = after;
+    mAxisLabel = axisLabel; mNoSignalCol = noSignal;
   }
   void SetData(const float* before, const float* after, const float* reference, const float* freqs, int bands) {
     for (int i = 0; i < bands && i < 64; ++i) {
@@ -562,13 +579,13 @@ public:
     const float minDb = mMinDb;
     const float maxDb = mMaxDb;
 
-    // Dark background with bronze-tinted border
-    g.FillRoundRect(IColor(255, 18, 22, 32), r, 6.f, &mBlend);
-    g.DrawRoundRect(IColor(180, 205, 127, 50), r, 6.f, &mBlend, 1.0f);
+    // Dark background with bronze-tinted border (modern palette via members)
+    g.FillRoundRect(mBg, r, 6.f, &mBlend);
+    g.DrawRoundRect(mBorder.WithOpacity(0.85f), r, 6.f, &mBlend, 1.0f);
 
     if (mBands < 2)
     {
-      g.DrawText(IText(16.f, IColor(255, 140, 145, 150), mFontID, EAlign::Center, EVAlign::Middle),
+      g.DrawText(IText(16.f, mNoSignalCol, mFontID, EAlign::Center, EVAlign::Middle),
                  "No signal",
                  r,
                  &mBlend);
@@ -576,8 +593,8 @@ public:
     }
 
     // Draw axes
-    g.DrawLine(IColor(255, 120, 120, 120), r.L, r.T, r.L, r.B, &mBlend, 1.5f);
-    g.DrawLine(IColor(255, 120, 120, 120), r.L, r.B, r.R, r.B, &mBlend, 1.5f);
+    g.DrawLine(mTick, r.L, r.T, r.L, r.B, &mBlend, 1.5f);
+    g.DrawLine(mTick, r.L, r.B, r.R, r.B, &mBlend, 1.5f);
 
     // Dynamic dB scale based on current view
     float dbStep = 12.f;
@@ -588,11 +605,11 @@ public:
       if (db < minDb || db > maxDb) continue;
       const float y = r.B - ((db - minDb) / (maxDb - minDb)) * h;
       if (y < r.T + 10.f || y > r.B - 10.f) continue;
-      g.DrawLine(IColor(255, 60, 65, 70), r.L, y, r.R, y, &mBlend, 1.0f);
-      g.DrawLine(IColor(255, 200, 200, 200), r.L, y, r.L + 6.f, y, &mBlend, 2.0f);
+      g.DrawLine(mGrid, r.L, y, r.R, y, &mBlend, 1.0f);
+      g.DrawLine(mTick, r.L, y, r.L + 6.f, y, &mBlend, 2.0f);
       IRECT labelRect(r.L + 8.f, y - 10.f, r.L + 50.f, y + 10.f);
       std::snprintf(dbStr, sizeof(dbStr), "%.0f dB", db);
-      g.DrawText(IText(13.f, IColor(255, 220, 220, 220), mFontID, EAlign::Near, EVAlign::Middle),
+      g.DrawText(IText(13.f, mAxisLabel, mFontID, EAlign::Near, EVAlign::Middle),
                   dbStr, labelRect, &mBlend);
     }
 
@@ -602,48 +619,46 @@ public:
     for (size_t i = 0; i < kLabelFreqs.size(); ++i) {
       const float x = r.L + (w * std::log10(kLabelFreqs[i] / 20.f) / std::log10(20000.f / 20.f));
       if (x < r.L + 20.f || x > r.R - 20.f) continue;
-      g.DrawLine(IColor(255, 60, 65, 70), x, r.T, x, r.B, &mBlend, 1.0f);
-      g.DrawLine(IColor(255, 200, 200, 200), x, r.B - 6.f, x, r.B, &mBlend, 2.0f);
+      g.DrawLine(mGrid, x, r.T, x, r.B, &mBlend, 1.0f);
+      g.DrawLine(mTick, x, r.B - 6.f, x, r.B, &mBlend, 2.0f);
       IRECT labelRect(x - 30.f, r.B - 28.f, x + 30.f, r.B - 4.f);
-      g.DrawText(IText(13.f, IColor(255, 220, 220, 220), mFontID, EAlign::Center, EVAlign::Middle),
+      g.DrawText(IText(13.f, mAxisLabel, mFontID, EAlign::Center, EVAlign::Middle),
                   kLabelTexts[i], labelRect, &mBlend);
     }
 
-    // Target curve (bronze - dashed)
+    // Target curve (warm amber, dashed feel via thinner stroke + slight opacity)
     for (int i = 1; i < mBands; ++i) {
       const float x0 = r.L + (w * std::log10(std::max(20.f, mFreqs[i - 1]) / 20.f) / std::log10(20000.f / 20.f));
       const float x1 = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
       const float y0 = Clip(r.B - ((mReference[i - 1] - minDb) / (maxDb - minDb)) * h, r.T, r.B);
       const float y1 = Clip(r.B - ((mReference[i] - minDb) / (maxDb - minDb)) * h, r.T, r.B);
-      g.DrawLine(IColor(255, 205, 127, 50), x0, y0, x1, y1, &mBlend, 2.0f);
+      g.DrawLine(mTargetCol, x0, y0, x1, y1, &mBlend, 1.5f);
     }
 
-    // Input curve (cool gray - subtle, what we're matching FROM)
+    // Input curve (cool cyan-grey, what we're matching FROM)
     for (int i = 1; i < mBands; ++i) {
       const float x0 = r.L + (w * std::log10(std::max(20.f, mFreqs[i - 1]) / 20.f) / std::log10(20000.f / 20.f));
       const float x1 = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
       const float y0 = Clip(r.B - ((mBefore[i - 1] - minDb) / (maxDb - minDb)) * h, r.T, r.B);
       const float y1 = Clip(r.B - ((mBefore[i] - minDb) / (maxDb - minDb)) * h, r.T, r.B);
-      g.DrawLine(IColor(255, 160, 165, 175), x0, y0, x1, y1, &mBlend, 1.5f);
+      g.DrawLine(mBeforeCol, x0, y0, x1, y1, &mBlend, 1.2f);
     }
 
-    // Output curve (bronze-orange - bold, the result)
+    // Output curve (bronze, bold, the result)
     for (int i = 1; i < mBands; ++i) {
       const float x0 = r.L + (w * std::log10(std::max(20.f, mFreqs[i - 1]) / 20.f) / std::log10(20000.f / 20.f));
       const float x1 = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
       const float y0 = Clip(r.B - ((mAfter[i - 1] - minDb) / (maxDb - minDb)) * h, r.T, r.B);
       const float y1 = Clip(r.B - ((mAfter[i] - minDb) / (maxDb - minDb)) * h, r.T, r.B);
-      g.DrawLine(IColor(255, 255, 170, 60), x0, y0, x1, y1, &mBlend, 2.5f);
+      g.DrawLine(mAfterCol, x0, y0, x1, y1, &mBlend, 2.2f);
     }
 
-    // Legend
+    // Legend (small caps, top-left)
     const float legendY = r.T + 4.f;
-    g.DrawText(IText(10.f, IColor(255, 160, 165, 175), mFontID, EAlign::Near, EVAlign::Middle),
-               "In", IRECT(r.L + 4.f, legendY, r.L + 24.f, legendY + 12.f), &mBlend);
-    g.DrawText(IText(10.f, IColor(255, 205, 127, 50), mFontID, EAlign::Near, EVAlign::Middle),
-               "Tgt", IRECT(r.L + 28.f, legendY, r.L + 56.f, legendY + 12.f), &mBlend);
-    g.DrawText(IText(10.f, IColor(255, 255, 170, 60), mFontID, EAlign::Near, EVAlign::Middle),
-               "Out", IRECT(r.L + 62.f, legendY, r.L + 90.f, legendY + 12.f), &mBlend);
+    IText legendTxt(10.f, mAxisLabel, mFontID, EAlign::Near, EVAlign::Middle);
+    g.DrawText(legendTxt, "In", IRECT(r.L + 4.f, legendY, r.L + 24.f, legendY + 12.f), &mBlend);
+    g.DrawText(legendTxt, "Tgt", IRECT(r.L + 28.f, legendY, r.L + 56.f, legendY + 12.f), &mBlend);
+    g.DrawText(legendTxt, "Out", IRECT(r.L + 62.f, legendY, r.L + 90.f, legendY + 12.f), &mBlend);
   }
 private:
   std::array<float, 64> mBefore;
@@ -658,6 +673,8 @@ private:
   float mDragStartMinDb = 0.f;
   float mDragStartMaxDb = 0.f;
   const char* mFontID = nullptr;
+  // Modern palette — overridable via SetPalette() from outside
+  IColor mBg, mBorder, mGrid, mTick, mBeforeCol, mTargetCol, mAfterCol, mAxisLabel, mNoSignalCol;
 };
 
 // Simple bypass overlay - draws a semi-transparent full-ui overlay with "BYPASSED" text
