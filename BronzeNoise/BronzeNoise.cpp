@@ -768,6 +768,73 @@ float InterpolateLogTable(float frequencyHz,
 #endif
 }
 
+// =============================================================================
+// ChassisPanelControl — sci-fi header/footer chassis with thin geometric
+// strokes, brand mark, version, and a 1-px divider. Drawn UNDER the title text
+// and segmented bars; the title ITextControl sits on top of this control.
+// =============================================================================
+class ChassisPanelControl final : public IControl
+{
+public:
+  enum class Position { kHeader, kFooter };
+  ChassisPanelControl(const IRECT& bounds, Position pos, IColor panel,
+                       IColor frame, IColor divider, IColor accent,
+                       const char* brand = nullptr, const char* version = nullptr,
+                       const char* fontID = nullptr)
+    : IControl(bounds, -1)
+    , mPos(pos), mPanel(panel), mFrame(frame), mDivider(divider)
+    , mAccent(accent), mBrand(brand ? brand : ""), mVersion(version ? version : "")
+    , mFontID(fontID) { SetIgnoreMouse(true); }
+
+  void Draw(IGraphics& g) override
+  {
+    // Solid panel surface with a 1-px frame on top + sides + bottom.
+    g.FillRect(mPanel, mRECT, &mBlend);
+    // Top edge (slightly brighter line for "lit chassis" feel).
+    g.DrawLine(mFrame.WithOpacity(0.85f),
+               mRECT.L, mRECT.T, mRECT.R, mRECT.T, &mBlend, 1.f);
+    // Bottom edge (subtle).
+    g.DrawLine(mFrame.WithOpacity(0.45f),
+               mRECT.L, mRECT.B - 1.f, mRECT.R, mRECT.B - 1.f, &mBlend, 1.f);
+    // Side edges.
+    g.DrawLine(mFrame.WithOpacity(0.5f),
+               mRECT.L, mRECT.T, mRECT.L, mRECT.B, &mBlend, 1.f);
+    g.DrawLine(mFrame.WithOpacity(0.5f),
+               mRECT.R - 1.f, mRECT.T, mRECT.R - 1.f, mRECT.B, &mBlend, 1.f);
+
+    // Brand text — small caps, left side, accent color.
+    if (!mBrand.empty()) {
+      IText brandTxt(11.f, mAccent.WithOpacity(0.85f), mFontID, EAlign::Near, EVAlign::Middle);
+      const float pad = 8.f;
+      IRECT brandRect(mRECT.L + pad, mRECT.T, mRECT.L + 130.f, mRECT.B);
+      g.DrawText(brandTxt, mBrand.c_str(), brandRect, &mBlend);
+    }
+    // Version — small, right side, secondary.
+    if (!mVersion.empty()) {
+      IText verTxt(10.f, IColor(180, 105, 110, 118).WithOpacity(0.9f), mFontID, EAlign::Far, EVAlign::Middle);
+      const float pad = 8.f;
+      IRECT verRect(mRECT.R - 110.f - pad, mRECT.T, mRECT.R - pad, mRECT.B);
+      g.DrawText(verTxt, mVersion.c_str(), verRect, &mBlend);
+    }
+
+    // Divider line in the middle (horizontal hairline).
+    const float midY = mRECT.MH();
+    g.DrawLine(mDivider.WithOpacity(0.6f),
+               mRECT.L + 4.f, midY, mRECT.R - 4.f, midY, &mBlend, 1.f);
+    // Two short "tick" indicators at the divider ends for tech-chassis feel.
+    g.DrawLine(mAccent.WithOpacity(0.85f),
+               mRECT.L + 4.f, midY - 3.f, mRECT.L + 4.f, midY + 3.f, &mBlend, 1.f);
+    g.DrawLine(mAccent.WithOpacity(0.85f),
+               mRECT.R - 4.f, midY - 3.f, mRECT.R - 4.f, midY + 3.f, &mBlend, 1.f);
+  }
+
+private:
+  Position mPos;
+  IColor mPanel, mFrame, mDivider, mAccent;
+  std::string mBrand, mVersion;
+  const char* mFontID;
+};
+
 #if IPLUG_EDITOR
 void BronzeNoise::LayoutUI(IGraphics* pGraphics)
 {
@@ -853,6 +920,12 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
 
   // ponytail: title-only strip (no subtitle). Bumped height for larger text. IronSans for the title.
   const float titleH = 72.f;
+  // Sci-fi header chassis: thin frame, accent brand mark on left, version on right,
+// 1-px divider line through middle. Drawn UNDER the title text and segmented bars.
+  const IRECT chassisHeader(bounds.L, bounds.T, bounds.R, bounds.B - 200.f);
+  pGraphics->AttachControl(new ChassisPanelControl(chassisHeader, ChassisPanelControl::Position::kHeader,
+    panelColor, frameColor, dividerColor, accentColor, "CLOPH · BRONZE NOISE", "v1.0.0", titleFont ? titleFont : uiFont));
+
   const IRECT titleRect(bounds.L, bounds.T, bounds.L + 320.f, bounds.T + titleH);
   pGraphics->AttachControl(new ITextControl(titleRect,
     "BRONZE NOISE",
