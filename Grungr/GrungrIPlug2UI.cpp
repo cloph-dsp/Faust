@@ -671,7 +671,7 @@ public:
       const float cellX = mRECT.L + cellGap + i * (cellW + cellGap);
       const igraphics::IRECT cellRect(cellX, mRECT.T, cellX + cellW, mRECT.T + cellH);
       const bool isActive = (i == mode);
-      const bool isHovered = GetMouseIsOver() && mRECT.Overlap(cellRect);
+      const bool isHovered = GetMouseIsOver() && mRECT.Intersects(cellRect);
 
       // Depression animation offset (1-2px on press)
       const float pressOffset = (mPressT > 0.001f && mPressedCell == i) ? (mPressT * 1.5f) : 0.f;
@@ -1431,10 +1431,8 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
   // I/O meters: place in the lower control zone, flanking the bypass toggle
   // Reserve space at bottom (≥130-150px per user preference)
   const float meterW = 26.f;  // ~20-30 px wide
-  const float meterGap = 8.f;
   const float meterAreaBottom = backgroundBounds.B - 8.f;
   const float meterAreaTop = r.bypassToggle.T - 16.f;  // Position above bypass toggle
-  const float meterH = meterAreaBottom - meterAreaTop;
 
   // Input meter on the left side
   r.inputMeter = igraphics::IRECT(backgroundBounds.L + 12.f,
