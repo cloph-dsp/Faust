@@ -455,6 +455,41 @@ jobs:
             exit 1
           fi
 
+      - name: Tuner THD+N smoke test (audio path bit-perfect)
+        # Validates the audio path is bit-perfect pass-through and the Detector
+        # analysis side-channel introduces zero distortion.  The Tuner's
+        # ProcessBlock uses std::memcpy for pass-through; the Detector reads
+        # but never writes to outputs.  Expected: THD+N < -100 dBFS (FFT noise
+        # floor at double precision is ~-300 dBFS with exact-integer-bin
+        # alignment).  Also includes a control test that adds a known 0.01%
+        # 2nd harmonic and verifies the measurement picks it up at exactly
+        # -80 dBFS -- proves the Goertzel-based THD+N analyser is calibrated.
+        run: |
+          TEST_SRC="Tuner VST/tests/thdn_smoke.cpp"
+
+          if [ ! -f "$TEST_SRC" ]; then
+            echo "SKIP: THD+N smoke test source missing"
+            exit 0
+          fi
+
+          echo "Compiling THD+N smoke test (host-free, no iPlug2, no VST3)..."
+          clang++ -std=c++17 -O2 -Wall -Wno-unused-function \
+                  -I "Tuner VST" \
+                  -o /tmp/tuner_thdn \
+                  "$TEST_SRC" 2>&1 || {
+            echo "FAIL: THD+N smoke test compile failed"
+            exit 1
+          }
+          echo "Running THD+N smoke test..."
+          if /tmp/tuner_thdn; then
+            echo ""
+            echo "THDN SMOKE: PASSED"
+          else
+            echo ""
+            echo "THDN SMOKE: FAILED"
+            exit 1
+          fi
+
       - name: Generate VST3 moduleinfo.json + validate code signature
         if: always()
         run: |
