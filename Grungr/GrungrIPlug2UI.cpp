@@ -671,7 +671,7 @@ public:
       const float cellX = mRECT.L + cellGap + i * (cellW + cellGap);
       const igraphics::IRECT cellRect(cellX, mRECT.T, cellX + cellW, mRECT.T + cellH);
       const bool isActive = (i == mode);
-      const bool isHovered = GetMouseIsOver() && GetMouseRect().Overlap(cellRect);
+      const bool isHovered = GetMouseIsOver() && mRECT.Overlap(cellRect);
 
       // Depression animation offset (1-2px on press)
       const float pressOffset = (mPressT > 0.001f && mPressedCell == i) ? (mPressT * 1.5f) : 0.f;
@@ -1152,16 +1152,17 @@ public:
       return;
     }
 
-    if (mod.N && GetParam()) {
-      // Double-click (mod.N = number of clicks): reset to default
-      GetParam()->Reset();
-      SetValueFromUserInput(GetParam()->GetDefault());
-      SetDirty(true);
-      return;
-    }
-
     // Normal click: let base class handle drag
     ISVGKnobControl::OnMouseDown(x, y, mod);
+  }
+
+  void OnMouseDblClick(float x, float y, const igraphics::IMouseMod& mod) override
+  {
+    // Double-click: reset to default. SetValueFromUserInput handles
+    // value-change check + SetDirty for redraw. This matches the iPlug2
+    // idiom (see IControl.cpp default OnMouseDblClick for sliders etc.)
+    if (GetParam())
+      SetValueFromUserInput(GetParam()->GetDefault(true));
   }
 
 private:
