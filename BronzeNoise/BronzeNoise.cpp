@@ -1024,9 +1024,14 @@ void BronzeNoise::OnIdle()
 void BronzeNoise::OnReset()
 {
   mSampleRate = GetSampleRate();
-  
+
+  // Hardening: a misbehaving host (or a freshly constructed plugin before
+  // OnParamChange has fired) may hand us SR == 0 or FFT selector out of range.
+  // Fall back to sane defaults instead of allocating zero-size buffers.
+  if (mSampleRate <= 0.f) mSampleRate = 48000.f;
+
   // Get FFT size from parameter
-  const int fftSizeSelector = static_cast<int>(GetParam(kFFTSize)->Value());
+  const int fftSizeSelector = Clip(static_cast<int>(GetParam(kFFTSize)->Value()), 0, kNumFFTSizes - 1);
   static constexpr int kFFTSizes[kNumFFTSizes] = {256, 512, 1024, 2048, 4096, 8192, 16384};
   mFFTSize = kFFTSizes[fftSizeSelector];
   mHopSize = mFFTSize / 2;
@@ -1265,12 +1270,18 @@ void BronzeNoise::PushOutputSample(int channelIndex, float value)
 
 float BronzeNoise::PopOutputSample(int channelIndex)
 {
+  // Hardening: defend against bad channelIndex / unwarmed FIFO.
+  if (channelIndex < 0 || channelIndex >= kMaxChannels) return 0.f;
   if (mOutputCount[channelIndex] <= 0)
     return 0.f;
-
+  // mOutputFifo[ch].data() must be valid (we resize in constructor) but
+  // guard against a transient empty-vector state after teardown/rebuild races.
   float* outputBuffer = mOutputFifo[channelIndex].data();
-  const float value = outputBuffer[mOutputReadIndex[channelIndex]];
-  mOutputReadIndex[channelIndex] = (mOutputReadIndex[channelIndex] + 1) % kOutputFifoSize;
+  if (outputBuffer == nullptr) return 0.f;
+  int readIndex = mOutputReadIndex[channelIndex];
+  if (readIndex < 0 || readIndex >= static_cast<int>(mOutputFifo[channelIndex].size())) return 0.f;
+  const float value = outputBuffer[readIndex];
+  mOutputReadIndex[channelIndex] = (readIndex + 1) % kOutputFifoSize;
   --mOutputCount[channelIndex];
   return value;
 }
@@ -1331,6 +1342,10 @@ float BronzeNoise::ComputeHopRms(int /*channelIndex*/, const float* buffer, int 
 // Target: output RMS == input RMS within kMakeupGainToleranceDb.
 void BronzeNoise::UpdateMakeupGain(float inputRms, float outputRms)
 {
+  // Hardening: sanitize NaN/Inf RMS before log10 (a NaN propagates through
+  // multiplication and would freeze the gain at NaN forever).
+  if (!std::isfinite(inputRms)) inputRms = 0.f;
+  if (!std::isfinite(outputRms)) outputRms = 0.f;
   const float inputDb  = 20.f * std::log10(std::max(1.0e-9f, inputRms));
   const float outputDb = 20.f * std::log10(std::max(1.0e-9f, outputRms));
   // Required compensation = level removed by spectral reshaping
@@ -1339,6 +1354,8 @@ void BronzeNoise::UpdateMakeupGain(float inputRms, float outputRms)
   const float targetMakeupDb = Clip(requiredCompensationDb, 0.f, kMaxMakeupGainDb);
   // Exponential smoothing to prevent gain-pumping artefacts
   mAutoMakeupGainDb += (targetMakeupDb - mAutoMakeupGainDb) * kMakeupGainSmoothAlpha;
+  // Final NaN guard on the gain itself in case alpha * NaN sneaks in.
+  if (!std::isfinite(mAutoMakeupGainDb)) mAutoMakeupGainDb = 0.f;
 }
 
 float BronzeNoise::ClampCorrectionDb(float frequencyHz, float correctionDb, float aggression) const
@@ -1722,6 +1739,19 @@ void BronzeNoise::ProcessHop(int channelCount)
 
 void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
+  // Hardening: a misbehaving host could pass nFrames <= 0, or NULL pointer
+  // arrays during teardown. Bail with a silent pass-through (no allocations,
+  // no DSP, no output writes) so we never crash even in pathological states.
+  if (nFrames <= 0 || outputs == nullptr) return;
+  if (inputs == nullptr) {
+    // No input — zero the outputs so the DAW doesn't see garbage left over from a previous block.
+    const int zeroChans = NOutChansConnected();
+    for (int ch = 0; ch < zeroChans; ++ch) {
+      if (outputs[ch]) std::memset(outputs[ch], 0, sizeof(double) * nFrames);
+    }
+    return;
+  }
+
   // CPU-level denormal protection: flush denormals to zero (FTZ) and set denormals are zero (DAZ).
   // SSE intrinsics are x86/x64-only; on arm64 macOS math library handles this at OS level.
 #ifdef __SSE__
@@ -1736,6 +1766,9 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 
   const int activeInputChannels = NInChansConnected();
   const int activeOutputChannels = NOutChansConnected();
+  // Hardening: clamp channel count to [1, kMaxChannels] to prevent
+  // out-of-range indexing of mHopBuffer[] / mOutputFifo[] / mFftBuffer[] arrays
+  // if the host reports a bogus connection count (some buggy drivers do).
   const int processedChannels = Clip(std::max(activeInputChannels, activeOutputChannels), 1, kMaxChannels);
 
   // Track per-block peak for I/O meters. We sample once per block (the last sample's magnitude) � UI polls at OnIdle rate, so any per-block peak is fine. Cheaper than per-sample max.
