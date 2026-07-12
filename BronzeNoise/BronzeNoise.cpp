@@ -771,16 +771,38 @@ float InterpolateLogTable(float frequencyHz,
 #if IPLUG_EDITOR
 void BronzeNoise::LayoutUI(IGraphics* pGraphics)
 {
-  // Bronze-themed palette
-  const IColor backgroundColor(255, 14, 16, 20);
-  const IColor panelColor(255, 24, 27, 34);
-  const IColor frameColor(255, 70, 74, 82);
-  const IColor accentColor(255, 205, 127, 50);       // #CD7F32 bronze
-  const IColor accentDim(255, 170, 100, 35);          // darker bronze for inactive
-  const IColor primaryTextColor(255, 239, 234, 226);
-  const IColor secondaryTextColor(255, 156, 161, 169);
-  const IColor visBackground(255, 18, 22, 32);
-  const IColor visBorder(255, 70, 74, 82);
+  // Modern technical / futuristic palette. Inspired by FabFilter Pro-Q3,
+  // iZotope Ozone, PluginDoctor — deep base, single saturated bronze accent,
+  // thin neutral frames. No gradients, no decorative chrome.
+  // Base layer hierarchy (each progressively lighter):
+  //   void (deep base) < chassis < panel < raised
+  const IColor voidColor    (255,   8,  10,  14);  // outermost background
+  const IColor chassisColor (255,  13,  15,  22);  // main panel surface
+  const IColor panelColor   (255,  18,  22,  32);  // inset panels
+  const IColor raisedColor  (255,  24,  29,  41);  // hover/active surfaces
+  const IColor frameColor   (255,  48,  54,  66);  // 1-px panel borders
+  const IColor dividerColor (255,  60,  68,  82);  // subtle horizontal rules
+  // Bronze accent (single saturation across the whole UI)
+  const IColor accentColor  (255, 205, 127,  50);  // #CD7F32 bronze
+  const IColor accentHot    (255, 235, 165,  80);  // hovered/active bronze
+  const IColor accentDim    (255, 140,  86,  34);  // inactive bronze
+  // Typography hierarchy
+  const IColor titleColor      (255, 240, 235, 225);  // big near-white title
+  const IColor primaryTextColor (255, 220, 218, 210);  // body text
+  const IColor secondaryTextColor(255, 156, 161, 169);  // labels, units
+  const IColor tertiaryTextColor (255, 105, 110, 118);  // de-emphasized
+  const IColor monoTextColor     (255, 175, 222, 255);  // monospace values (cyan)
+  // Visualization (spectrum + meters)
+  const IColor visBackground (255,  10,  12,  18);  // slightly darker than chassis
+  const IColor visBorder     (255,  48,  54,  66);
+  const IColor visGrid       (255,  35,  42,  55);  // grid lines
+  const IColor beforeColor   (255, 105, 145, 175);  // pre-DSP (cool cyan-grey)
+  const IColor targetColor   (255, 255, 200, 120);  // target curve (warm amber)
+  const IColor afterColor    (255, 205, 127,  50);  // post-DSP (bronze)
+  const IColor visClipColor  (255, 240,  70,  70);  // clipping alert (red)
+
+  // Backward-compat aliases for downstream code (avoid touching the rest of LayoutUI in this pass).
+  const IColor backgroundColor = voidColor;
 
   // Two fonts: titleFont (IronSans) for plugin title, uiFont (Kenyan Coffee) for everything else.
   // 2-arg LoadFont looks up the TTF as a Windows resource by name (matches main.rc macro).
