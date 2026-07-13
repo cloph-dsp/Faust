@@ -38,6 +38,11 @@ Build/
 # BronzeNoise project files (required for CI build, same reason as Grungr)
 !BronzeNoise/projects/*.vcxproj
 !BronzeNoise/projects/*.vcxproj.filters
+# 3BeatProblem project files (required for CI build)
+!3BeatProblem/projects/*.vcxproj
+!3BeatProblem/projects/*.vcxproj.filters
+# Dead failed attempt directories (not source, just references)
+3BeatProblem/failed attempt*/
 *.suo
 *.userosscache
 *.sln.docstates
