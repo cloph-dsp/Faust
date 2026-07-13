@@ -1425,19 +1425,19 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
   }
   const float metersLeftX = r.title.R + 14.f;
 
-  // I/O meters: place adjacent to GRUNGR title on the right side (per user feedback m0294).
-  // Both meters sit side-by-side, vertically aligned with the title block.
+  // I/O meters: one on each side of the GRUNGR title (per user feedback m0410).
+  // Input on the LEFT, output on the RIGHT, vertically aligned with the title block.
   const float meterAreaTop = r.title.T;
   const float meterAreaBottom = r.title.B;
 
-  r.inputMeter = igraphics::IRECT(metersLeftX,
+  r.inputMeter = igraphics::IRECT(r.title.L - meterGap - meterW,
                                    meterAreaTop,
-                                   metersLeftX + meterW,
+                                   r.title.L - meterGap,
                                    meterAreaBottom);
 
-  r.outputMeter = igraphics::IRECT(metersLeftX + meterW + meterGap,
+  r.outputMeter = igraphics::IRECT(r.title.R + meterGap,
                                     meterAreaTop,
-                                    metersLeftX + meterW + meterGap + meterW,
+                                    r.title.R + meterGap + meterW,
                                     meterAreaBottom);
 
   const float logoH = std::clamp(rawToggleH * 0.82f, knobSize * 0.34f, knobSize * 0.44f);
