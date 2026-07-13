@@ -1411,6 +1411,35 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
                              titleCenterX + (titleLogoW * 0.5f),
                              titleY + (titleLogoH * 0.5f));
 
+  // I/O meters: side-by-side just to the right of the GRUNGR title block.
+  // Clamp title width so the meters have guaranteed space within the faceplate
+  // (otherwise the wide centered title can push the output meter off-screen).
+  const float meterW = 26.f;
+  const float meterGap = 8.f;
+  const float meterReserved = meterW * 2 + meterGap + 14.f + 14.f;  // both meters + gap + side margins
+  const float maxTitleWithMeters = (backgroundBounds.R - backgroundBounds.L) - meterReserved;
+  if (r.title.W() > maxTitleWithMeters) {
+    const float newW = std::max(120.f, maxTitleWithMeters);
+    const float cx = backgroundBounds.L + 14.f + newW * 0.5f;
+    r.title = igraphics::IRECT(cx - newW * 0.5f, r.title.T, cx + newW * 0.5f, r.title.B);
+  }
+  const float metersLeftX = r.title.R + 14.f;
+
+  // I/O meters: place adjacent to GRUNGR title on the right side (per user feedback m0294).
+  // Both meters sit side-by-side, vertically aligned with the title block.
+  const float meterAreaTop = r.title.T;
+  const float meterAreaBottom = r.title.B;
+
+  r.inputMeter = igraphics::IRECT(metersLeftX,
+                                   meterAreaTop,
+                                   metersLeftX + meterW,
+                                   meterAreaBottom);
+
+  r.outputMeter = igraphics::IRECT(metersLeftX + meterW + meterGap,
+                                    meterAreaTop,
+                                    metersLeftX + meterW + meterGap + meterW,
+                                    meterAreaBottom);
+
   const float logoH = std::clamp(rawToggleH * 0.82f, knobSize * 0.34f, knobSize * 0.44f);
   const float logoW = logoH * kClophLogoAspect;
   const float rawToggleLeftInset = rawCenterX - (rawToggleW * 0.5f) - backgroundBounds.L;
@@ -1427,26 +1456,6 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
                                     backgroundBounds.T + (backgroundBounds.H() * kStompTopNorm),
                                     backgroundBounds.L + (backgroundBounds.W() * kStompRightNorm),
                                     backgroundBounds.T + (backgroundBounds.H() * kStompBottomNorm));
-
-  // I/O meters: place adjacent to GRUNGR title on the right side (per user feedback m0294).
-  // Both meters sit side-by-side, just to the right of r.title, vertically aligned with the title block.
-  const float meterW = 26.f;
-  const float meterGap = 8.f;
-  const float meterAreaTop = r.title.T;
-  const float meterAreaBottom = r.title.B;
-  const float metersLeftX = r.title.R + 14.f;
-
-  // Input meter immediately right of title
-  r.inputMeter = igraphics::IRECT(metersLeftX,
-                                   meterAreaTop,
-                                   metersLeftX + meterW,
-                                   meterAreaBottom);
-
-  // Output meter just to the right of the input meter
-  r.outputMeter = igraphics::IRECT(metersLeftX + meterW + meterGap,
-                                    meterAreaTop,
-                                    metersLeftX + meterW + meterGap + meterW,
-                                    meterAreaBottom);
 
   ValidateAccessibilityLayout(r, uiBounds, kMinInteractiveTargetPx);
 
