@@ -2135,6 +2135,23 @@ bool HandleGlobalKey(igraphics::IGraphics* pGraphics,
   return false;
 }
 
+void UpdateMeterLevels(igraphics::IGraphics* pGraphics,
+                       float inputL, float inputR,
+                       float outputL, float outputR)
+{
+  if (!pGraphics) return;
+  if (auto* pInput = pGraphics->GetControlWithTag(kTagInputMeter)) {
+    if (auto* pMeter = dynamic_cast<SimpleMeterControl*>(pInput)) {
+      pMeter->SetLevels(inputL, inputR);
+    }
+  }
+  if (auto* pOutput = pGraphics->GetControlWithTag(kTagOutputMeter)) {
+    if (auto* pMeter = dynamic_cast<SimpleMeterControl*>(pOutput)) {
+      pMeter->SetLevels(outputL, outputR);
+    }
+  }
+}
+
 }  // namespace ui
 }  // namespace grungr
 
