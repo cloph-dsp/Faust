@@ -12,6 +12,8 @@ using namespace igraphics;
 #include <functional>
 
 constexpr int kMaxSteps = 16;
+constexpr int kNumCircles = 3;
+constexpr int kParamsPerCircle = 18; // 1 Steps + 1 Note + 16 step bools
 
 // Custom IControl: single circle with dynamic step dots (1..kMaxSteps).
 // Clicks toggle a step, right-click clears the pattern.
@@ -108,34 +110,36 @@ public:
   void OnIdle() override;
 
   enum EParams {
-    kParamSteps = 0,
-    kParamNote,
-    kParamStep0, // 16 step bools follow
-    kNumParams = kParamStep0 + 16
+    kParamCircle0Steps = 0,
+    kNumParams = kNumCircles * kParamsPerCircle
   };
 
-private:
-  // Transport-following sequencer state (PPQ-derived, sample-accurate)
-  int mCurrentStep = -1;        // last step index (-1 = transport stopped)
-  std::atomic<int> mCurrentStepUI{-1};  // UI-thread read of current step (-1 = no highlight)
+  // Param layout per circle: [Steps, Note, Step0..Step15]
+  static int StepsParam(int c) { return kParamCircle0Steps + c * kParamsPerCircle; }
+  static int NoteParam(int c)  { return kParamCircle0Steps + c * kParamsPerCircle + 1; }
+  static int StepParam(int c, int s) { return kParamCircle0Steps + c * kParamsPerCircle + 2 + s; }
 
-  // Internal sine-voice synth (plugin IS the instrument)
+private:
+  // Internal sine-voice synth (shared across all circles)
   struct Voice {
     bool mActive = false;
     int  mNote = 60;
     double mPhase = 0.0;
-    double mEnv = 0.0;
     int  mSamplesLeft = 0;
-    int  mTotalSamples = 1;     // for linear decay envelope
+    int  mTotalSamples = 1;
   };
   static constexpr int kMaxVoices = 8;
   Voice mVoices[kMaxVoices];
 
-  // Cached for audio-thread access
-  int mCachedSteps = 8;
-  int mCachedNote = 60;
-  bool mCachedStepsArr[kMaxSteps] = {0};
+  // Per-circle cached state (audio-thread reads)
+  int mCachedSteps[kNumCircles] = {8, 8, 8};
+  int mCachedNote[kNumCircles] = {60, 64, 67}; // C4, E4, G4 defaults
+  bool mCachedPatterns[kNumCircles][kMaxSteps] = {};
 
-  // UI-side: pointer to the circle control so OnParamChange can update it
-  CircleSteps* mCircle = nullptr;
+  // Per-circle step tracking
+  int mCurrentSteps[kNumCircles] = {-1, -1, -1};
+  std::atomic<int> mCurrentStepUIs[kNumCircles];
+
+  // UI control pointers
+  CircleSteps* mCircles[kNumCircles] = {};
 };
