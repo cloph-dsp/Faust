@@ -1,12 +1,99 @@
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
-#include "sequencer_engine.h"
-
-#include <cstdio>
+#include "IControl.h"
 
 using namespace iplug;
 using namespace igraphics;
+
+#include <cmath>
+#include <cstring>
+#include <atomic>
+#include <functional>
+
+constexpr int kMaxSteps = 16;
+
+// Custom IControl: single circle with dynamic step dots (1..kMaxSteps).
+// Clicks toggle a step, right-click clears the pattern.
+class CircleSteps final : public IControl {
+public:
+  CircleSteps(IRECT bounds, const IColor& onCol, const IColor& offCol,
+              const IColor& playCol, const IColor& bgCol)
+    : IControl(bounds)
+    , mOnCol(onCol), mOffCol(offCol), mPlayCol(playCol), mBgCol(bgCol)
+  {
+    SetTooltip("Click a dot to toggle, right-click to clear");
+  }
+
+  void Draw(IGraphics& g) override {
+    const IRECT& R = mRECT;
+    const float cx = R.MW();
+    const float cy = R.MH();
+    const float radius = std::min(R.W(), R.H()) * 0.45f;
+
+    g.FillCircle(mBgCol.WithOpacity(0.20f), cx, cy, radius);
+
+    const int steps = std::max(1, std::min(kMaxSteps, mSteps));
+    const int stepIdx = mPlayhead;
+    const float dotR = std::max(4.0f, 12.0f - steps * 0.35f);
+    for (int s = 0; s < steps; s++) {
+      const float a = (float(s) / float(steps)) * 6.2831853f - 1.5707963f;
+      const float dx = cx + std::cos(a) * radius;
+      const float dy = cy + std::sin(a) * radius;
+      const bool on = (s < kMaxSteps) ? mPattern[s] : false;
+      const bool isPlay = (s == stepIdx);
+      IColor c = on ? mOnCol : mOffCol;
+      if (isPlay) c = mPlayCol;
+      g.FillCircle(c, dx, dy, dotR);
+      if (on && isPlay) {
+        g.DrawCircle(mPlayCol.WithOpacity(0.6f), dx, dy, dotR * 1.8f, nullptr, 2.0f);
+      }
+    }
+  }
+
+  void OnMouseDown(float x, float y, const IMouseMod& mod) override {
+    const IRECT& R = mRECT;
+    const float cx = R.MW();
+    const float cy = R.MH();
+    const float radius = std::min(R.W(), R.H()) * 0.45f;
+    const int steps = std::max(1, std::min(kMaxSteps, mSteps));
+
+    if (mod.R) {
+      for (int s = 0; s < kMaxSteps; s++) mPattern[s] = false;
+      SetDirty();
+      if (mParamChangeFn) mParamChangeFn();
+      return;
+    }
+
+    const float dotR = std::max(4.0f, 12.0f - steps * 0.35f) + 4.0f;
+    for (int s = 0; s < steps; s++) {
+      const float a = (float(s) / float(steps)) * 6.2831853f - 1.5707963f;
+      const float dx = cx + std::cos(a) * radius;
+      const float dy = cy + std::sin(a) * radius;
+      const float dxm = x - dx;
+      const float dym = y - dy;
+      if (dxm * dxm + dym * dym < dotR * dotR) {
+        mPattern[s] = !mPattern[s];
+        SetDirty();
+        if (mParamChangeFn) mParamChangeFn();
+        return;
+      }
+    }
+  }
+
+  void SetSteps(int steps) { mSteps = steps; SetDirty(); }
+  void SetPlayhead(int p) { if (p != mPlayhead) { mPlayhead = p; SetDirty(); } }
+  void SetPattern(const bool* p) { memcpy(mPattern, p, sizeof(mPattern)); SetDirty(); }
+  void GetPattern(bool* p) const { memcpy(p, mPattern, sizeof(mPattern)); }
+  void SetParamChangeFn(std::function<void()> fn) { mParamChangeFn = std::move(fn); }
+
+private:
+  IColor mOnCol, mOffCol, mPlayCol, mBgCol;
+  int mSteps = 8;
+  int mPlayhead = -1;
+  bool mPattern[kMaxSteps] = {0};
+  std::function<void()> mParamChangeFn;
+};
 
 class ThreeBeatProblem final : public Plugin {
 public:
@@ -14,112 +101,41 @@ public:
 
 #if IPLUG_DSP
   void ProcessBlock(sample** inputs, sample** outputs, int nFrames) override;
-  void ProcessMidiMsg(const IMidiMsg& msg) override;
   void OnReset() override;
-  void OnParamChange(int paramIdx) override;
-
-  bool SerializeState(IByteChunk& chunk) const override;
-  int UnserializeState(const IByteChunk& chunk, int startPos) override;
 #endif
 
-private:
-  threebeat::SequencerEngine engine_;
+  void OnParamChange(int paramIdx) override;
+  void OnIdle() override;
 
-  // Cached parameter values for ProcessBlock (RT safe)
-  int cachedVelocity_ = 100;
-  int cachedVelRandom_ = 0;
-  int cachedProbability_ = 100;
-  int cachedNoteDuration_ = 50;
-
-  // Rate mapping: parameter index 0-12 to float rate value
-  static float RateIdxToFloat(int idx) {
-    static const float kRateMap[] = {
-      1.0f / 64.0f,   // 0: 1/64
-      1.0f / 32.0f,   // 1: 1/32
-      1.0f / 16.0f,   // 2: 1/16
-      1.0f / 8.0f,    // 3: 1/8
-      1.0f / 4.0f,    // 4: 1/4
-      1.0f / 2.0f,    // 5: 1/2
-      1.0f,           // 6: 1x
-      2.0f,            // 7: 2x
-      4.0f,            // 8: 4x
-      8.0f,            // 9: 8x
-      16.0f,           // 10: 16x
-      32.0f,           // 11: 32x
-      64.0f            // 12: 64x
-    };
-    if (idx < 0) return kRateMap[0];
-    if (idx > 12) return kRateMap[12];
-    return kRateMap[idx];
-  }
-
-  // Helper methods for parameter handling
-  void HandleMelodySeqParam(int seqIdx, int localParam, double value);
-  void HandleDrumSeqParam(int seqIdx, int localParam, double value);
-  void SyncAllParamsFromEngine();
-
-  // VST3 parameter enums
   enum EParams {
-    // Global (0-7)
-    kParamMode = 0,
-    kParamBPM,
-    kParamSync,
-    kParamSwing,
-    kParamNoteDuration,
-    kParamVelocity,
-    kParamVelRandom,
-    kParamProbability,
-
-    // Melody mode global (8-11)
-    kParamScaleType,
-    kParamScaleRoot,
-    kParamOctaveLow,
-    kParamOctaveHigh,
-
-    // S1 melody params (12-31)
-    kParamS1Rate = 12,
-    kParamS1Steps,
-    kParamS1Mood,
-    kParamS1PatternBase,  // 16 pattern steps: base+0 to base+15
-
-    // S2 melody params (32-51)
-    kParamS2Rate = 32,
-    kParamS2Steps,
-    kParamS2Mood,
-    kParamS2PatternBase,
-
-    // S3 melody params (52-71)
-    kParamS3Rate = 52,
-    kParamS3Steps,
-    kParamS3Mood,
-    kParamS3PatternBase,
-
-    // Drum mode S1 (72-91)
-    kParamDrumS1Rate = 72,
-    kParamDrumS1Steps,
-    kParamDrumS1Note,
-    kParamDrumS1Mute,
-    kParamDrumS1Solo,
-    kParamDrumS1PatternBase,  // 16 pattern steps
-
-    // Drum mode S2 (94-115)
-    kParamDrumS2Rate = 94,
-    kParamDrumS2Steps,
-    kParamDrumS2Note,
-    kParamDrumS2Mute,
-    kParamDrumS2Solo,
-    kParamDrumS2PatternBase,
-
-    // Drum mode S3 (116-137)
-    kParamDrumS3Rate = 116,
-    kParamDrumS3Steps,
-    kParamDrumS3Note,
-    kParamDrumS3Mute,
-    kParamDrumS3Solo,
-    kParamDrumS3PatternBase,
-
-    kNumParams = 138
+    kParamSteps = 0,
+    kParamNote,
+    kParamStep0, // 16 step bools follow
+    kNumParams = kParamStep0 + 16
   };
 
-  static constexpr int kNumPresets = 1;
+private:
+  // Transport-following sequencer state (PPQ-derived, sample-accurate)
+  int mCurrentStep = -1;        // last step index (-1 = transport stopped)
+  std::atomic<int> mCurrentStepUI{-1};  // UI-thread read of current step (-1 = no highlight)
+
+  // Internal sine-voice synth (plugin IS the instrument)
+  struct Voice {
+    bool mActive = false;
+    int  mNote = 60;
+    double mPhase = 0.0;
+    double mEnv = 0.0;
+    int  mSamplesLeft = 0;
+    int  mTotalSamples = 1;     // for linear decay envelope
+  };
+  static constexpr int kMaxVoices = 8;
+  Voice mVoices[kMaxVoices];
+
+  // Cached for audio-thread access
+  int mCachedSteps = 8;
+  int mCachedNote = 60;
+  bool mCachedStepsArr[kMaxSteps] = {0};
+
+  // UI-side: pointer to the circle control so OnParamChange can update it
+  CircleSteps* mCircle = nullptr;
 };

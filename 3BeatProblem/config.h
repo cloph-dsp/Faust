@@ -1,4 +1,4 @@
-#define PLUG_NAME "3BeatProblem"
+#define PLUG_NAME "Three Beat Problem"
 #define PLUG_MFR "cloph"
 #define PLUG_VERSION_HEX 0x00010000
 #define PLUG_VERSION_STR "1.0.0"
@@ -15,17 +15,17 @@
 
 #define SHARED_RESOURCES_SUBPATH "3BeatProblem"
 
-#define PLUG_CHANNEL_IO "0-2"
+#define PLUG_CHANNEL_IO "2-2"
 
 #define PLUG_LATENCY 0
 #define PLUG_TYPE 1
-#define PLUG_DOES_MIDI_IN 1
+#define PLUG_DOES_MIDI_IN 0
 #define PLUG_DOES_MIDI_OUT 1
 #define PLUG_DOES_MPE 0
 #define PLUG_DOES_STATE_CHUNKS 1
 #define PLUG_HAS_UI 1
-#define PLUG_WIDTH 680
-#define PLUG_HEIGHT 480
+#define PLUG_WIDTH 400
+#define PLUG_HEIGHT 400
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
 #define PLUG_HOST_RESIZE 0
@@ -39,8 +39,8 @@
 #define AAX_TYPE_IDS '3BP1', '3BP2'
 #define AAX_TYPE_IDS_AUDIOSUITE '3BA1', '3BA2'
 #define AAX_PLUG_MFR_STR "cloph"
-#define AAX_PLUG_NAME_STR "3BeatProblem\n3BPM"
-#define AAX_PLUG_CATEGORY_STR "Effect"
+#define AAX_PLUG_NAME_STR "Three Beat Problem\n3BPM"
+#define AAX_PLUG_CATEGORY_STR "Instrument"
 #define AAX_DOES_AUDIOSUITE 0
 
 #define VST3_SUBCATEGORY "Instrument|Synth"
