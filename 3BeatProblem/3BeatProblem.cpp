@@ -29,6 +29,10 @@ ThreeBeatProblem::ThreeBeatProblem(const InstanceInfo& info)
     }
   }
 
+  // Global params: Swing, Mutation
+  GetParam(kParamSwing)->InitInt("Swing", 0, 0, 100);
+  GetParam(kParamMutation)->InitInt("Mutation", 0, 0, 100);
+
 #if IPLUG_EDITOR
   mMakeGraphicsFunc = [&]() {
     return MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS,
@@ -61,6 +65,14 @@ ThreeBeatProblem::ThreeBeatProblem(const InstanceInfo& info)
       .WithValueText(IText(24.f, textMain, uiFont, EAlign::Center, EVAlign::Bottom));
 
     graphics->AttachPanelBackground(bg);
+
+    // Top bar: Swing + Mutation sliders (right-aligned)
+    graphics->AttachControl(new IVSliderControl(
+      IRECT(PLUG_WIDTH - 340, 18, PLUG_WIDTH - 180, 54),
+      kParamSwing, "Swing", kStyle));
+    graphics->AttachControl(new IVSliderControl(
+      IRECT(PLUG_WIDTH - 170, 18, PLUG_WIDTH - 10, 54),
+      kParamMutation, "Mutation", kStyle));
 
     // Title + tagline
     graphics->AttachControl(new IVLabelControl(
@@ -140,6 +152,16 @@ ThreeBeatProblem::ThreeBeatProblem(const InstanceInfo& info)
 
 void ThreeBeatProblem::OnParamChange(int paramIdx) {
 #if IPLUG_EDITOR
+  // Handle global params first
+  if (paramIdx == kParamSwing) {
+    mCachedSwing = std::clamp(GetParam(paramIdx)->Int(), 0, 100);
+    return;
+  }
+  if (paramIdx == kParamMutation) {
+    mCachedMutation = std::clamp(GetParam(paramIdx)->Int(), 0, 100);
+    return;
+  }
+
   if (paramIdx < kParamCircle0Steps || paramIdx >= kNumParams) return;
 
   int c = (paramIdx - kParamCircle0Steps) / kParamsPerCircle;
@@ -237,12 +259,26 @@ void ThreeBeatProblem::ProcessBlock(sample** inputs, sample** outputs, int nFram
   }
 
   for (int i = 0; i < nFrames; i++) {
-    // Check each circle for step transitions
+    // Check each circle for step transitions (swing-aware for odd steps)
     for (int c = 0; c < kNumCircles; c++) {
-      int curStep = (int)std::floor(ppq / stepPpq[c]) % mCachedSteps[c];
+      const double baseStep = std::floor(ppq / stepPpq[c]);
+      int curStep = (int)(baseStep) % mCachedSteps[c];
       if (curStep < 0) curStep += mCachedSteps[c];
 
-      if (curStep != prevSteps[c]) {
+      // Swing: odd steps fire at grid+swingOffset, even steps on grid
+      const double swingOffset = (mCachedSwing / 100.0) * stepPpq[c] * 0.5;
+      const double basePpq = baseStep * stepPpq[c];
+      const double oddStepBase = basePpq + stepPpq[c];
+      const double firedPpq = oddStepBase - swingOffset;
+
+      bool shouldFire = false;
+      if (curStep % 2 == 0) {
+        shouldFire = (curStep != prevSteps[c]);
+      } else {
+        shouldFire = (curStep != prevSteps[c]) && (ppq >= firedPpq);
+      }
+
+      if (shouldFire) {
         if (circleActive[c] && mCachedPatterns[c][curStep]) {
           // Find a free voice slot
           int slot = -1;
@@ -262,15 +298,28 @@ void ThreeBeatProblem::ProcessBlock(sample** inputs, sample** outputs, int nFram
           mVoices[slot].mSamplesLeft = noteSamples[c];
           mVoices[slot].mTotalSamples = noteSamples[c];
 
+          // Mutation: randomize velocity
+          int velocity = 100;
+          if (mCachedMutation > 0) {
+            double range = (double(rand()) / RAND_MAX * 2.0 - 1.0) * (mCachedMutation / 100.0) * 35.0;
+            velocity = std::clamp((int)(100.0 + range), 1, 127);
+          }
           IMidiMsg msgOn;
-          msgOn.MakeNoteOnMsg(mCachedNote[c], 100, i);
+          msgOn.MakeNoteOnMsg(mCachedNote[c], velocity, i);
           SendMidiMsg(msgOn);
         }
         mCurrentSteps[c] = curStep;
-        if (circleActive[c])
-          mCurrentStepUIs[c].store(curStep);
-        else
+        // UI playhead: odd steps show at swing-delayed time, even on grid
+        if (circleActive[c]) {
+          if (curStep % 2 == 1) {
+            if (ppq >= firedPpq) mCurrentStepUIs[c].store(curStep);
+          } else {
+            const double evenBoundary = basePpq;
+            if (ppq >= evenBoundary) mCurrentStepUIs[c].store(curStep);
+          }
+        } else {
           mCurrentStepUIs[c].store(-1); // dim out inactive circles
+        }
         prevSteps[c] = curStep;
       }
     }

@@ -111,7 +111,9 @@ public:
 
   enum EParams {
     kParamCircle0Steps = 0,
-    kNumParams = kNumCircles * kParamsPerCircle
+    kParamSwing = kNumCircles * kParamsPerCircle,     // 60
+    kParamMutation,                                      // 61
+    kNumParams = 62
   };
 
   // Param layout per circle: [Steps, Note, Solo, Mute, Step0..Step15]
@@ -137,6 +139,10 @@ private:
   int mCachedSteps[kNumCircles] = {8, 8, 8};
   int mCachedNote[kNumCircles] = {60, 64, 67}; // C4, E4, G4 defaults
   bool mCachedPatterns[kNumCircles][kMaxSteps] = {};
+
+  // Global cached state
+  int mCachedSwing = 0;
+  int mCachedMutation = 0;
 
   // Per-circle step tracking
   int mCurrentSteps[kNumCircles] = {-1, -1, -1};
