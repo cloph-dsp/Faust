@@ -937,11 +937,10 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
 
   // ponytail: title-only strip (no subtitle). Bumped height for larger text. IronSans for the title.
   const float titleH = 72.f;
-  // Sci-fi header chassis: thin frame, accent brand mark on left, version on right,
-// 1-px divider line through middle. Drawn UNDER the title text and segmented bars.
+  // Header chassis: thin frame + 1-px divider through middle, no brand text. Drawn UNDER title + segmented bars.
   const IRECT chassisHeader(bounds.L, bounds.T, bounds.R, bounds.B - 200.f);
   pGraphics->AttachControl(new ChassisPanelControl(chassisHeader, ChassisPanelControl::Position::kHeader,
-    panelColor, frameColor, dividerColor, accentColor, "CLOPH · BRONZE NOISE", "v1.0.0", titleFont ? titleFont : uiFont));
+    panelColor, frameColor, dividerColor, accentColor, "", "", titleFont ? titleFont : uiFont));
 
   const IRECT titleRect(bounds.L, bounds.T, bounds.L + 320.f, bounds.T + titleH);
   pGraphics->AttachControl(new ITextControl(titleRect,
@@ -958,13 +957,8 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
     pGraphics->AttachControl(new ISVGControl(logoRect, clophSVG));
   }
 
-  // ponytail: brand mark + version in title bar (small text under or beside the title, and a breathing accent LED that signals "alive").
-  const IRECT brandRect(bounds.L + 200.f, bounds.T + 4.f, bounds.L + 380.f, bounds.T + 18.f);
-  pGraphics->AttachControl(new ITextControl(brandRect,
-    "CLOPH \xC2\xB7 v1.0.0",  // UTF-8 "�"
-    IText(12.f, secondaryTextColor, uiFont, EAlign::Near, EVAlign::Middle)));
-  // Latency readout � initially empty; updated in OnReset when block size / sample rate change.
-  const IRECT latencyRect(bounds.L + 385.f, bounds.T + 4.f, bounds.L + 540.f, bounds.T + 18.f);
+  // Latency readout — initially empty; updated in OnReset when block size / sample rate change.
+  const IRECT latencyRect(bounds.L + 200.f, bounds.T + 4.f, bounds.L + 380.f, bounds.T + 18.f);
   mLatencyLabel = new ITextControl(latencyRect, "",
     IText(12.f, secondaryTextColor, uiFont, EAlign::Near, EVAlign::Middle));
   mLatencyLabel->SetTooltip("Current processing latency (varies with FFT size)");
@@ -972,22 +966,27 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
   // TitleBarLEDPulseControl removed — was a low-value distraction.
 
   // ponytail: knobs ride at top of spectrum area (below title), bars sit at bottom � visualizer fills the band between them.
+  // Layout: title at top, full-width visualizer in the middle, knobs row BELOW visualizer, segmented bars at bottom.
+  // Knobs move to the bottom for better tactile grouping — the visualizer gets full vertical real estate.
   const float barsH = 44.f;
   const float barsTop = bounds.B - barsH - 8.f;
-  const float knobsTop = bounds.T + titleH + 8.f;
+  // Knob row sits just above the segmented bars (with a 12px gap).
+  const float knobsTop = barsTop - 92.f;  // 80px knob height + 12px gap above bars
 
   // ponytail: knobs + bars reflow with window width. Default 1000 ? 72px / 320px FFT; min 600 ? 60px / 240px; max 1600 ? 92px / 380px.
-  const float knobSize = Clip(bounds.W() / 12.f, 60.f, 92.f);
+  const float knobSize = Clip(barsTop - titleH - 80.f, 56.f, 80.f);
+  // Recompute knobsTop now that knobSize is known — keep a 12px gap above bars.
+  const float knobsTopFinal = barsTop - knobSize - 12.f;
+  const float knobY = knobsTopFinal;
   const float gap = Clip(knobSize * 0.18f, 10.f, 18.f);
   const float knobRowW = knobSize * 5 + gap * 4;
   const float knobStartX = bounds.L + (bounds.W() - knobRowW) * 0.5f;
-  const float knobY = knobsTop;
 
-  // ponytail: I/O meters flank the visualizer. ~36px wide each, leave a 10px gap. Visualizer shrinks horizontally to make room.
+  // ponytail: I/O meters flank the visualizer (which now fills the full band between title and knob row).
   const float meterW = 36.f;
   const float meterGap = 10.f;
-  const IRECT inputMeterRect(bounds.L, knobY + knobSize + 12.f, bounds.L + meterW, barsTop - 12.f);
-  const IRECT outputMeterRect(bounds.R - meterW, knobY + knobSize + 12.f, bounds.R, barsTop - 12.f);
+  const IRECT inputMeterRect(bounds.L, bounds.T + titleH + 12.f, bounds.L + meterW, knobY - 12.f);
+  const IRECT outputMeterRect(bounds.R - meterW, bounds.T + titleH + 12.f, bounds.R, knobY - 12.f);
   mInputMeter = new IOMeterControl(inputMeterRect, "IN",
     IText(11.f, secondaryTextColor, uiFont, EAlign::Center, EVAlign::Middle), uiFont);
   mInputMeter->SetTooltip("Input level (L/R) with peak hold");
@@ -997,9 +996,9 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
   mOutputMeter->SetTooltip("Output level (L/R) with peak hold");
   pGraphics->AttachControl(mOutputMeter);
 
-  // Visualizer fills the band between knobs (top) and bars (bottom), shrunk to leave meter channels.
-  const IRECT visRect(bounds.L + meterW + meterGap, knobY + knobSize + 12.f,
-                      bounds.R - meterW - meterGap, barsTop - 12.f);
+  // Visualizer fills the full band between title and knob row (hero element — biggest area).
+  const IRECT visRect(bounds.L + meterW + meterGap, bounds.T + titleH + 12.f,
+                      bounds.R - meterW - meterGap, knobY - 12.f);
   pGraphics->AttachControl(mVisControl = new SpectrumVisualizerControl(visRect, uiFont));
 
   auto attachKnob = [&](const IRECT& r, int paramIdx, const char* label, const char* tip) {
