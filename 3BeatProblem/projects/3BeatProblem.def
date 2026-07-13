@@ -1,0 +1,10 @@
+; 3BeatProblem VST3 module definition file
+; Explicitly exports the VST3 entry point GetPluginFactory which is otherwise
+; not exported on MSVC (the SDK's EXPORT_FACTORY macro is empty on Windows).
+; InitDll/ExitDll are already exported via __declspec(dllexport) but listed
+; here too for safety.
+
+EXPORTS
+    GetPluginFactory
+    InitDll
+    ExitDll
