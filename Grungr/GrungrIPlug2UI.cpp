@@ -200,7 +200,7 @@ public:
   NinetiesPhotoOverlay(const igraphics::IRECT& bounds, uint32_t seed)
   : IControl(bounds, -1)
   , mSeed(seed ? seed : 0x9E3779B1u)
-  , mBlend7(igraphics::EBlend::Default, 0.20f)
+  ,   mBlend7(igraphics::EBlend::Default, 0.07f)
   {
     mDblAsSingleClick = false;
     mIgnoreMouse = true;
@@ -2092,23 +2092,6 @@ LayoutRects layout = MakeLayout(uiBounds, backgroundBounds, ResolveLayoutVariant
   // StrokedSVGControl sets mIgnoreMouse=true, so it never blocks the stomp.
   if (hasLogoSVG) {
     pGraphics->AttachControl(new StrokedSVGControl(layout.logo, logoSVG), kTagLogo);
-  }
-
-  // Version display: small text below the logo
-  {
-    const float versionFontSize = 10.f;
-    const igraphics::IRECT versionRect(layout.logo.L,
-                                        layout.logo.B + 2.f,
-                                        layout.logo.R,
-                                        layout.logo.B + versionFontSize + 8.f);
-    const igraphics::IText versionText(versionFontSize,
-                                       palette.toggleLabelText,
-                                       valueFontID,
-                                       igraphics::EAlign::Center,
-                                       igraphics::EVAlign::Top);
-    pGraphics->AttachControl(new igraphics::ITextControl(versionRect, PLUG_VERSION_STR,
-                                                          versionText, igraphics::IColor(0, 0, 0, 0)),
-                            kTagVersion);
   }
 
   pGraphics->AttachControl(new NinetiesPhotoOverlay(uiBounds, 0xC0FFEE17u), kTagPhotoOverlay);
