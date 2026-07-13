@@ -200,7 +200,7 @@ public:
   NinetiesPhotoOverlay(const igraphics::IRECT& bounds, uint32_t seed)
   : IControl(bounds, -1)
   , mSeed(seed ? seed : 0x9E3779B1u)
-  , mBlend7(igraphics::EBlend::Default, 0.07f)
+  , mBlend7(igraphics::EBlend::Default, 0.20f)
   {
     mDblAsSingleClick = false;
     mIgnoreMouse = true;
