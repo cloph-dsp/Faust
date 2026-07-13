@@ -37,7 +37,7 @@ public:
 
     const int steps = std::max(1, std::min(kMaxSteps, mSteps));
     const int stepIdx = mPlayhead;
-    const float dotR = std::max(4.0f, 12.0f - steps * 0.35f);
+    const float dotR = std::max(8.0f, 24.0f - steps * 0.70f);
     for (int s = 0; s < steps; s++) {
       const float a = (float(s) / float(steps)) * 6.2831853f - 1.5707963f;
       const float dx = cx + std::cos(a) * radius;
@@ -48,7 +48,7 @@ public:
       if (isPlay) c = mPlayCol;
       g.FillCircle(c, dx, dy, dotR);
       if (on && isPlay) {
-        g.DrawCircle(mPlayCol.WithOpacity(0.6f), dx, dy, dotR * 1.8f, nullptr, 2.0f);
+        g.DrawCircle(mPlayCol.WithOpacity(0.6f), dx, dy, dotR * 1.8f, nullptr, 4.0f);
       }
     }
   }
@@ -67,7 +67,7 @@ public:
       return;
     }
 
-    const float dotR = std::max(4.0f, 12.0f - steps * 0.35f) + 4.0f;
+    const float dotR = std::max(8.0f, 24.0f - steps * 0.70f) + 8.0f;
     for (int s = 0; s < steps; s++) {
       const float a = (float(s) / float(steps)) * 6.2831853f - 1.5707963f;
       const float dx = cx + std::cos(a) * radius;

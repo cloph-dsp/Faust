@@ -57,34 +57,34 @@ ThreeBeatProblem::ThreeBeatProblem(const InstanceInfo& info)
       .WithColor(kFR, line)
       .WithColor(kHL, accent)
       .WithColor(kX1, textMain)
-      .WithLabelText(IText(11.f, textMuted, uiFont, EAlign::Center, EVAlign::Top))
-      .WithValueText(IText(12.f, textMain, uiFont, EAlign::Center, EVAlign::Bottom));
+      .WithLabelText(IText(22.f, textMuted, uiFont, EAlign::Center, EVAlign::Top))
+      .WithValueText(IText(24.f, textMain, uiFont, EAlign::Center, EVAlign::Bottom));
 
     graphics->AttachPanelBackground(bg);
 
     // Title + tagline
     graphics->AttachControl(new IVLabelControl(
-      IRECT(10, 6, 300, 26), "THREE BEAT PROBLEM",
-      DEFAULT_STYLE.WithValueText(IText(13.f, accent, uiFont, EAlign::Near, EVAlign::Middle))
+      IRECT(20, 12, 600, 52), "THREE BEAT PROBLEM",
+      DEFAULT_STYLE.WithValueText(IText(26.f, accent, uiFont, EAlign::Near, EVAlign::Middle))
                     .WithDrawFrame(false).WithDrawShadows(false)));
     graphics->AttachControl(new IVLabelControl(
-      IRECT(10, 26, 400, 42), "host tempo  *  3 independent circles  *  click dots to toggle",
-      DEFAULT_STYLE.WithValueText(IText(9.f, textMuted, uiFont, EAlign::Near, EVAlign::Middle))
+      IRECT(20, 52, 800, 84), "host tempo  *  3 independent circles  *  click dots to toggle",
+      DEFAULT_STYLE.WithValueText(IText(18.f, textMuted, uiFont, EAlign::Near, EVAlign::Middle))
                     .WithDrawFrame(false).WithDrawShadows(false)));
 
     // 3 columns: each has a circle on top + Steps/Note knobs below
-    const float colW = (PLUG_WIDTH - 20) / kNumCircles;
-    const float titleH = 48.0f;
-    const float knobSize = 46.0f;
-    const float knobGap = 8.0f;
+    const float colW = (PLUG_WIDTH - 40) / kNumCircles;
+    const float titleH = 96.0f;
+    const float knobSize = 92.0f;
+    const float knobGap = 16.0f;
 
     for (int c = 0; c < kNumCircles; c++) {
-      const float x0 = 10 + c * colW;
-      const float x1 = x0 + colW - 10;
+      const float x0 = 20 + c * colW;
+      const float x1 = x0 + colW - 20;
       const float cx = (x0 + x1) / 2;
 
       // Circle: fill available width, square aspect
-      const float circleD = std::min(colW - 20, 170.0f);
+      const float circleD = std::min(colW - 40, 340.0f);
       const float circleY0 = titleH;
       IRECT circleRect(cx - circleD / 2, circleY0, cx + circleD / 2, circleY0 + circleD);
 
@@ -110,7 +110,7 @@ ThreeBeatProblem::ThreeBeatProblem(const InstanceInfo& info)
       graphics->AttachControl(mCircles[c]);
 
       // Two knobs below the circle, centered
-      const float knobsY0 = circleY0 + circleD + 8;
+      const float knobsY0 = circleY0 + circleD + 16;
       const float knobsW = 2 * knobSize + knobGap;
       const float kx0 = cx - knobsW / 2;
       graphics->AttachControl(new IVKnobControl(
@@ -121,18 +121,18 @@ ThreeBeatProblem::ThreeBeatProblem(const InstanceInfo& info)
         NoteParam(c), "Note", kStyle));
 
       // Solo / Mute toggle buttons below the knobs
-      const float btnY = knobsY0 + knobSize + 8;
-      const float btnW = 30.0f;
-      const float btnH = 22.0f;
-      const float btnGap = 4.0f;
+      const float btnY = knobsY0 + knobSize + 16;
+      const float btnW = 60.0f;
+      const float btnH = 44.0f;
+      const float btnGap = 8.0f;
       const float btnsTotalW = 2 * btnW + btnGap;
       const float bx0 = cx - btnsTotalW / 2;
       graphics->AttachControl(new IVSwitchControl(
         IRECT(bx0, btnY, bx0 + btnW, btnY + btnH),
-        SoloParam(c), "S", kStyle.WithValueText(IText(11.f, accent, uiFont, EAlign::Center, EVAlign::Middle))));
+        SoloParam(c), "S", kStyle.WithValueText(IText(22.f, accent, uiFont, EAlign::Center, EVAlign::Middle))));
       graphics->AttachControl(new IVSwitchControl(
         IRECT(bx0 + btnW + btnGap, btnY, bx0 + 2 * btnW + btnGap, btnY + btnH),
-        MuteParam(c), "M", kStyle.WithValueText(IText(11.f, accent, uiFont, EAlign::Center, EVAlign::Middle))));
+        MuteParam(c), "M", kStyle.WithValueText(IText(22.f, accent, uiFont, EAlign::Center, EVAlign::Middle))));
     }
   };
 #endif
