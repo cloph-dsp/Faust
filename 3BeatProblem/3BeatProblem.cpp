@@ -19,6 +19,10 @@ ThreeBeatProblem::ThreeBeatProblem(const InstanceInfo& info)
     GetParam(StepsParam(c))->InitInt(name, 8, 1, kMaxSteps);
     snprintf(name, sizeof(name), "C%d Note", c + 1);
     GetParam(NoteParam(c))->InitInt(name, defaultNotes[c], 0, 127);
+    snprintf(name, sizeof(name), "C%d Solo", c + 1);
+    GetParam(SoloParam(c))->InitBool(name, false);
+    snprintf(name, sizeof(name), "C%d Mute", c + 1);
+    GetParam(MuteParam(c))->InitBool(name, false);
     for (int s = 0; s < kMaxSteps; s++) {
       snprintf(name, sizeof(name), "C%d S%d", c + 1, s + 1);
       GetParam(StepParam(c, s))->InitBool(name, false);
@@ -115,6 +119,20 @@ ThreeBeatProblem::ThreeBeatProblem(const InstanceInfo& info)
       graphics->AttachControl(new IVKnobControl(
         IRECT(kx0 + knobSize + knobGap, knobsY0, kx0 + 2 * knobSize + knobGap, knobsY0 + knobSize),
         NoteParam(c), "Note", kStyle));
+
+      // Solo / Mute toggle buttons below the knobs
+      const float btnY = knobsY0 + knobSize + 8;
+      const float btnW = 30.0f;
+      const float btnH = 22.0f;
+      const float btnGap = 4.0f;
+      const float btnsTotalW = 2 * btnW + btnGap;
+      const float bx0 = cx - btnsTotalW / 2;
+      graphics->AttachControl(new IVSwitchControl(
+        IRECT(bx0, btnY, bx0 + btnW, btnY + btnH),
+        SoloParam(c), "S", kStyle.WithValueText(IText(11.f, accent, uiFont, EAlign::Center, EVAlign::Middle))));
+      graphics->AttachControl(new IVSwitchControl(
+        IRECT(bx0 + btnW + btnGap, btnY, bx0 + 2 * btnW + btnGap, btnY + btnH),
+        MuteParam(c), "M", kStyle.WithValueText(IText(11.f, accent, uiFont, EAlign::Center, EVAlign::Middle))));
     }
   };
 #endif
@@ -131,6 +149,8 @@ void ThreeBeatProblem::OnParamChange(int paramIdx) {
   if (t == 0) {
     // Steps changed
     mCircles[c]->SetSteps(std::max(1, std::min(kMaxSteps, GetParam(paramIdx)->Int())));
+  } else if (t == 18 || t == 19) {
+    // Solo or Mute changed — no UI update needed for circle pattern
   } else if (t >= 2) {
     // Step bool changed — refresh entire pattern for this circle
     bool arr[kMaxSteps];
@@ -167,6 +187,17 @@ void ThreeBeatProblem::ProcessBlock(sample** inputs, sample** outputs, int nFram
     mCachedNote[c] = std::clamp(GetParam(NoteParam(c))->Int(), 0, 127);
     for (int s = 0; s < kMaxSteps; s++)
       mCachedPatterns[c][s] = GetParam(StepParam(c, s))->Value() > 0.5;
+  }
+
+  // Standard DAW solo/mute: if any circle is soloed, only soloed circles play
+  bool anySoloed = false;
+  for (int cc = 0; cc < kNumCircles; cc++)
+    if (GetParam(SoloParam(cc))->Value() > 0.5) { anySoloed = true; break; }
+  bool circleActive[kNumCircles];
+  for (int c = 0; c < kNumCircles; c++) {
+    bool muted  = GetParam(MuteParam(c))->Value() > 0.5;
+    bool soloed = GetParam(SoloParam(c))->Value() > 0.5;
+    circleActive[c] = !muted && (!anySoloed || soloed);
   }
 
   const bool transport = mTimeInfo.mTransportIsRunning;
@@ -212,7 +243,7 @@ void ThreeBeatProblem::ProcessBlock(sample** inputs, sample** outputs, int nFram
       if (curStep < 0) curStep += mCachedSteps[c];
 
       if (curStep != prevSteps[c]) {
-        if (mCachedPatterns[c][curStep]) {
+        if (circleActive[c] && mCachedPatterns[c][curStep]) {
           // Find a free voice slot
           int slot = -1;
           for (int v = 0; v < kMaxVoices; v++) {
@@ -236,7 +267,10 @@ void ThreeBeatProblem::ProcessBlock(sample** inputs, sample** outputs, int nFram
           SendMidiMsg(msgOn);
         }
         mCurrentSteps[c] = curStep;
-        mCurrentStepUIs[c].store(curStep);
+        if (circleActive[c])
+          mCurrentStepUIs[c].store(curStep);
+        else
+          mCurrentStepUIs[c].store(-1); // dim out inactive circles
         prevSteps[c] = curStep;
       }
     }

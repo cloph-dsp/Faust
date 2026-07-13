@@ -13,7 +13,7 @@ using namespace igraphics;
 
 constexpr int kMaxSteps = 16;
 constexpr int kNumCircles = 3;
-constexpr int kParamsPerCircle = 18; // 1 Steps + 1 Note + 16 step bools
+constexpr int kParamsPerCircle = 20; // 1 Steps + 1 Note + 1 Solo + 1 Mute + 16 step bools
 
 // Custom IControl: single circle with dynamic step dots (1..kMaxSteps).
 // Clicks toggle a step, right-click clears the pattern.
@@ -114,9 +114,11 @@ public:
     kNumParams = kNumCircles * kParamsPerCircle
   };
 
-  // Param layout per circle: [Steps, Note, Step0..Step15]
+  // Param layout per circle: [Steps, Note, Solo, Mute, Step0..Step15]
   static int StepsParam(int c) { return kParamCircle0Steps + c * kParamsPerCircle; }
   static int NoteParam(int c)  { return kParamCircle0Steps + c * kParamsPerCircle + 1; }
+  static int SoloParam(int c)  { return kParamCircle0Steps + c * kParamsPerCircle + 18; }
+  static int MuteParam(int c)  { return kParamCircle0Steps + c * kParamsPerCircle + 19; }
   static int StepParam(int c, int s) { return kParamCircle0Steps + c * kParamsPerCircle + 2 + s; }
 
 private:
