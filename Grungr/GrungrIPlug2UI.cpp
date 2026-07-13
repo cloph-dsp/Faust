@@ -1428,22 +1428,24 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
                                     backgroundBounds.L + (backgroundBounds.W() * kStompRightNorm),
                                     backgroundBounds.T + (backgroundBounds.H() * kStompBottomNorm));
 
-  // I/O meters: place in the lower control zone, flanking the bypass toggle
-  // Reserve space at bottom (≥130-150px per user preference)
-  const float meterW = 26.f;  // ~20-30 px wide
-  const float meterAreaBottom = backgroundBounds.B - 8.f;
-  const float meterAreaTop = r.bypassToggle.T - 16.f;  // Position above bypass toggle
+  // I/O meters: place adjacent to GRUNGR title on the right side (per user feedback m0294).
+  // Both meters sit side-by-side, just to the right of r.title, vertically aligned with the title block.
+  const float meterW = 26.f;
+  const float meterGap = 8.f;
+  const float meterAreaTop = r.title.T;
+  const float meterAreaBottom = r.title.B;
+  const float metersLeftX = r.title.R + 14.f;
 
-  // Input meter on the left side
-  r.inputMeter = igraphics::IRECT(backgroundBounds.L + 12.f,
+  // Input meter immediately right of title
+  r.inputMeter = igraphics::IRECT(metersLeftX,
                                    meterAreaTop,
-                                   backgroundBounds.L + 12.f + meterW,
+                                   metersLeftX + meterW,
                                    meterAreaBottom);
 
-  // Output meter on the right side
-  r.outputMeter = igraphics::IRECT(backgroundBounds.R - 12.f - meterW,
+  // Output meter just to the right of the input meter
+  r.outputMeter = igraphics::IRECT(metersLeftX + meterW + meterGap,
                                     meterAreaTop,
-                                    backgroundBounds.R - 12.f,
+                                    metersLeftX + meterW + meterGap + meterW,
                                     meterAreaBottom);
 
   ValidateAccessibilityLayout(r, uiBounds, kMinInteractiveTargetPx);
