@@ -1413,17 +1413,20 @@ LayoutRects MakeLayout(const igraphics::IRECT& uiBounds, const igraphics::IRECT&
 
   // I/O meters: side-by-side just to the right of the GRUNGR title block.
   // Clamp title width so the meters have guaranteed space within the faceplate
-  // (otherwise the wide centered title can push the output meter off-screen).
+  // on BOTH sides (input left, output right). The clamped title stays centered
+  // horizontally so the space available on each side is symmetric.
   const float meterW = 26.f;
   const float meterGap = 8.f;
-  const float meterReserved = meterW * 2 + meterGap + 14.f + 14.f;  // both meters + gap + side margins
-  const float maxTitleWithMeters = (backgroundBounds.R - backgroundBounds.L) - meterReserved;
+  const float meterSideMargin = 8.f;
+  const float meterReservedPerSide = meterW + meterGap + meterSideMargin;
+  const float totalReserved = meterReservedPerSide * 2.f;
+  const float maxTitleWithMeters = std::max(120.f,
+                                             (backgroundBounds.R - backgroundBounds.L) - totalReserved);
   if (r.title.W() > maxTitleWithMeters) {
-    const float newW = std::max(120.f, maxTitleWithMeters);
-    const float cx = backgroundBounds.L + 14.f + newW * 0.5f;
+    const float newW = maxTitleWithMeters;
+    const float cx = (backgroundBounds.L + backgroundBounds.R) * 0.5f;
     r.title = igraphics::IRECT(cx - newW * 0.5f, r.title.T, cx + newW * 0.5f, r.title.B);
   }
-  const float metersLeftX = r.title.R + 14.f;
 
   // I/O meters: one on each side of the GRUNGR title (per user feedback m0410).
   // Input on the LEFT, output on the RIGHT, vertically aligned with the title block.
