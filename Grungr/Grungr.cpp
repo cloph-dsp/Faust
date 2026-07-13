@@ -164,6 +164,18 @@ void Grungr::OnReset()
   mSilentInput.assign(preallocFrames, 0.0);
   mScratchOutput.assign(preallocFrames, 0.0);
 
+  // Input meter is delayed by PLUG_LATENCY so it visually aligns with the
+  // output meter (which is the processed input from N samples ago).
+  // Queue depth = ceil(PLUG_LATENCY / blockSize) + 1 (older value reads out first).
+  const int blockSize = std::max(1, GetBlockSize());
+  mInputDelayBlocks = (PLUG_LATENCY + blockSize - 1) / blockSize;
+  mInputPeakHistoryL.clear();
+  mInputPeakHistoryR.clear();
+  mInputPeakDelayedL.store(0.f, std::memory_order_relaxed);
+  mInputPeakDelayedR.store(0.f, std::memory_order_relaxed);
+  mOutputPeakL.store(0.f, std::memory_order_relaxed);
+  mOutputPeakR.store(0.f, std::memory_order_relaxed);
+
   for (int paramIdx = 0; paramIdx < kNumParams; ++paramIdx)
   {
     SyncParamToFaust(paramIdx);
@@ -189,6 +201,20 @@ void Grungr::OnReset()
 void Grungr::OnParamChange(int paramIdx)
 {
   SyncParamToFaust(paramIdx);
+}
+
+void Grungr::OnIdle()
+{
+  // Push current I/O peaks to GUI meters. Input peak is delayed
+  // (see ProcessBlock + mInputPeakHistoryL/R) so the input bar
+  // tracks the same audio frame as the output bar.
+  if (auto* pGraphics = GetUI()) {
+    grungr::ui::UpdateMeterLevels(pGraphics,
+                                  mInputPeakDelayedL.load(std::memory_order_relaxed),
+                                  mInputPeakDelayedR.load(std::memory_order_relaxed),
+                                  mOutputPeakL.load(std::memory_order_relaxed),
+                                  mOutputPeakR.load(std::memory_order_relaxed));
+  }
 }
 
 void Grungr::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
@@ -239,5 +265,42 @@ void Grungr::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       }
     }
   }
+
+  // ---- Meter peaks ----
+  // Compute per-block peak (max abs) for input and output. The current
+  // output peak reflects the processed input from PLUG_LATENCY samples
+  // ago, so to align the meters visually we delay the input peak by the
+  // same amount. PLUG_LATENCY is small (<=128 samples) and the variable
+  // block-size assumption means the delay is rounded up to whole audio
+  // blocks; sub-block drift is imperceptible at the GUI refresh rate.
+  float inPeakL = 0.f, inPeakR = 0.f;
+  float outPeakL = 0.f, outPeakR = 0.f;
+  for (int s = 0; s < nFrames; ++s) {
+    const float inL = std::fabs(static_cast<float>(in0[s]));
+    const float inR = std::fabs(static_cast<float>(in1[s]));
+    const float oL  = std::fabs(static_cast<float>(out0[s]));
+    const float oR  = (nOut > 1) ? std::fabs(static_cast<float>(out1[s])) : oL;
+    if (inL > inPeakL) inPeakL = inL;
+    if (inR > inPeakR) inPeakR = inR;
+    if (oL  > outPeakL) outPeakL = oL;
+    if (oR  > outPeakR) outPeakR = oR;
+  }
+
+  // Push current input peak into the delay history; pop oldest if the
+  // deque grew past the configured delay depth. The front of the deque
+  // is what "reaches" the output stage N blocks later, so it becomes
+  // the displayed input peak. Output peak is direct.
+  mInputPeakHistoryL.push_back(inPeakL);
+  mInputPeakHistoryR.push_back(inPeakR);
+  while (static_cast<int>(mInputPeakHistoryL.size()) > mInputDelayBlocks + 1) {
+    mInputPeakHistoryL.pop_front();
+    mInputPeakHistoryR.pop_front();
+  }
+  const float delayedInL = mInputPeakHistoryL.front();
+  const float delayedInR = mInputPeakHistoryR.front();
+  mInputPeakDelayedL.store(delayedInL, std::memory_order_relaxed);
+  mInputPeakDelayedR.store(delayedInR, std::memory_order_relaxed);
+  mOutputPeakL.store(outPeakL, std::memory_order_relaxed);
+  mOutputPeakR.store(outPeakR, std::memory_order_relaxed);
 }
 #endif

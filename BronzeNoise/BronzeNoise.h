@@ -18,8 +18,33 @@ enum EParams
   kFFTSize,
   kCharacter,
   kTransient,
+  kBnMix,         // 0=dry, 1=wet (default 1, full wet)
+  kBnStereoMode,  // 0=Linked, 1=Mid only, 2=Side only, 3=Independent
+  kBnAutoGain,    // 0=off, 1=on (default on)
+  kBnVisualMode,  // 0=All 3 curves, 1=After only, 2=Delta fill, 3=Before+Target overlay
+  kBnReset,       // momentary button (0=idle, 1=triggered)
+  kBnABCompare,   // momentary button (0=idle, 1=capture, 2=compare)
   kBypass,
   kNumParams
+};
+
+// Visual modes (used as enum display for kVisualMode)
+enum EVisualMode
+{
+  kVisualAllCurves = 0,
+  kVisualAfterOnly,
+  kVisualDeltaFill,
+  kVisualBeforeTarget,
+  kNumVisualModes
+};
+
+enum EStereoMode
+{
+  kStereoLinked = 0,
+  kStereoMidOnly,
+  kStereoSideOnly,
+  kStereoIndependent,
+  kNumStereoModes
 };
 
 enum ETargetCurve
@@ -55,7 +80,7 @@ class IOMeterControl;
 using namespace iplug;
 using namespace igraphics;
 
-class BronzeNoise final : public Plugin
+class BronzeNoise final : public iplug::Plugin
 {
 public:
   BronzeNoise(const InstanceInfo& info);
@@ -73,6 +98,10 @@ public:
   void OnParentWindowResize(int width, int height) override;
   void OnActivate(bool active) override;
   void OnIdle() override;
+  // Crash guard: when the editor closes, iPlug2 calls IGraphics::~IGraphics ->
+  // RemoveAllControls() which deletes every control. We null our cached
+  // member pointers BEFORE OnIdle can dereference a freed IControl*.
+  void OnUIClose() override;
 
   // I/O meter control pointers (UI thread, OnIdle polls atomics and updates them).
   IOMeterControl* mInputMeter = nullptr;
@@ -80,6 +109,9 @@ public:
   // Latency readout label (updated dynamically in OnReset when FFT size changes).
   // NB: ITextControl is not available in headers (IGraphics_include_in_plug_src.h is .cpp-only), so store as base IControl*.
   IControl* mLatencyLabel = nullptr;
+  // Spectrum visualizer (cached pointer so the audio->UI publish path skips the
+  // dynamic_cast scan). Nulled in OnParentWindowResize before RemoveAllControls().
+  IControl* mVisControl = nullptr;
 #endif
 
 private:
@@ -163,6 +195,10 @@ private:
   bool mBypassed = false;
   int mPrevFFTSize = 4096;                       // Track FFT size across state loads
 
+  // A/B compare snapshot (capture button → toggle)
+  double mABSnapshotA[7] = {};                   // Stores Amount,Target,Smoothing,Q,FFTSize,Character,Transient
+  bool mABHasSnapshot = false;
+
   // VST3 GUI parameter sync (Freeze95 pattern: setComponentState is a no-op in non-distributed VST3)
   bool mSendUpdate = false;
 
@@ -178,5 +214,12 @@ private:
   std::atomic<float> mInputPeakR {0.f};
   std::atomic<float> mOutputPeakL {0.f};
   std::atomic<float> mOutputPeakR {0.f};
+
+  // CPU profiling (release-readiness): audio thread writes per-block wall time
+  // in ms; UI thread polls at OnIdle and renders a "% CPU" overlay. Real-time
+  // safe — atomics only, no allocations.
+  std::atomic<double> mBlockCpuMsLast {0.0};   // wall time of last ProcessBlock
+  std::atomic<double> mBlockCpuMsAvg {0.0};    // EWMA (alpha=0.05) for stable read
+  std::atomic<double> mHopCpuMsAvg {0.0};      // EWMA of per-hop FFT/DSP time
 #endif
 };

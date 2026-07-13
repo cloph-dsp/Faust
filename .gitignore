@@ -35,6 +35,9 @@ Build/
 # Grungr project files (required for CI build)
 !Grungr/projects/*.vcxproj
 !Grungr/projects/*.vcxproj.filters
+# BronzeNoise project files (required for CI build, same reason as Grungr)
+!BronzeNoise/projects/*.vcxproj
+!BronzeNoise/projects/*.vcxproj.filters
 *.suo
 *.userosscache
 *.sln.docstates

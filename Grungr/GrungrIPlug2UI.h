@@ -36,5 +36,13 @@ bool HandleGlobalKey(igraphics::IGraphics* pGraphics,
                      const iplug::IKeyPress& key,
                      bool isUp);
 
+// Push I/O meter peak values to the SimpleMeterControl widgets.
+// Input peaks should already be delayed by PLUG_LATENCY samples
+// so they visually align with the output (which is processed input
+// from N samples ago).
+void UpdateMeterLevels(igraphics::IGraphics* pGraphics,
+                       float inputL, float inputR,
+                       float outputL, float outputR);
+
 }  // namespace ui
 }  // namespace grungr
