@@ -13,7 +13,7 @@ using namespace igraphics;
 
 constexpr int kMaxSteps = 16;
 constexpr int kNumCircles = 3;
-constexpr int kParamsPerCircle = 20; // 1 Steps + 1 Note + 1 Solo + 1 Mute + 16 step bools
+constexpr int kParamsPerCircle = 21; // 1 Steps + 1 Note + 1 Solo + 1 Mute + 1 FillGap + 16 step bools
 
 // Custom IControl: single circle with dynamic step dots (1..kMaxSteps).
 // Clicks toggle a step, right-click clears the pattern.
@@ -111,17 +111,85 @@ public:
 
   enum EParams {
     kParamCircle0Steps = 0,
-    kParamSwing = kNumCircles * kParamsPerCircle,     // 60
-    kParamMutation,                                      // 61
-    kNumParams = 62
+    kParamSwing = kNumCircles * kParamsPerCircle,     // 63
+    kParamMutation,                                      // 64
+    kNumParams = 65
   };
 
-  // Param layout per circle: [Steps, Note, Solo, Mute, Step0..Step15]
-  static int StepsParam(int c) { return kParamCircle0Steps + c * kParamsPerCircle; }
-  static int NoteParam(int c)  { return kParamCircle0Steps + c * kParamsPerCircle + 1; }
-  static int SoloParam(int c)  { return kParamCircle0Steps + c * kParamsPerCircle + 18; }
-  static int MuteParam(int c)  { return kParamCircle0Steps + c * kParamsPerCircle + 19; }
+  // Public methods for Fill/Rotate pattern actions
+  void FillCircle(int c);
+  void RotateCircle(int c, int direction); // direction: -1=left, +1=right
+
+  // Param layout per circle: [Steps, Note, Solo, Mute, FillGap, Step0..Step15]
+  static int StepsParam(int c)   { return kParamCircle0Steps + c * kParamsPerCircle; }
+  static int NoteParam(int c)    { return kParamCircle0Steps + c * kParamsPerCircle + 1; }
+  static int SoloParam(int c)    { return kParamCircle0Steps + c * kParamsPerCircle + 18; }
+  static int MuteParam(int c)    { return kParamCircle0Steps + c * kParamsPerCircle + 19; }
+  static int FillGapParam(int c) { return kParamCircle0Steps + c * kParamsPerCircle + 20; }
   static int StepParam(int c, int s) { return kParamCircle0Steps + c * kParamsPerCircle + 2 + s; }
+
+  // Inline gap-enum bar (5 cells: gap=1,2,3,4,8) + Fill button per circle
+  class FillControl final : public IControl {
+  public:
+    FillControl(IRECT bounds, int circleIdx, std::function<void()> onFill)
+      : IControl(bounds), mCircleIdx(circleIdx), mOnFill(std::move(onFill)) {}
+    void Draw(IGraphics& g) override {
+      const IRECT& R = mRECT;
+      const int gapVals[5] = {1, 2, 3, 4, 8};
+      const float cellW = R.W() / 6.0f;
+      for (int i = 0; i < 5; i++) {
+        IRECT cellR(R.L + i * cellW, R.T, R.L + (i + 1) * cellW - 2, R.B);
+        IColor bg = (i == mGapSel - 1) ? IColor(255, 41, 211, 178) : IColor(255, 30, 45, 51);
+        g.FillRect(bg, cellR);
+        g.DrawRect(IColor(255, 54, 81, 95), cellR);
+        char label[4];
+        snprintf(label, sizeof(label), "%d", gapVals[i]);
+        IColor txtCol = (i == mGapSel - 1) ? IColor(255, 15, 20, 23) : IColor(255, 233, 242, 244);
+        g.DrawText(IText(18.f, txtCol, nullptr, EAlign::Center, EVAlign::Middle), label, cellR);
+      }
+      IRECT btnR(R.R - cellW + 2, R.T, R.R, R.B);
+      g.FillRect(IColor(255, 41, 211, 178), btnR);
+      g.DrawRect(IColor(255, 54, 81, 95), btnR);
+      g.DrawText(IText(18.f, IColor(255, 15, 20, 23), nullptr, EAlign::Center, EVAlign::Middle), "FILL", btnR);
+    }
+    void OnMouseDown(float x, float y, const IMouseMod& mod) override {
+      const IRECT& R = mRECT;
+      const float cellW = R.W() / 6.0f;
+      const int cell = int((x - R.L) / cellW);
+      if (cell >= 0 && cell < 5) {
+        mGapSel = cell + 1;
+        SetDirty();
+      } else if (cell == 5) {
+        if (mOnFill) mOnFill();
+      }
+    }
+    int GetGapSel() const { return mGapSel; }
+  private:
+    int mCircleIdx;
+    int mGapSel = 1;
+    std::function<void()> mOnFill;
+  };
+
+  // Inline rotate L/R buttons per circle
+  class RotateControl final : public IControl {
+  public:
+    RotateControl(IRECT bounds, int circleIdx, int direction, std::function<void()> onRotate)
+      : IControl(bounds), mCircleIdx(circleIdx), mDirection(direction), mOnRotate(std::move(onRotate)) {}
+    void Draw(IGraphics& g) override {
+      const IRECT& R = mRECT;
+      g.FillRect(IColor(255, 30, 45, 51), R);
+      g.DrawRect(IColor(255, 54, 81, 95), R);
+      const char* arrow = mDirection < 0 ? "<" : ">";
+      g.DrawText(IText(20.f, IColor(255, 41, 211, 178), nullptr, EAlign::Center, EVAlign::Middle), arrow, R);
+    }
+    void OnMouseDown(float x, float y, const IMouseMod& mod) override {
+      if (mOnRotate) mOnRotate();
+    }
+  private:
+    int mCircleIdx;
+    int mDirection; // -1=left, +1=right
+    std::function<void()> mOnRotate;
+  };
 
 private:
   // Internal sine-voice synth (shared across all circles)
@@ -144,10 +212,16 @@ private:
   int mCachedSwing = 0;
   int mCachedMutation = 0;
 
+  // Per-circle cached fill gap
+  int mCachedFillGap[kNumCircles] = {1, 1, 1};
+
   // Per-circle step tracking
   int mCurrentSteps[kNumCircles] = {-1, -1, -1};
   std::atomic<int> mCurrentStepUIs[kNumCircles];
 
   // UI control pointers
   CircleSteps* mCircles[kNumCircles] = {};
+  FillControl* mFills[kNumCircles] = {};
+  RotateControl* mRotatesL[kNumCircles] = {};
+  RotateControl* mRotatesR[kNumCircles] = {};
 };

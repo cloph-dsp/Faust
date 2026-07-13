@@ -11,7 +11,7 @@ ThreeBeatProblem::ThreeBeatProblem(const InstanceInfo& info)
   for (int c = 0; c < kNumCircles; c++)
     mCurrentStepUIs[c].store(-1);
 
-  // Per-circle params: Steps, Note, 16 step bools
+  // Per-circle params: Steps, Note, Solo, Mute, FillGap, 16 step bools
   const int defaultNotes[kNumCircles] = {60, 64, 67}; // C4, E4, G4
   for (int c = 0; c < kNumCircles; c++) {
     char name[24];
@@ -23,6 +23,8 @@ ThreeBeatProblem::ThreeBeatProblem(const InstanceInfo& info)
     GetParam(SoloParam(c))->InitBool(name, false);
     snprintf(name, sizeof(name), "C%d Mute", c + 1);
     GetParam(MuteParam(c))->InitBool(name, false);
+    snprintf(name, sizeof(name), "C%d Fill Gap", c + 1);
+    GetParam(FillGapParam(c))->InitInt(name, 1, 1, 5);
     for (int s = 0; s < kMaxSteps; s++) {
       snprintf(name, sizeof(name), "C%d S%d", c + 1, s + 1);
       GetParam(StepParam(c, s))->InitBool(name, false);
@@ -145,6 +147,28 @@ ThreeBeatProblem::ThreeBeatProblem(const InstanceInfo& info)
       graphics->AttachControl(new IVSwitchControl(
         IRECT(bx0 + btnW + btnGap, btnY, bx0 + 2 * btnW + btnGap, btnY + btnH),
         MuteParam(c), "M", kStyle.WithValueText(IText(22.f, accent, uiFont, EAlign::Center, EVAlign::Middle))));
+
+      // Fill bar (5 gap cells + Fill button) below S/M buttons
+      const float fillY = btnY + btnH + 16;
+      const float fillH = 36;
+      const float fillW = bx0 + 2 * btnW + btnGap - bx0;
+      IRECT fillR(bx0, fillY, bx0 + fillW, fillY + fillH);
+      mFills[c] = new FillControl(fillR, c, [this, c]() { this->FillCircle(c); });
+      graphics->AttachControl(mFills[c]);
+
+      // Rotate L/R buttons below fill bar
+      const float rotY = fillY + fillH + 8;
+      const float rotW = 60.0f;
+      const float rotH = 44.0f;
+      const float rotGap = 8.0f;
+      const float rotTotalW = 2 * rotW + rotGap;
+      const float rotX0 = cx - rotTotalW / 2;
+      mRotatesL[c] = new RotateControl(IRECT(rotX0, rotY, rotX0 + rotW, rotY + rotH), c, -1,
+        [this, c]() { this->RotateCircle(c, -1); });
+      mRotatesR[c] = new RotateControl(IRECT(rotX0 + rotW + rotGap, rotY, rotX0 + 2 * rotW + rotGap, rotY + rotH), c, +1,
+        [this, c]() { this->RotateCircle(c, +1); });
+      graphics->AttachControl(mRotatesL[c]);
+      graphics->AttachControl(mRotatesR[c]);
     }
   };
 #endif
@@ -171,6 +195,9 @@ void ThreeBeatProblem::OnParamChange(int paramIdx) {
   if (t == 0) {
     // Steps changed
     mCircles[c]->SetSteps(std::max(1, std::min(kMaxSteps, GetParam(paramIdx)->Int())));
+  } else if (t == 20) {
+    // FillGap changed — cache it
+    mCachedFillGap[c] = std::clamp(GetParam(paramIdx)->Int(), 1, 5);
   } else if (t == 18 || t == 19) {
     // Solo or Mute changed — no UI update needed for circle pattern
   } else if (t >= 2) {
@@ -364,5 +391,40 @@ void ThreeBeatProblem::OnReset() {
     mVoices[v].mSamplesLeft = 0;
     mVoices[v].mTotalSamples = 1;
   }
+}
+
+void ThreeBeatProblem::FillCircle(int c) {
+  const int gapVals[5] = {1, 2, 3, 4, 8};
+  int gapIdx = mCachedFillGap[c] - 1;
+  int gap = gapVals[gapIdx >= 0 && gapIdx < 5 ? gapIdx : 0];
+  bool arr[kMaxSteps];
+  for (int s = 0; s < kMaxSteps; s++)
+    arr[s] = (s % gap == 0);
+  for (int s = 0; s < kMaxSteps; s++) {
+    BeginInformHostOfParamChangeFromUI(StepParam(c, s));
+    GetParam(StepParam(c, s))->Set(arr[s] ? 1.0 : 0.0);
+    EndInformHostOfParamChangeFromUI(StepParam(c, s));
+  }
+  if (mCircles[c]) mCircles[c]->SetPattern(arr);
+}
+
+void ThreeBeatProblem::RotateCircle(int c, int direction) {
+  bool arr[kMaxSteps];
+  mCircles[c]->GetPattern(arr);
+  if (direction < 0) {
+    bool first = arr[0];
+    for (int s = 0; s < kMaxSteps - 1; s++) arr[s] = arr[s + 1];
+    arr[kMaxSteps - 1] = first;
+  } else {
+    bool last = arr[kMaxSteps - 1];
+    for (int s = kMaxSteps - 1; s > 0; s--) arr[s] = arr[s - 1];
+    arr[0] = last;
+  }
+  for (int s = 0; s < kMaxSteps; s++) {
+    BeginInformHostOfParamChangeFromUI(StepParam(c, s));
+    GetParam(StepParam(c, s))->Set(arr[s] ? 1.0 : 0.0);
+    EndInformHostOfParamChangeFromUI(StepParam(c, s));
+  }
+  if (mCircles[c]) mCircles[c]->SetPattern(arr);
 }
 #endif
