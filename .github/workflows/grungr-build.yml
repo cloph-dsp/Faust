@@ -441,8 +441,8 @@ jobs:
             PL="$BUNDLE/Contents/Info.plist"
             $PLISTBUDDY -c "Set :CFBundleExecutable Grungr"            "$PL"
             $PLISTBUDDY -c "Set :CFBundleName Grungr"                  "$PL"
-            $PLISTBUDDY -c "Set :CFBundleShortVersionString 2.6.0"     "$PL"
-            $PLISTBUDDY -c "Set :CFBundleVersion 2.6.0"                "$PL"
+            $PLISTBUDDY -c "Set :CFBundleShortVersionString 2.7.0"     "$PL"
+            $PLISTBUDDY -c "Set :CFBundleVersion 2.7.0"                "$PL"
             $PLISTBUDDY -c "Set :LSMinimumSystemVersion 10.15"         "$PL"
           done
 
