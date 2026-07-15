@@ -11,10 +11,10 @@
 // therefore keep process() strictly 2-in/2-out and do all analysis in C++.
 // =============================================================================
 
-declare name "TunerDSP";
+declare name "Tuner";
 declare version "1.0";
 declare description "Transparent stereo pass-through for iPlug2 VST3 tuner host";
-declare author "CLOPH";
+declare author "cloph";
 declare license "MIT";
 
 import("stdfaust.lib");
