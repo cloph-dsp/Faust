@@ -7,6 +7,7 @@ import("stdfaust.lib");
 declare name "Grungr";
 declare author "cloph";
 declare version "2.7";
+declare description "Three-knob DOD FX69B Grunge pedal emulation with RAW/MOD/BASS voicing switch and analog-style stomp bypass.";
 
 //============================================================================
 // UI Controls
