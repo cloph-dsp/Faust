@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{F6A7A45D-C63F-4C2B-B80F-5E5A1E95F562}</ProjectGuid>
+    <RootNamespace>DataBend</RootNamespace>
+    <ProjectName>DataBend-vst3</ProjectName>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(SolutionDir)config\DataBend-win.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(SolutionDir)config\DataBend-win.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(SolutionDir)build-win\vst3\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)build-win\vst3\$(Platform)\$(Configuration)\int\</IntDir>
+    <TargetExt>.vst3</TargetExt>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)build-win\vst3\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)build-win\vst3\$(Platform)\$(Configuration)\int\</IntDir>
+    <TargetExt>.vst3</TargetExt>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <PreprocessorDefinitions>$(VST3_DEFS);$(DEBUG_DEFS);$(EXTRA_DEBUG_DEFS);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(VST3_INC_PATHS);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <ModuleDefinitionFile>$(VST3_SDK)\public.sdk\source\main\winexport.def</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>$(VST3_DEFS);$(RELEASE_DEFS);$(EXTRA_RELEASE_DEFS);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(VST3_INC_PATHS);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <ModuleDefinitionFile>$(VST3_SDK)\public.sdk\source\main\winexport.def</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\config.h" />
+    <ClInclude Include="..\DataBend.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\DataBend.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\baseiids.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\fbuffer.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\fdebug.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\fdynlib.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\fobject.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\fstreamer.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\fstring.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\timer.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\updatehandler.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\thread\source\fcondition.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\thread\source\flock.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\pluginterfaces\base\conststringtable.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\pluginterfaces\base\coreiids.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\pluginterfaces\base\funknown.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\pluginterfaces\base\ustring.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\public.sdk\source\common\commoniids.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\public.sdk\source\common\memorystream.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\public.sdk\source\common\pluginview.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\public.sdk\source\main\dllmain.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\public.sdk\source\main\pluginfactory.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstaudioeffect.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstbus.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstcomponent.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstcomponentbase.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstinitiids.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstparameters.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstsinglecomponenteffect.cpp" />
+    <ClCompile Include="..\..\iPlug2\WDL\win32_utf8.c" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IGraphics\Controls\IControls.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IGraphics\Controls\IPopupMenuControl.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IGraphics\Controls\ITextEntryControl.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IGraphics\IControl.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IGraphics\IGraphics.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IGraphics\IGraphicsEditorDelegate.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IGraphics\Platforms\IGraphicsWin.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IPlug\IPlugAPIBase.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IPlug\IPlugParameter.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IPlug\IPlugPaths.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IPlug\IPlugPluginBase.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IPlug\IPlugProcessor.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IPlug\IPlugTimer.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IPlug\VST3\IPlugVST3.cpp" />
+    <ClCompile Include="$(IPLUG2_ROOT)\IPlug\VST3\IPlugVST3_ProcessorBase.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

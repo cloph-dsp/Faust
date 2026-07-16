@@ -154,8 +154,8 @@ DataBend::DataBend(const InstanceInfo& info)
   GetParam(kOutputTrim)->InitDouble("Output", 0.0, -18.0, 6.0, 0.1, "dB");
 
 #if IPLUG_EDITOR
-  mMakeGraphicsFunc = [&]() {
-    return MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_HEIGHT));
+  mMakeGraphicsFunc = [&]() -> IGraphics* {
+    return MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
   };
 
   mLayoutFunc = [&](IGraphics* graphics) {
