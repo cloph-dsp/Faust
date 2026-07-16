@@ -144,6 +144,7 @@ public:
   bool OnHostRequestingSupportedViewConfiguration(int width, int height) override;
   void OnHostSelectedViewConfiguration(int width, int height) override;
   void OnParentWindowResize(int width, int height) override;
+  bool ConstrainEditorResize(int& w, int& h) const override;
 #endif
 
   const TunerAnalysis::Result& GetAnalysisResult() const {

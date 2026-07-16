@@ -740,12 +740,38 @@ void Tuner::OnHostSelectedViewConfiguration(int width, int height)
 
 void Tuner::OnParentWindowResize(int width, int height)
 {
-  // Same Scale-mode handling for window-level resize events, but FIRST
-  // call ConstrainEditorResize to enforce aspect ratio + MIN/MAX clamps.
-  int w = width;
-  int h = height;
-  ConstrainEditorResize(w, h);
-  OnHostSelectedViewConfiguration(w, h);
+  // Freeze95 pattern: don't constrain the window size, just scale the inner
+  // canvas via min(scaleX, scaleY) so the content always has the right aspect
+  // ratio. The window may have letterbox margins but content is always locked.
+  OnHostSelectedViewConfiguration(width, height);
+}
+
+bool Tuner::ConstrainEditorResize(int& w, int& h) const
+{
+  // Override the base class to enforce aspect ratio (PLUG_WIDTH:PLUG_HEIGHT).
+  // The base only clips to MIN/MAX independently; we additionally lock the
+  // aspect ratio so the host window rectangle always matches 9:5.
+  // Called by VST3 checkSizeConstraint + CLAP canResize + our own resize handlers.
+  const float aspect = static_cast<float>(PLUG_WIDTH) / static_cast<float>(PLUG_HEIGHT);
+
+  // First clip to MIN/MAX bounds
+  w = std::max(PLUG_MIN_WIDTH, std::min(w, PLUG_MAX_WIDTH));
+  h = std::max(PLUG_MIN_HEIGHT, std::min(h, PLUG_MAX_HEIGHT));
+
+  // Then lock aspect ratio: derive h from w (height follows width)
+  h = static_cast<int>(static_cast<float>(w) / aspect + 0.5f);
+
+  // Re-clip h after aspect adjustment
+  if (h < PLUG_MIN_HEIGHT) {
+    h = PLUG_MIN_HEIGHT;
+    w = static_cast<int>(static_cast<float>(h) * aspect + 0.5f);
+  }
+  if (h > PLUG_MAX_HEIGHT) {
+    h = PLUG_MAX_HEIGHT;
+    w = static_cast<int>(static_cast<float>(h) * aspect + 0.5f);
+  }
+
+  return true;
 }
 
 #endif // IPLUG_EDITOR
