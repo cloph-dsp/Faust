@@ -141,6 +141,8 @@ public:
 #if IPLUG_EDITOR
   void OnIdle() override;
   void LayoutUI(IGraphics* pGraphics) override;
+  bool OnHostRequestingSupportedViewConfiguration(int width, int height) override;
+  void OnHostSelectedViewConfiguration(int width, int height) override;
 #endif
 
   const TunerAnalysis::Result& GetAnalysisResult() const {

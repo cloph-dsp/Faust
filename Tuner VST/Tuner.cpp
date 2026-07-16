@@ -709,4 +709,19 @@ void Tuner::LayoutUI(IGraphics* pGraphics) {
   SendCurrentParamValuesFromDelegate();
 }
 
+bool Tuner::OnHostRequestingSupportedViewConfiguration(int width, int height)
+{
+  // Window can resize freely; ConstrainEditorResize locks the aspect ratio
+  // (matching PLUG_WIDTH:PLUG_HEIGHT) and clamps to PLUG_MIN/MAX bounds.
+  // LayoutUI is unchanged, so elements stay fixed at their canonical positions.
+  return ConstrainEditorResize(width, height);
+}
+
+void Tuner::OnHostSelectedViewConfiguration(int width, int height)
+{
+  if (GetUI()) {
+    GetUI()->Resize(width, height, 1.f, true);
+  }
+}
+
 #endif // IPLUG_EDITOR
