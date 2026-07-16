@@ -34,13 +34,13 @@
 #define PLUG_HEIGHT           300
 #define PLUG_FPS              30
 
-// Host resize support.  We don't shrink/grow dynamically -- fixed size keeps
-// the UI layout simple -- but we report the canonical size.
-#define PLUG_HOST_RESIZE      0
-#define PLUG_MIN_WIDTH        PLUG_WIDTH
-#define PLUG_MIN_HEIGHT       PLUG_HEIGHT
-#define PLUG_MAX_WIDTH        PLUG_WIDTH
-#define PLUG_MAX_HEIGHT       PLUG_HEIGHT
+// Host resize support.  Allow the host to scale the editor between half and
+// double the canonical 540x300 (matches Freeze95's half/double pattern).
+#define PLUG_HOST_RESIZE      1
+#define PLUG_MIN_WIDTH        270
+#define PLUG_MIN_HEIGHT       150
+#define PLUG_MAX_WIDTH        1080
+#define PLUG_MAX_HEIGHT       600
 
 // AUv2 entry points (compiled by iPlug2).  The first three are required
 // by IPlug_include_in_plug_hdr.h -- without AUV2_FACTORY and AUV2_VIEW_CLASS
