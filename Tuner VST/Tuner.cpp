@@ -773,7 +773,9 @@ bool Tuner::ConstrainEditorResize(int& w, int& h) const
     w = static_cast<int>(static_cast<float>(h) * aspect + 0.5f);
   }
 
-  return true;
+  // Return false so the host applies constrained size to pRect (iPlug2 checks
+  // !ConstrainEditorResize before writing back -- true means "ignore me").
+  return false;
 }
 
 #endif // IPLUG_EDITOR
