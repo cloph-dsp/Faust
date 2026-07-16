@@ -7,6 +7,7 @@
 #include "IPlug_include_in_plug_src.h"
 #include "IControls.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -712,16 +713,35 @@ void Tuner::LayoutUI(IGraphics* pGraphics) {
 bool Tuner::OnHostRequestingSupportedViewConfiguration(int width, int height)
 {
   // Window can resize freely; ConstrainEditorResize locks the aspect ratio
-  // (matching PLUG_WIDTH:PLUG_HEIGHT) and clamps to PLUG_MIN/MAX bounds.
-  // LayoutUI is unchanged, so elements stay fixed at their canonical positions.
+  // (matching PLUG_WIDTH:PLUG_HEIGHT = 9:5) and clamps to PLUG_MIN/MAX bounds.
   return ConstrainEditorResize(width, height);
 }
 
 void Tuner::OnHostSelectedViewConfiguration(int width, int height)
 {
   if (GetUI()) {
-    GetUI()->Resize(width, height, 1.f, true);
+    // Scale mode: keep the inner graphics at canonical PLUG_WIDTH/PLUG_HEIGHT
+    // but render at a scale that fits the host window. LayoutUI uses
+    // g->Width()/g->Height() which equal PLUG_WIDTH/PLUG_HEIGHT in Scale mode,
+    // so elements stay at their fixed canonical positions while the window
+    // canvas is upscaled to fill the host window.
+    const float screenScale = GetUI()->GetScreenScale();
+    const float scaleX = static_cast<float>(width) / static_cast<float>(PLUG_WIDTH) / screenScale;
+    const float scaleY = static_cast<float>(height) / static_cast<float>(PLUG_HEIGHT) / screenScale;
+    const float scale = std::clamp(std::min(scaleX, scaleY), 0.65f, 2.0f);
+
+    // Strip and re-layout at the new scale so every control keeps its
+    // proportional relationship. Same pattern as Freeze95 OnParentWindowResize.
+    GetUI()->RemoveAllControls();
+    GetUI()->Resize(PLUG_WIDTH, PLUG_HEIGHT, scale, false);
+    LayoutUI(GetUI());
   }
+}
+
+void Tuner::OnParentWindowResize(int width, int height)
+{
+  // Same Scale-mode handling for window-level resize events.
+  OnHostSelectedViewConfiguration(width, height);
 }
 
 #endif // IPLUG_EDITOR
