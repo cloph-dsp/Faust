@@ -45,8 +45,16 @@
 
 #define VST3_SUBCATEGORY "Fx|Distortion|Tools"
 
+// Embedded resources (knob body SVG, custom-knob pointer paints in code).
+// Mirrors in DataBend/resources/main.rc so RC.exe + the EmbedVC linker
+// step bundle the SVG bytes into the DLL. AGENTS.md "iPlug2 resource
+// embedding" warns ResourceCompile alone silently leaves the file
+// unreadable at runtime.
+#define KNOB_BODY_FN "knob-body.svg"
+
 #define APP_NUM_CHANNELS 2
 #define APP_N_VECTOR_WAIT 0
 #define APP_MULT 1
 #define APP_COPY_AUV3 0
 #define APP_SIGNAL_VECTOR_SIZE 64
+

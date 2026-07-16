@@ -1,5 +1,6 @@
 #include "DataBendIPlug2UI.h"
 
+#include "config.h"
 #include "DataBend.h"
 #include "IControls.h"
 
@@ -80,6 +81,96 @@ private:
   int mN;
 };
 
+// Custom SVG knob cap: static SVG body + rotating line pointer indicator.
+// Per AGENTS.md "Custom SVG knob caps — static body + rotating pointer
+// indicator (NOT full-cap rotation), no stock IVectorBase dots shipped".
+// Subclasses IControl + IVectorBase (matching EnumBarControl's pattern
+// in this file) and implements its own drag + dbl-click-reset so we don't
+// pull in the stock default-look knob's vector primes.
+class SVGKnobControl final : public IControl, public IVectorBase
+{
+public:
+  SVGKnobControl(const IRECT& bounds, const ISVG& svg, int paramIdx, const IVStyle& style)
+    : IControl(bounds, paramIdx), IVectorBase(style, true, false), mSVG(svg)
+  {
+    AttachIControl(this, nullptr);
+    SetPromptShowsParamLabel(false);
+  }
+
+  void Draw(IGraphics& graphics) override
+  {
+    graphics.DrawSVG(mSVG, mRECT, &mBlend);
+
+    constexpr double kPiD = 3.14159265358979323846;
+    const double v = GetValue();
+    const double angle = (-135.0 + v * 270.0) * (kPiD / 180.0);
+    const float cx = mRECT.MW();
+    const float cy = mRECT.MH();
+    const float radius = mRECT.W() * 0.5f * 0.78f;
+    const float px = static_cast<float>(cx + std::sin(angle) * radius);
+    const float py = static_cast<float>(cy - std::cos(angle) * radius);
+
+    const IColor pointerColor = GetColor(kPR);
+    const float alpha = (mMouseIsOver && !IsDisabled()) ? 1.f : 0.85f;
+    // DrawLine(IColor, x0, y0, x1, y1, blend, thickness) — arg order: blend
+    // before thickness, hence the swap vs the cropped IControls.h doc-string.
+    graphics.DrawLine(pointerColor.WithOpacity(alpha),
+                      cx, cy, px, py, &mBlend, 2.5f);
+
+    const     IParam* p = GetParam();
+    if (p)
+    {
+      WDL_String disp;
+      const_cast<IParam*>(p)->GetDisplay(disp); // IParam::GetDisplay(WDL_String&) is non-const on this iPlug2 build
+      const IRECT valueLabelRect(mRECT.L, mRECT.B - 18.f, mRECT.R, mRECT.B - 4.f);
+      graphics.DrawText(mStyle.valueText, disp.Get(), valueLabelRect, &mBlend);
+    }
+
+    if (mParamName.GetLength() > 0)
+    {
+      const IRECT labelRect(mRECT.L, mRECT.T + 2.f, mRECT.R, mRECT.T + 18.f);
+      graphics.DrawText(mStyle.labelText, mParamName.Get(), labelRect, &mBlend);
+    }
+  }
+
+  void OnMouseDown(float x, float y, const IMouseMod& mod) override
+  {
+    if (IsDisabled() || !GetParam()) return;
+    PromptUserInput(mRECT);
+  }
+
+  void OnMouseDrag(float x, float y, float dX, float dY, const IMouseMod& mod) override
+  {
+    const IParam* p = GetParam();
+    if (IsDisabled() || !p) return;
+    const double v = p->Value() - dY * p->GetRange() / 200.f;
+    SetValueFromUserInput(std::clamp(v, p->GetMin(), p->GetMax()));
+  }
+
+  void OnMouseDblClick(float x, float y, const IMouseMod& mod) override
+  {
+    const IParam* p = GetParam();
+    if (IsDisabled() || !p) return;
+    SetValueFromUserInput(p->GetDefault(true));
+  }
+
+  void SetDirty(bool triggerAction = true, int valueIndex = kNoValIdx) override
+  {
+    IControl::SetDirty(triggerAction, valueIndex);
+    if (const IParam* p = GetParam()) p->GetDisplay(mValueStr);
+  }
+
+  void SetParamName(const char* name)
+  {
+    if (name) mParamName.Set(name);
+    else      mParamName.Set("");
+  }
+
+private:
+  ISVG mSVG;
+  WDL_String mParamName;
+};
+
 void BuildLayout(IGraphics* graphics)
 {
   const IColor backgroundColor(255, 14, 15, 18);
@@ -134,6 +225,14 @@ void BuildLayout(IGraphics* graphics)
                                            "Real-time packet loss, rewind slips, and crushed decoder damage.",
                                            IText(kSubtitleSize, secondaryTextColor, uiFont, EAlign::Near, EVAlign::Middle)));
 
+  // ---- Custom SVG knob body (loaded once, shared by reference across 8 knobs) ----
+  // Loaded from the embedded resource referenced by KNOB_BODY_FN. Per AGENTS.md
+  // "iPlug2 resource embedding": ResourceCompile + EmbeddedResource entries in
+  // vcxproj make the SVG bytes reachable via LoadSVG at runtime. The pointer
+  // rotation is computed live per-knob in SVGKnobControl::Draw (no SVG with
+  // a 'tracking layer' — simpler, smaller DLL, same visual outcome).
+  const ISVG knobSvg = graphics->LoadSVG(KNOB_BODY_FN);
+
   // ---- Enum bars (Mode / Bits / Rate) ------------------------------------
   constexpr int kModeN = 4;
   constexpr int kBitsN = 7;
@@ -176,36 +275,44 @@ void BuildLayout(IGraphics* graphics)
   const IRECT row2Col3(row2Col2.R + knobGap, row2Top, row2Col2.R + knobGap + knobSize, row2Top + knobSize);
   const IRECT row2Col4(row2Col3.R + knobGap, row2Top, row2Col3.R + knobGap + knobSize, row2Top + knobSize);
 
-  auto* intensityKnob = new IVKnobControl(row1Col1, kIntensity, "Intensity", knobStyle);
+  auto* intensityKnob = new SVGKnobControl(row1Col1, knobSvg, kIntensity, knobStyle);
   intensityKnob->SetTooltip("How hard each glitch event diverges from the dry signal.");
+  intensityKnob->SetParamName("Intensity");
   graphics->AttachControl(intensityKnob);
 
-  auto* densityKnob = new IVKnobControl(row1Col2, kDensity, "Density", knobStyle);
+  auto* densityKnob = new SVGKnobControl(row1Col2, knobSvg, kDensity, knobStyle);
   densityKnob->SetTooltip("How often the engine schedules new corruption events.");
+  densityKnob->SetParamName("Density");
   graphics->AttachControl(densityKnob);
 
-  auto* windowKnob = new IVKnobControl(row1Col3, kWindowMs, "Window", knobStyle);
+  auto* windowKnob = new SVGKnobControl(row1Col3, knobSvg, kWindowMs, knobStyle);
   windowKnob->SetTooltip("Base duration of each repeat, dropout, or rewind slip.");
+  windowKnob->SetParamName("Window");
   graphics->AttachControl(windowKnob);
 
-  auto* rewindKnob = new IVKnobControl(row1Col4, kRewindMs, "Rewind", knobStyle);
+  auto* rewindKnob = new SVGKnobControl(row1Col4, knobSvg, kRewindMs, knobStyle);
   rewindKnob->SetTooltip("How far back the rewind mode jumps into the history buffer.");
+  rewindKnob->SetParamName("Rewind");
   graphics->AttachControl(rewindKnob);
 
-  auto* jitterKnob = new IVKnobControl(row2Col1, kJitter, "Jitter", knobStyle);
+  auto* jitterKnob = new SVGKnobControl(row2Col1, knobSvg, kJitter, knobStyle);
   jitterKnob->SetTooltip("Random variation applied to event timing, size, and offset.");
+  jitterKnob->SetParamName("Jitter");
   graphics->AttachControl(jitterKnob);
 
-  auto* toneKnob = new IVKnobControl(row2Col2, kTone, "Tone", knobStyle);
+  auto* toneKnob = new SVGKnobControl(row2Col2, knobSvg, kTone, knobStyle);
   toneKnob->SetTooltip("Brightness of the post-corruption filter.");
+  toneKnob->SetParamName("Tone");
   graphics->AttachControl(toneKnob);
 
-  auto* mixKnob = new IVKnobControl(row2Col3, kMix, "Mix", knobStyle);
+  auto* mixKnob = new SVGKnobControl(row2Col3, knobSvg, kMix, knobStyle);
   mixKnob->SetTooltip("Blend between the clean input and the corrupted wet path.");
+  mixKnob->SetParamName("Mix");
   graphics->AttachControl(mixKnob);
 
-  auto* outputKnob = new IVKnobControl(row2Col4, kOutputTrim, "Output", knobStyle);
+  auto* outputKnob = new SVGKnobControl(row2Col4, knobSvg, kOutputTrim, knobStyle);
   outputKnob->SetTooltip("Final trim after the glitch engine and safety clipper.");
+  outputKnob->SetParamName("Output");
   graphics->AttachControl(outputKnob);
 
   const IRECT footerRect(bounds.L, bounds.B - 24.f, bounds.R, bounds.B);
