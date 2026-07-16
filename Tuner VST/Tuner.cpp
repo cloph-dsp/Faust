@@ -773,8 +773,10 @@ bool Tuner::ConstrainEditorResize(int& w, int& h) const
     w = static_cast<int>(static_cast<float>(h) * aspect + 0.5f);
   }
 
-  // Return false so the host applies constrained size to pRect (iPlug2 checks
-  // !ConstrainEditorResize before writing back -- true means "ignore me").
+  // VST3 wrapper semantics: returning false tells the host to APPLY our
+  // modified width/height to pRect. Returning true makes the wrapper ignore
+  // the changes and use the host's original size. See IPlugVST3_View.h
+  // checkSizeConstraint: `if(!ConstrainEditorResize(w,h)) { pRect->right=... }`.
   return false;
 }
 
