@@ -3,7 +3,7 @@
 #include "DataBend.h"
 #include "IControls.h"
 
-namespace
+namespace databend::ui
 {
 constexpr float kTitleSize = 36.f;
 constexpr float kSubtitleSize = 16.f;
@@ -12,77 +12,74 @@ constexpr float kKnobLabelSize = 16.f;
 constexpr float kKnobValueSize = 18.f;
 constexpr float kPopupMenuSize = 16.f;
 
-// ponytail: local class lifted from DataBend.cpp's anonymous namespace during Wave 2A
-// extraction. Kept here as anonymous-namespace copy because removing from DataBend.cpp
-// would re-introduce a used-symbol error there. Wave 2C (click-target enum bars) will
-// retire this class entirely.
-class EnumSelectorControl final : public IControl, public IVectorBase
+// Inline N-cell click-target bar for enum params.
+// Active cell: filled accent bg + primary text.
+// Inactive cell: outline border + secondary text.
+// Click → host-inform gesture (per AGENTS.md Two-param mutual-bounds clamp pattern).
+class EnumBarControl final : public IControl, public IVectorBase
 {
 public:
-  EnumSelectorControl(const IRECT& bounds, int parameterIndex, const char* label, const IVStyle& style)
-    : IControl(bounds, parameterIndex), IVectorBase(style, false, true)
+  EnumBarControl(const IRECT& bounds, int paramIdx, const char* const* labels, int nLabels, const char* tooltip, const IVStyle& style)
+    : IControl(bounds, paramIdx), IVectorBase(style, false, true)
+    , mLabels(labels), mN(nLabels)
   {
-    AttachIControl(this, label);
-    DisablePrompt(false);
-    SetPromptShowsParamLabel(false);
+    AttachIControl(this, nullptr);
+    SetTooltip(tooltip);
   }
 
-  void Draw(IGraphics& graphics) override
+  void Draw(IGraphics& g) override
   {
-    const bool isHot = mMouseIsOver && !IsDisabled();
+    const float cw = mRECT.W() / static_cast<float>(mN);
+    const float gap = 3.f;
+    const float cellPad = 2.f;
+    const int activeIdx = static_cast<int>(GetParam()->Value() + 0.5f);
 
-    DrawBackground(graphics, mRECT);
-    DrawPressableRectangle(graphics, mWidgetBounds, false, isHot, IsDisabled());
-    DrawLabel(graphics);
+    for (int i = 0; i < mN; ++i)
+    {
+      const bool active = (activeIdx == i);
+      const IRECT cell(
+        mRECT.L + i * cw + cellPad,
+        mRECT.T + cellPad,
+        mRECT.L + (i + 1) * cw - cellPad,
+        mRECT.B - cellPad
+      );
+      const IRECT inner = cell.GetPadded(-gap);
 
-    const IColor frameColor = GetColor(kFR).WithOpacity(isHot ? 0.95f : 0.72f);
-    graphics.DrawRoundRect(frameColor, mWidgetBounds.GetPadded(-0.75f), 3.0f, &mBlend, 1.2f);
+      if (active)
+        g.FillRoundRect(GetColor(kPR), inner, 3.f, &mBlend);
+      else
+        g.DrawRoundRect(GetColor(kFR), inner, 3.f, &mBlend, 1.f);
 
-    const IRECT textBounds = mValueBounds.GetPadded(-4.f).GetFromLeft(mValueBounds.W() - 18.f);
-    graphics.DrawText(mStyle.valueText, mValueStr.Get(), textBounds, &mBlend);
-
-    const IRECT arrowBounds = IRECT(mValueBounds.R - 18.f, mValueBounds.T, mValueBounds.R - 4.f, mValueBounds.B).GetMidVPadded(8.f);
-    graphics.FillTriangle(GetColor(kX1).WithOpacity(0.9f),
-                          arrowBounds.L,
-                          arrowBounds.T + 1.f,
-                          arrowBounds.R,
-                          arrowBounds.T + 1.f,
-                          arrowBounds.MW(),
-                          arrowBounds.B - 1.f,
-                          &mBlend);
+      g.DrawText(
+        active ? mStyle.valueText : mStyle.labelText,
+        mLabels[i],
+        inner,
+        &mBlend
+      );
+    }
   }
 
   void OnMouseDown(float x, float y, const IMouseMod& mod) override
   {
-    if (IsDisabled() || !GetParam())
-      return;
-
-    PromptUserInput(mWidgetBounds);
+    if (IsDisabled() || !GetParam()) return;
+    const int n = GetParam()->NDisplayTexts();
+    if (n == 0) return;
+    const float cw = mRECT.W() / static_cast<float>(n);
+    int idx = static_cast<int>((x - mRECT.L) / cw);
+    idx = std::max(0, std::min(idx, n - 1));
+    if (idx == static_cast<int>(GetParam()->Value() + 0.5f)) return; // already selected
+    // Host-inform gesture (AGENTS.md Two-param mutual-bounds clamp pattern)
+    GetDelegate()->BeginInformHostOfParamChangeFromUI(GetParamIdx());
+    GetDelegate()->GetParam(GetParamIdx())->Set(static_cast<double>(idx));
+    GetDelegate()->EndInformHostOfParamChangeFromUI(GetParamIdx());
+    SetDirty(true);
   }
 
-  void OnResize() override
-  {
-    SetTargetRECT(MakeRects(mRECT));
-  }
-
-  void OnInit() override
-  {
-    if (const IParam* parameter = GetParam())
-      parameter->GetDisplay(mValueStr);
-  }
-
-  void SetDirty(bool triggerAction = true, int valueIndex = kNoValIdx) override
-  {
-    IControl::SetDirty(triggerAction, valueIndex);
-
-    if (const IParam* parameter = GetParam())
-      parameter->GetDisplay(mValueStr);
-  }
+private:
+  const char* const* mLabels;
+  int mN;
 };
-}
 
-namespace databend::ui
-{
 void BuildLayout(IGraphics* graphics)
 {
   const IColor backgroundColor(255, 14, 15, 18);
@@ -137,28 +134,32 @@ void BuildLayout(IGraphics* graphics)
                                            "Real-time packet loss, rewind slips, and crushed decoder damage.",
                                            IText(kSubtitleSize, secondaryTextColor, uiFont, EAlign::Near, EVAlign::Middle)));
 
-  const float gap = 16.f;
-  const float selectorTop = subtitleRect.B + 20.f;
-  const float selectorHeight = 68.f;
-  const float selectorWidth = (bounds.W() - gap * 2.f) / 3.f;
+  // ---- Enum bars (Mode / Bits / Rate) ------------------------------------
+  constexpr int kModeN = 4;
+  constexpr int kBitsN = 7;
+  constexpr int kRateN = 8;
 
-  const IRECT modeRect(bounds.L, selectorTop, bounds.L + selectorWidth, selectorTop + selectorHeight);
-  const IRECT bitsRect(modeRect.R + gap, selectorTop, modeRect.R + gap + selectorWidth, selectorTop + selectorHeight);
-  const IRECT rateRect(bitsRect.R + gap, selectorTop, bitsRect.R + gap + selectorWidth, selectorTop + selectorHeight);
+  const char* modeLabels[kModeN] = {"RPT", "DROP", "RWD", "HYB"};
+  const char* bitsLabels[kBitsN] = {"4", "6", "8", "10", "12", "14", "16"};
+  const char* rateLabels[kRateN]  = {"x1", "x2", "x4", "x8", "x12", "x16", "x24", "x32"};
 
-  auto* modeSelector = new EnumSelectorControl(modeRect, kMode, "Mode", selectorStyle);
-  modeSelector->SetTooltip("Choose the dominant corruption gesture.");
-  graphics->AttachControl(modeSelector);
+  const float barAreaTop = subtitleRect.B + 20.f;
+  const float barWidth  = bounds.W();
+  const float modeBarH  = 52.f;
+  const float bitsBarH  = 52.f;
+  const float rateBarH  = 52.f;
+  const float barGap    = 10.f;
 
-  auto* bitsSelector = new EnumSelectorControl(bitsRect, kBits, "Bits", selectorStyle);
-  bitsSelector->SetTooltip("Quantization depth for the corruption stage.");
-  graphics->AttachControl(bitsSelector);
+  const IRECT modeBarRect(bounds.L, barAreaTop,                         bounds.L + barWidth, barAreaTop + modeBarH);
+  const IRECT bitsBarRect(bounds.L, modeBarRect.B + barGap,             bounds.L + barWidth, modeBarRect.B + barGap + bitsBarH);
+  const IRECT rateBarRect(bounds.L, bitsBarRect.B + barGap,             bounds.L + barWidth, bitsBarRect.B + barGap + rateBarH);
 
-  auto* rateSelector = new EnumSelectorControl(rateRect, kRateReduce, "Rate", selectorStyle);
-  rateSelector->SetTooltip("Sample-hold reduction rate for stepped digital breakup.");
-  graphics->AttachControl(rateSelector);
+  graphics->AttachControl(new EnumBarControl(modeBarRect, kMode,   modeLabels, kModeN,  "Choose the dominant corruption gesture.",             selectorStyle));
+  graphics->AttachControl(new EnumBarControl(bitsBarRect, kBits,   bitsLabels, kBitsN, "Quantization depth for the corruption stage.",          selectorStyle));
+  graphics->AttachControl(new EnumBarControl(rateBarRect, kRateReduce, rateLabels, kRateN, "Sample-hold reduction rate for stepped digital breakup.", selectorStyle));
 
-  const float knobTop = selectorTop + selectorHeight + 24.f;
+  // ---- Knob rows -----------------------------------------------------------
+  const float knobTop = rateBarRect.B + 24.f;
   const float knobSize = 96.f;
   const float knobGap = 18.f;
   const float rowWidth = knobSize * 4.f + knobGap * 3.f;
