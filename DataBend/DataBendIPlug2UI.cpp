@@ -4,10 +4,14 @@
 #include "DataBend.h"
 #include "IControls.h"
 
+#include <atomic>
+#include <cmath>
+
 namespace databend::ui
 {
 constexpr float kTitleSize = 36.f;
 constexpr float kSubtitleSize = 16.f;
+constexpr float kVersionSize = 14.f;
 constexpr float kFooterSize = 16.f;
 constexpr float kKnobLabelSize = 16.f;
 constexpr float kKnobValueSize = 18.f;
@@ -171,7 +175,94 @@ private:
   WDL_String mParamName;
 };
 
-void BuildLayout(IGraphics* graphics)
+// Vertical peak meter: RMS body (exponential decay) + peak-hold bar (accent).
+// Uses a companion std::atomic<float>* for real-time DSP peak capture.
+// IsDirty()→true pattern (IFPSDisplayControl) gives per-frame Draw() calls.
+class IPeakMeterControl final : public IControl
+{
+public:
+  IPeakMeterControl(const IRECT& bounds, std::atomic<float>* peak, const IColor& accent)
+    : IControl(bounds, kNoParameter)
+    , mPeak(peak)
+    , mAccent(accent)
+    , mPeakHold(0.f)
+    , mRmsLevel(0.f)
+  {
+  }
+
+  bool IsDirty() override { return true; }
+
+  void Draw(IGraphics& graphics) override
+  {
+    // Read and decay from DSP atomics on every draw (60fps via IsDirty=true)
+    const float p = mPeak->load();
+    mPeakHold = std::max(mPeakHold * 0.995f, p);
+    mRmsLevel = mRmsLevel * 0.93f + p * 0.07f;
+
+    const IRECT r = mRECT;
+    graphics.FillRect(IColor(255, 30, 32, 38), r);
+
+    const float rmsH = r.H() * mRmsLevel;
+    const float peakH = r.H() * mPeakHold;
+
+    if (rmsH > 0.5f)
+    {
+      const IRECT rmsRect(r.L, r.B - rmsH, r.R, r.B);
+      const float alpha = 0.25f + 0.75f * mRmsLevel;
+      graphics.FillRect(mAccent.WithOpacity(alpha), rmsRect);
+    }
+
+    if (peakH > 0.5f)
+    {
+      const IRECT peakRect(r.L, r.B - peakH, r.R, r.B - peakH + 2.f);
+      graphics.FillRect(mAccent, peakRect);
+    }
+
+    graphics.DrawRect(IColor(255, 60, 65, 75), r, nullptr, 0.5f);
+  }
+
+private:
+  std::atomic<float>* mPeak;
+  IColor mAccent;
+  float mPeakHold;
+  float mRmsLevel;
+};
+
+// Breathing LED: circle with sin-wave alpha oscillation (period 2.5s).
+// IsDirty()→true gives per-frame Draw() calls; phase advances each Draw.
+class BreathingLEDControl final : public IControl
+{
+public:
+  BreathingLEDControl(const IRECT& bounds, const IColor& color)
+    : IControl(bounds, kNoParameter)
+    , mColor(color)
+    , mPhase(0.f)
+  {
+  }
+
+  bool IsDirty() override { return true; }
+
+  void Draw(IGraphics& graphics) override
+  {
+    // Advance phase: 2π/2.5s at 60fps → Δphase = 2π/(2.5*60) ≈ 0.0419 rad/frame
+    mPhase += 0.0419f;
+    if (mPhase > 6.283185307179586f)
+      mPhase -= 6.283185307179586f;
+
+    const float cx = mRECT.MW();
+    const float cy = mRECT.MH();
+    const float radius = std::min(mRECT.W(), mRECT.H()) * 0.5f;
+    const float alpha = 0.4f + 0.3f * (std::sin(mPhase) + 1.f);
+    graphics.FillCircle(mColor.WithOpacity(std::max(0.f, std::min(1.f, alpha))),
+                        cx, cy, radius, nullptr);
+  }
+
+private:
+  IColor mColor;
+  float mPhase;
+};
+
+void BuildLayout(IGraphics* graphics, DataBend* plugin)
 {
   const IColor backgroundColor(255, 14, 15, 18);
   const IColor panelColor(255, 24, 27, 33);
@@ -224,6 +315,32 @@ void BuildLayout(IGraphics* graphics)
   graphics->AttachControl(new ITextControl(subtitleRect,
                                            "Real-time packet loss, rewind slips, and crushed decoder damage.",
                                            IText(kSubtitleSize, secondaryTextColor, uiFont, EAlign::Near, EVAlign::Middle)));
+
+  // ---- I/O Peak Meters (flanking title area) ----
+  constexpr float kMeterW = 10.f;
+  constexpr float kMeterH = 44.f;
+  const IRECT leftMeterRect(bounds.L, titleRect.MH() - kMeterH * 0.5f,
+                             bounds.L + kMeterW, titleRect.MH() + kMeterH * 0.5f);
+  const IRECT rightMeterRect(bounds.R - kMeterW, titleRect.MH() - kMeterH * 0.5f,
+                              bounds.R, titleRect.MH() + kMeterH * 0.5f);
+
+  graphics->AttachControl(new IPeakMeterControl(leftMeterRect,  &plugin->mInputPeak,  accentColor));
+  graphics->AttachControl(new IPeakMeterControl(rightMeterRect, &plugin->mOutputPeak, secondaryAccent));
+
+  // ---- Brand mark + Breathing LED (top-right) ----
+  // Breathing LED: small circle at top-right corner
+  constexpr float kLedSize = 10.f;
+  const IRECT ledRect(bounds.R - kLedSize, bounds.T + 4.f,
+                       bounds.R,            bounds.T + 4.f + kLedSize);
+  graphics->AttachControl(new BreathingLEDControl(ledRect, accentColor));
+
+  // Brand mark: "CLOPH · 1.0.0" right-aligned, just left of LED
+  const IRECT brandRect(bounds.R - kLedSize - 120.f, bounds.T + 4.f,
+                         bounds.R - kLedSize - 4.f,  bounds.T + 20.f);
+  graphics->AttachControl(new ITextControl(brandRect,
+                                           PLUG_MFR " \xb7 " PLUG_VERSION_STR,
+                                           IText(kVersionSize, secondaryTextColor, uiFont,
+                                                 EAlign::Far, EVAlign::Middle)));
 
   // ---- Custom SVG knob body (loaded once, shared by reference across 8 knobs) ----
   // Loaded from the embedded resource referenced by KNOB_BODY_FN. Per AGENTS.md

@@ -97,7 +97,7 @@ DataBend::DataBend(const InstanceInfo& info)
   };
 
   mLayoutFunc = [&](IGraphics* graphics) {
-    databend::ui::BuildLayout(graphics);
+    databend::ui::BuildLayout(graphics, this);
   };
 #endif
 
@@ -433,6 +433,10 @@ void DataBend::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       mHistory[static_cast<size_t>(channel)][mWriteIndex] = dry[channel];
     }
 
+    // ponytail: per-channel loop is unavoidable for peak capture, channels=2 max
+    for (int channel = 0; channel < channelCount; ++channel)
+      mInputPeak.store(std::max(mInputPeak.load(), std::abs(dry[channel])));
+
     if (channelCount == 1)
       mHistory[1][mWriteIndex] = dry[0];
 
@@ -529,6 +533,9 @@ void DataBend::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       // Safety clip
       outputSample = ClampValue(outputSample, -1.0f, 1.0f);
       outputs[channel][sampleIndex] = static_cast<sample>(FlushDenorm(outputSample));
+
+      // Track output peak per-sample
+      mOutputPeak.store(std::max(mOutputPeak.load(), std::abs(outputSample)));
     }
 
     if (mEvent.active)

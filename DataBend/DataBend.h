@@ -3,6 +3,7 @@
 #include "IPlug_include_in_plug_hdr.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <vector>
 
@@ -146,4 +147,9 @@ private:
 
   EventState mEvent;
 #endif
+
+public:
+  // UI-accessible atomics for peak metering (always public, no DSP guard needed)
+  std::atomic<float> mInputPeak{0.f};
+  std::atomic<float> mOutputPeak{0.f};
 };
