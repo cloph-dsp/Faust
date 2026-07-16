@@ -106,7 +106,8 @@ private:
                     float jitterNorm);
   float ProcessEventSample(int channel, float drySample, float intensityNorm) const;
   float ReadHistory(int channel, uint32_t index) const;
-  float ApplyTone(int channel, float input, float cutoffHz);
+  float ApplyTone(int channel, float input, float lpAlpha);
+  float DcBlock(int channel, float input);
   float QuantizeToBits(float input, int bits) const;
   float Random01();
   float RandomSigned();
@@ -116,6 +117,8 @@ private:
   std::array<float, kMaxChannels> mToneState {};
   std::array<float, kMaxChannels> mRateHold {};
   std::array<float, kMaxChannels> mLastGlitchSample {};
+  std::array<float, kMaxChannels> mDcState {};
+  std::array<float, kMaxChannels> mAaState {};
   uint32_t mHistorySize = 0;
   uint32_t mHistoryMask = 0;
   uint32_t mWriteIndex = 0;
@@ -128,6 +131,9 @@ private:
   float mParamAlphaFast = 0.f;
   float mParamAlphaSlow = 0.f;
   float mBlendAlpha = 0.f;
+  float mLpAlpha = 0.f;
+  float mDcAlpha = 0.f;
+  float mAaAlpha = 0.f;
 
   float mSmIntensity = 0.55f;
   float mSmDensity = 0.40f;

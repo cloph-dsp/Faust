@@ -7,6 +7,14 @@
 #include <cmath>
 #include <string>
 
+// Cross-platform denormal protection (FTZ + DAZ) on x86/x64. No-op on arm64 (OS handles).
+#if (defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))) || defined(__SSE__) || defined(__SSE2__)
+  #define DATABEND_HAS_SSE 1
+  #include <intrin.h>
+#else
+  #define DATABEND_HAS_SSE 0
+#endif
+
 namespace
 {
 constexpr const char* kUIFontID = "DataBendUIFont";
@@ -16,6 +24,13 @@ constexpr float kHistorySeconds = 2.5f;
 
 constexpr std::array<int, kNumBitDepthSelectors> kBitDepthValues = {4, 6, 8, 10, 12, 14, 16};
 constexpr std::array<int, kNumRateReduceSelectors> kRateReduceValues = {1, 2, 4, 8, 12, 16, 24, 32};
+
+#if DATABEND_HAS_SSE
+void EnableSseDenormals()
+{
+  _mm_setcsr(_mm_getcsr() | 0x8040); // FTZ (bit 15) + DAZ (bit 6)
+}
+#endif
 
 template <typename T>
 T ClampValue(T value, T lo, T hi)
@@ -285,6 +300,9 @@ DataBend::DataBend(const InstanceInfo& info)
 void DataBend::OnReset()
 {
   mSampleRate = std::max(1.0, GetSampleRate());
+#if DATABEND_HAS_SSE
+  EnableSseDenormals();
+#endif
   SetLatency(0);
 
   ResizeHistoryBuffer();
@@ -333,6 +351,11 @@ void DataBend::ResetState()
   mRateHold.fill(0.f);
   mLastGlitchSample.fill(0.f);
   mEvent = {};
+  mDcState.fill(0.f);
+  mAaState.fill(0.f);
+  mLpAlpha = 0.f;
+  mDcAlpha = 0.f;
+  mAaAlpha = 0.f;
   mEventBlend = 0.f;
   mWriteIndex = 0;
   mHistoryFill = 0;
@@ -488,31 +511,21 @@ float DataBend::ReadHistory(int channel, uint32_t index) const
   return mHistory[static_cast<size_t>(safeChannel)][index & mHistoryMask];
 }
 
-float DataBend::ApplyTone(int channel, float input, float cutoffHz)
+float DataBend::ApplyTone(int channel, float input, float lpAlpha)
 {
   const int safeChannel = ClampValue(channel, 0, kMaxChannels - 1);
-  const float safeCutoff = ClampValue(cutoffHz, 20.f, static_cast<float>(mSampleRate * 0.45));
-  
-  // 2-pole butterworth-style lowpass for smoother roll-off
-  const double w0 = kTwoPi * safeCutoff / mSampleRate;
-  const double cosW0 = std::cos(w0);
-  const double sinW0 = std::sin(w0);
-  const double alpha = sinW0 / 1.41421356; // Q = 0.707
-  
-  const double b0 = (1.0 - cosW0) / 2.0;
-  const double b1 = 1.0 - cosW0;
-  const double b2 = (1.0 - cosW0) / 2.0;
-  const double a0 = 1.0 + alpha;
-  const double a1 = -2.0 * cosW0;
-  const double a2 = 1.0 - alpha;
-
-  // Use a simple TPT (Topology Preserving Transform) or direct form here
-  // For brevity/performance in a high-glitch engine, we use a 1-pole for now but with refined response
-  const float lpAlpha = ClampValue(static_cast<float>(1.0 - std::exp(-w0)), 0.001f, 1.0f);
-  const float next = mToneState[static_cast<size_t>(safeChannel)] + (lpAlpha * (input - mToneState[static_cast<size_t>(safeChannel)]));
-  
+  const float lp = ClampValue(lpAlpha, 0.001f, 1.0f);
+  const float next = mToneState[static_cast<size_t>(safeChannel)] + (lp * (input - mToneState[static_cast<size_t>(safeChannel)]));
   mToneState[static_cast<size_t>(safeChannel)] = FlushDenorm(next);
   return mToneState[static_cast<size_t>(safeChannel)];
+}
+
+float DataBend::DcBlock(int channel, float input)
+{
+  const int safeChannel = ClampValue(channel, 0, kMaxChannels - 1);
+  const float hp = input - mDcState[static_cast<size_t>(safeChannel)];
+  mDcState[static_cast<size_t>(safeChannel)] += mDcAlpha * hp;
+  return FlushDenorm(hp);
 }
 
 float DataBend::QuantizeToBits(float input, int bits) const
@@ -570,11 +583,17 @@ void DataBend::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   const float mixTarget = static_cast<float>(GetParam(kMix)->Value() * 0.01);
   const float outputDbTarget = static_cast<float>(GetParam(kOutputTrim)->Value());
 
+  // Precompute 1-pole filter alphas once per block (was per-sample inside ApplyTone).
   // Per-block constant values
   const float driveBase = 1.0f;
   const float driveScale = 1.8f;
   const float toneFreqBase = 450.f;
   const float toneFreqScale = 40.f;
+  const float toneCutoffHz = toneFreqBase * std::pow(toneFreqScale, ClampValue(toneTarget, 0.f, 1.f));
+  mLpAlpha = ClampValue(static_cast<float>(1.0 - std::exp(-kTwoPi * toneCutoffHz / mSampleRate)), 0.001f, 1.0f);
+  mDcAlpha = ClampValue(static_cast<float>(1.0 - std::exp(-kTwoPi * 10.0 / mSampleRate)), 0.0001f, 1.0f);
+  const double aaCutoffHz = mSampleRate / (2.0 * std::max(1, rateFactor));
+  mAaAlpha = ClampValue(static_cast<float>(1.0 - std::exp(-kTwoPi * aaCutoffHz / mSampleRate)), 0.0001f, 1.0f);
 
   for (int sampleIndex = 0; sampleIndex < nFrames; ++sampleIndex)
   {
@@ -600,9 +619,7 @@ void DataBend::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       const int sourceChannel = (channel < activeInputChannels) ? channel : 0;
       const sample* source = (inputs && sourceChannel < activeInputChannels) ? inputs[sourceChannel] : nullptr;
       float value = (source && std::isfinite(source[sampleIndex])) ? static_cast<float>(source[sampleIndex]) : 0.f;
-      // Use tiny offset to prevent denormals
-      value += 1.0e-18f; 
-      dry[channel] = ClampValue(value, -1.f, 1.f); // Removed the intensity-based input drive
+      dry[channel] = ClampValue(value, -1.f, 1.f);
       mHistory[static_cast<size_t>(channel)][mWriteIndex] = dry[channel];
     }
 
@@ -673,7 +690,8 @@ void DataBend::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       {
         const float driven = SoftClip(timeStage[channel] * crushDrive);
         const float normalized = driven * crushNormalization;
-        mRateHold[static_cast<size_t>(channel)] = QuantizeToBits(normalized, bits);
+        mAaState[static_cast<size_t>(channel)] += mAaAlpha * (normalized - mAaState[static_cast<size_t>(channel)]);
+        mRateHold[static_cast<size_t>(channel)] = QuantizeToBits(mAaState[static_cast<size_t>(channel)], bits);
       }
 
       const int jitteredRate = rateFactor + static_cast<int>(RandomSigned() * jitterNorm * rateFactor * 0.5f);
@@ -683,7 +701,6 @@ void DataBend::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     --mRateCountdown;
 
     // --- Tone & Output ---
-    const float toneCutoff = toneFreqBase * std::pow(toneFreqScale, ClampValue(mSmTone, 0.f, 1.f));
     const float wetMix = ClampValue(mSmMix, 0.f, 1.f);
     const float outputGain = DbToLinear(mSmOutputDb);
 
@@ -693,7 +710,8 @@ void DataBend::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       const float crushedBlend = 0.25f + (0.75f * mEventBlend);
       const float crushed = dry[inputChannel] + ((mRateHold[static_cast<size_t>(inputChannel)] - dry[inputChannel]) * crushedBlend);
       const float wetDifference = crushed - dry[inputChannel];
-      const float tonedDifference = ApplyTone(inputChannel, wetDifference, toneCutoff);
+      const float dcBlock = DcBlock(inputChannel, wetDifference);
+      const float tonedDifference = ApplyTone(inputChannel, dcBlock, mLpAlpha);
       const float wetSample = dry[inputChannel] + tonedDifference;
       float outputSample = dry[inputChannel] + ((wetSample - dry[inputChannel]) * wetMix);
       outputSample *= outputGain;
