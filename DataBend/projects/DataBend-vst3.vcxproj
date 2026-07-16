@@ -92,6 +92,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\DataBend.cpp" />
+    <ClCompile Include="..\DataBendIPlug2UI.cpp" />
     <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\baseiids.cpp" />
     <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\fbuffer.cpp" />
     <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\fdebug.cpp" />

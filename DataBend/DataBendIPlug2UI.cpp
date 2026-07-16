@@ -1,6 +1,7 @@
 #include "DataBendIPlug2UI.h"
 
-#include <array>
+#include "DataBend.h"
+#include "IControls.h"
 
 namespace
 {
@@ -10,6 +11,74 @@ constexpr float kFooterSize = 16.f;
 constexpr float kKnobLabelSize = 16.f;
 constexpr float kKnobValueSize = 18.f;
 constexpr float kPopupMenuSize = 16.f;
+
+// ponytail: local class lifted from DataBend.cpp's anonymous namespace during Wave 2A
+// extraction. Kept here as anonymous-namespace copy because removing from DataBend.cpp
+// would re-introduce a used-symbol error there. Wave 2C (click-target enum bars) will
+// retire this class entirely.
+class EnumSelectorControl final : public IControl, public IVectorBase
+{
+public:
+  EnumSelectorControl(const IRECT& bounds, int parameterIndex, const char* label, const IVStyle& style)
+    : IControl(bounds, parameterIndex), IVectorBase(style, false, true)
+  {
+    AttachIControl(this, label);
+    DisablePrompt(false);
+    SetPromptShowsParamLabel(false);
+  }
+
+  void Draw(IGraphics& graphics) override
+  {
+    const bool isHot = mMouseIsOver && !IsDisabled();
+
+    DrawBackground(graphics, mRECT);
+    DrawPressableRectangle(graphics, mWidgetBounds, false, isHot, IsDisabled());
+    DrawLabel(graphics);
+
+    const IColor frameColor = GetColor(kFR).WithOpacity(isHot ? 0.95f : 0.72f);
+    graphics.DrawRoundRect(frameColor, mWidgetBounds.GetPadded(-0.75f), 3.0f, &mBlend, 1.2f);
+
+    const IRECT textBounds = mValueBounds.GetPadded(-4.f).GetFromLeft(mValueBounds.W() - 18.f);
+    graphics.DrawText(mStyle.valueText, mValueStr.Get(), textBounds, &mBlend);
+
+    const IRECT arrowBounds = IRECT(mValueBounds.R - 18.f, mValueBounds.T, mValueBounds.R - 4.f, mValueBounds.B).GetMidVPadded(8.f);
+    graphics.FillTriangle(GetColor(kX1).WithOpacity(0.9f),
+                          arrowBounds.L,
+                          arrowBounds.T + 1.f,
+                          arrowBounds.R,
+                          arrowBounds.T + 1.f,
+                          arrowBounds.MW(),
+                          arrowBounds.B - 1.f,
+                          &mBlend);
+  }
+
+  void OnMouseDown(float x, float y, const IMouseMod& mod) override
+  {
+    if (IsDisabled() || !GetParam())
+      return;
+
+    PromptUserInput(mWidgetBounds);
+  }
+
+  void OnResize() override
+  {
+    SetTargetRECT(MakeRects(mRECT));
+  }
+
+  void OnInit() override
+  {
+    if (const IParam* parameter = GetParam())
+      parameter->GetDisplay(mValueStr);
+  }
+
+  void SetDirty(bool triggerAction = true, int valueIndex = kNoValIdx) override
+  {
+    IControl::SetDirty(triggerAction, valueIndex);
+
+    if (const IParam* parameter = GetParam())
+      parameter->GetDisplay(mValueStr);
+  }
+};
 }
 
 namespace databend::ui
