@@ -740,9 +740,11 @@ void Tuner::OnHostSelectedViewConfiguration(int width, int height)
 
 void Tuner::OnParentWindowResize(int width, int height)
 {
-  // Freeze95 pattern: don't constrain the window size, just scale the inner
-  // canvas via min(scaleX, scaleY) so the content always has the right aspect
-  // ratio. The window may have letterbox margins but content is always locked.
+  // Lock the window rectangle's aspect ratio BEFORE scaling content.
+  // ConstrainEditorResize updates width/height in-place to match PLUG_WIDTH:PLUG_HEIGHT
+  // and clamps to MIN/MAX bounds. Then forward the constrained size to the
+  // Scale-mode resize so both the window AND the content have the right aspect.
+  ConstrainEditorResize(width, height);
   OnHostSelectedViewConfiguration(width, height);
 }
 
