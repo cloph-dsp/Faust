@@ -740,8 +740,12 @@ void Tuner::OnHostSelectedViewConfiguration(int width, int height)
 
 void Tuner::OnParentWindowResize(int width, int height)
 {
-  // Same Scale-mode handling for window-level resize events.
-  OnHostSelectedViewConfiguration(width, height);
+  // Same Scale-mode handling for window-level resize events, but FIRST
+  // call ConstrainEditorResize to enforce aspect ratio + MIN/MAX clamps.
+  int w = width;
+  int h = height;
+  ConstrainEditorResize(w, h);
+  OnHostSelectedViewConfiguration(w, h);
 }
 
 #endif // IPLUG_EDITOR
