@@ -200,7 +200,9 @@ public:
   NinetiesPhotoOverlay(const igraphics::IRECT& bounds, uint32_t seed)
   : IControl(bounds, -1)
   , mSeed(seed ? seed : 0x9E3779B1u)
-  ,   mBlend7(igraphics::EBlend::Default, 0.07f)
+  , mWashBlend(igraphics::EBlend::Default, 0.14f)
+  , mVignetteBlend(igraphics::EBlend::Default, 0.11f)
+  , mGrainBlend(igraphics::EBlend::Default, 0.09f)
   {
     mDblAsSingleClick = false;
     mIgnoreMouse = true;
@@ -228,20 +230,28 @@ private:
 
   void DrawWarmWash(igraphics::IGraphics& g) const
   {
-    const igraphics::IColor goldCast(255, 248, 198, 96);
-    g.FillRect(goldCast, mRECT, &mBlend7);
+    // Slightly faded Kodak Gold-style amber cast, kept light enough for labels.
+    const igraphics::IColor goldCast(255, 252, 204, 108);
+    g.FillRect(goldCast, mRECT, &mWashBlend);
   }
 
   void DrawVignette(igraphics::IGraphics& g) const
   {
-    const float cx = mRECT.MW();
-    const float cy = mRECT.MH();
     const float w = mRECT.W();
     const float h = mRECT.H();
-    const float diag = std::sqrt(w * w + h * h);
+    const float maxInset = std::max(0.f, std::min(w, h) * 0.035f);
+    const float cornerRadius = std::max(8.f, std::min(w, h) * 0.04f);
+    const igraphics::IColor edgeBrown(255, 37, 21, 10);
 
-    const igraphics::IColor dark(255, 0, 0, 0);
-    g.FillCircle(dark, cx, cy, diag * 0.55f, &mBlend7);
+    // Draw translucent frames instead of darkening the centre: the previous
+    // filled circle read as a centre shadow, not an analogue-photo vignette.
+    for (int layer = 0; layer < 3; ++layer) {
+      const float inset = maxInset * static_cast<float>(layer) * 0.55f;
+      const float thickness = std::max(2.f, maxInset * (0.62f - 0.14f * layer));
+      g.DrawRoundRect(edgeBrown, mRECT.GetPadded(inset),
+                      std::max(4.f, cornerRadius - inset),
+                      &mVignetteBlend, thickness);
+    }
   }
 
   void DrawGrain(igraphics::IGraphics& g, float w, float h) const
@@ -261,13 +271,15 @@ private:
         const igraphics::IColor grain(255, brightness, brightness - tint / 2, brightness - tint);
         const float x = mRECT.L + col * kCellSize;
         const float y = mRECT.T + row * kCellSize;
-        g.FillRect(grain, igraphics::IRECT(x, y, x + kCellSize, y + kCellSize), &mBlend7);
+        g.FillRect(grain, igraphics::IRECT(x, y, x + kCellSize, y + kCellSize), &mGrainBlend);
       }
     }
   }
 
   uint32_t mSeed;
-  igraphics::IBlend mBlend7;
+  igraphics::IBlend mWashBlend;
+  igraphics::IBlend mVignetteBlend;
+  igraphics::IBlend mGrainBlend;
 };
 
 class AnimatedStompBypassControl final : public igraphics::IControl
