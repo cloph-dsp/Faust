@@ -194,16 +194,29 @@ jobs:
           # Windows VST3 is a single DLL file, not a macOS-style bundle directory
           test -f artifacts/vst3/Grungr.vst3
 
+      # The iPlug2 SDK download is intentionally lean: it omits VSTGUI and the
+      # hosting examples that contain Steinberg's validator. Keep the production
+      # build on iPlug2's SDK and use a complete, pinned SDK solely for validation.
+      - name: Clone complete Steinberg VST3 SDK for validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_DIR="$RUNNER_TEMP/steinberg-vst3sdk-3.8.0"
+          git clone --depth 1 --branch v3.8.0_build_66 --recurse-submodules --shallow-submodules \
+            https://github.com/steinbergmedia/vst3sdk.git "$SDK_DIR"
+          test -d "$SDK_DIR/vstgui4"
+          test -d "$SDK_DIR/public.sdk/samples/vst-hosting"
+
       - name: Validate VST3 with the Steinberg validator
         shell: pwsh
         working-directory: Grungr
         run: |
-          $sdk = (Resolve-Path "../iPlug2/Dependencies/IPlug/VST3_SDK").Path
+          $sdk = Join-Path $env:RUNNER_TEMP "steinberg-vst3sdk-3.8.0"
           $buildDir = Join-Path $env:RUNNER_TEMP "grungr-vst3-validator"
           $generator = "${{ steps.msbuild.outputs.CMAKE_GENERATOR }}"
           $vsInstall = "${{ steps.msbuild.outputs.VS_INSTALL }}"
           cmake -S $sdk -B $buildDir -G $generator -A x64 "-DCMAKE_GENERATOR_INSTANCE=$vsInstall" `
-            -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=ON
+            -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=ON
           if ($LASTEXITCODE -ne 0) { throw "Could not configure the Steinberg VST3 validator" }
           cmake --build $buildDir --config Release --target validator --parallel 2
           if ($LASTEXITCODE -ne 0) { throw "Could not build the Steinberg VST3 validator" }
