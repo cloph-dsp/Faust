@@ -200,7 +200,7 @@ public:
   NinetiesPhotoOverlay(const igraphics::IRECT& bounds, uint32_t seed)
   : IControl(bounds, -1)
   , mSeed(seed ? seed : 0x9E3779B1u)
-  , mWashBlend(igraphics::EBlend::Default, 0.14f)
+  , mWashBlend(igraphics::EBlend::Default, 0.12f)
   , mVignetteBlend(igraphics::EBlend::Default, 0.11f)
   , mGrainBlend(igraphics::EBlend::Default, 0.09f)
   {
@@ -730,8 +730,23 @@ public:
         fontSize = std::clamp(16.f * (drawRect.W() * 0.85f / labelW), 10.f, 16.f);
       }
 
-      igraphics::IText labelText(fontSize, mLabelColor.WithOpacity(0.90f), mFontID,
-                                  igraphics::EAlign::Center, igraphics::EVAlign::Middle);
+      const float outlineOffset = std::max(0.75f, fontSize * 0.075f);
+      igraphics::IText labelOutline(fontSize, igraphics::IColor(245, 46, 29, 22), mFontID,
+                                     igraphics::EAlign::Center, igraphics::EVAlign::Middle);
+      const int outlineSteps[3] = { -1, 0, 1 };
+      for (int dx : outlineSteps) {
+        for (int dy : outlineSteps) {
+          if (dx == 0 && dy == 0) {
+            continue;
+          }
+          g.DrawText(labelOutline, label,
+                     drawRect.GetTranslated(dx * outlineOffset, dy * outlineOffset),
+                     &mBlend);
+        }
+      }
+
+      igraphics::IText labelText(fontSize, mLabelColor.WithOpacity(0.96f), mFontID,
+                                   igraphics::EAlign::Center, igraphics::EVAlign::Middle);
       g.DrawText(labelText, label, drawRect, &mBlend);
 
       // Active cell LED indicator at bottom-center
