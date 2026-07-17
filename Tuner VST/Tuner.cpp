@@ -651,7 +651,31 @@ void Tuner::OnActivate(bool active) {
   if (active) mSendUpdate = true;
 }
 
+void Tuner::OnUIOpen()
+{
+  mUIOpen.store(true, std::memory_order_release);
+  iplug::Plugin::OnUIOpen();
+}
+
+void Tuner::OnUIClose()
+{
+  // CloseWindow calls this before IGraphics destroys all controls and clears
+  // its context. OnIdle may otherwise dirty the dying UI, leaving the next
+  // editor open to dereference a stale graphics/control pointer.
+  mUIOpen.store(false, std::memory_order_release);
+}
+
 void Tuner::OnIdle() {
+  // Never access IGraphics unless this editor instance is fully open. The
+  // explicit lifecycle flag remains false throughout CloseWindow teardown;
+  // parameter updates are retained in mSendUpdate for the next open.
+  if (!mUIOpen.load(std::memory_order_acquire))
+    return;
+
+  IGraphics* const ui = GetUI();
+  if (!ui)
+    return;
+
   // PERF-1: drain the analysis-path profiler once a second and log to the
   // host's debug stream (OutputDebugString on Windows, NSLog on macOS).
   // At 30 FPS this fires after 30 frames; analysis runs at ~47 Hz which
@@ -669,12 +693,10 @@ void Tuner::OnIdle() {
            avgUs, pctSlot, (int)TunerAnalysis::kAnalysisStride, GetSampleRate());
   }
   if (mSendUpdate) {
-    if (GetUI()) SendCurrentParamValuesFromDelegate();
+    SendCurrentParamValuesFromDelegate();
     mSendUpdate = false;
   }
-  if (GetUI()) {
-    GetUI()->SetAllControlsDirty();
-  }
+  ui->SetAllControlsDirty();
 }
 
 // LayoutUI -- load the TexasLED display TTF + CLOPH brand logo from the

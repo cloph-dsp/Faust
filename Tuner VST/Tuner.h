@@ -139,6 +139,8 @@ public:
   void ProcessBlock(sample** inputs, sample** outputs, int nFrames) override;
 
 #if IPLUG_EDITOR
+  void OnUIOpen() override;
+  void OnUIClose() override;
   void OnIdle() override;
   void LayoutUI(IGraphics* pGraphics) override;
   bool OnHostRequestingSupportedViewConfiguration(int width, int height) override;
@@ -155,4 +157,9 @@ private:
   std::unique_ptr<TunerDSPWrapper> mDSP;
   TunerAnalysis::Detector          mDetector;
   bool mSendUpdate = false;
+#if IPLUG_EDITOR
+  // IGraphics destroys its controls while closing the editor. Keep idle
+  // updates away from that teardown window and refresh on the next open.
+  std::atomic<bool> mUIOpen { false };
+#endif
 };
