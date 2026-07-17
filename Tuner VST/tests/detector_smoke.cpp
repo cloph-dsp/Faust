@@ -11,9 +11,8 @@
 // What this test does:
 //   1. Construct a TunerAnalysis::Detector at 48 kHz.
 //   2. Feed it 8192 samples of synthesized 440 Hz sine wave at -12 dBFS.
-//      (8192 samples = 4 full analysis passes at kAnalysisStride=1024; the
-//       first pass after Reset is consumed filling the ring buffer, so we
-//       need >= kBufferSize=2048 + 3*kAnalysisStride to hit 3 settled passes.)
+//      (the analysis ring is decimated 2:1; these source-sample blocks fill
+//       the 2048-sample analysis window and leave several settled passes.)
 //   3. Read the atomic Result fields:
 //        - pitchHz          ~ 440 Hz    (within ±2 Hz tolerance)
 //        - clarity          > 0.50
@@ -77,7 +76,7 @@ static int s_failures = 0;
 
 int main() {
   std::printf("=== TunerAnalysis detector smoke ===\n");
-  std::printf("[1/3] Construct Detector @ 48 kHz\n");
+  std::printf("[1/5] Construct Detector @ 48 kHz\n");
   Detector det;
   det.Init(48000);
 
@@ -134,17 +133,18 @@ int main() {
   //     through.
   // This mirrors the real plugin's one-block latency: ProcessBlock N+1's
   // analysis sees the level written at the end of ProcessBlock N.
-  std::printf("[2/3] Feed two blocks of 440 Hz sine @ -12 dBFS\n");
+  std::printf("[2/5] Feed two blocks of 440 Hz sine @ -12 dBFS\n");
   feed(8192, 440.0, std::pow(10.0, -12.0 / 20.0));
   feed(8192, 440.0, std::pow(10.0, -12.0 / 20.0));
 
   const Result& r = det.GetResult();
-  const double pitchHz    = r.pitchHz.load();
-  const double cents      = r.cents.load();
-  const double clarity    = r.clarity.load();
-  const double level      = r.level.load();
-  const int    noteIndex  = r.noteIndex.load();
-  const int    octave     = r.octave.load();
+  const Result::Snapshot snapshot = r.ReadSnapshot();
+  const double pitchHz    = snapshot.pitchHz;
+  const double cents      = snapshot.cents;
+  const double clarity    = snapshot.clarity;
+  const double level      = snapshot.level;
+  const int    noteIndex  = snapshot.noteIndex;
+  const int    octave     = snapshot.octave;
 
   std::printf("      pitchHz  = %.3f Hz   (expected 440.0 ±2)\n",  pitchHz);
   std::printf("      cents    = %+.3f     (expected 0.0 ±10)\n",   cents);
@@ -165,7 +165,7 @@ int main() {
   EXPECT_TRUE(std::isfinite(level));
 
   // ---- Test B: A4 reference glide -- instant=true must not NaN/Inf ----
-  std::printf("[3/3] A4 reference glide -- 440 -> 442 Hz (instant)\n");
+  std::printf("[2/5] A4 reference glide -- 440 -> 442 Hz (instant)\n");
   const double peakAmp2 = std::pow(10.0, -12.0 / 20.0);
   det.SetA4Reference(442.0, /*instant=*/true);
   feed(8192, 440.0, peakAmp2);
@@ -175,14 +175,56 @@ int main() {
   EXPECT_TRUE(std::isfinite(r2.clarity.load()));
   std::printf("      pitchHz after glide = %.3f Hz\n", r2.pitchHz.load());
 
-  // ---- Test C: silence -- level must drop, pitch must stop ----
-  std::printf("[3/3] Silence -- level should drop, pitch should stop reporting\n");
+  // ---- Test C: silence -- brief hold avoids display flicker, then clears ----
+  std::printf("[3/5] Silence hold then clear\n");
   feed(4096, 440.0, 0.0);   // amplitude=0 -> level decays toward 0
   const Result& r3 = det.GetResult();
   std::printf("      silence pitchHz  = %.3f Hz\n", r3.pitchHz.load());
   std::printf("      silence level    = %.3f    (expected < %g)\n",
                r3.level.load(), 0.05);
   EXPECT_TRUE(r3.level.load() < 0.05);
+  // A short disappearance should retain the last pitch for a few analysis
+  // frames rather than flashing between a note and "---".
+  EXPECT_TRUE(r3.pitchHz.load() > 400.0);
+  feed(16384, 440.0, 0.0);
+  EXPECT_NEAR(det.GetResult().pitchHz.load(), 0.0, 0.001);
+
+  // ---- Test D: B0 range -- regression for the former ~47 Hz floor ----
+  std::printf("[4/5] B0 (30.87 Hz) low-range detection\n");
+  det.Reset();
+  phase = 0.0;
+  runningRms = 0.0;
+  feed(16384, 30.867706, std::pow(10.0, -12.0 / 20.0));
+  feed(16384, 30.867706, std::pow(10.0, -12.0 / 20.0));
+  const Result::Snapshot bass = det.GetResult().ReadSnapshot();
+  std::printf("      B0 pitchHz = %.3f Hz\n", bass.pitchHz);
+  EXPECT_NEAR(bass.pitchHz, 30.867706, 1.0);
+  EXPECT_TRUE(bass.clarity > 0.45);
+
+  // ---- Test E: strong harmonics must retain the 110 Hz fundamental ----
+  std::printf("[5/5] Harmonic-rich A2 fundamental stability\n");
+  det.Reset();
+  double harmonicPhase = 0.0;
+  double harmonicRms = 0.0;
+  const double harmonicAmp = std::pow(10.0, -12.0 / 20.0);
+  const double harmonicInc = 2.0 * 3.141592653589793 * 110.0 / 48000.0;
+  const double rmsCoeff = std::exp(-1.0 / (0.050 * 48000.0));
+  for (int block = 0; block < 4; ++block) {
+    for (int i = 0; i < 8192; ++i) {
+      const double sample = harmonicAmp * (0.22 * std::sin(harmonicPhase)
+                         + 0.58 * std::sin(2.0 * harmonicPhase)
+                         + 0.20 * std::sin(3.0 * harmonicPhase));
+      det.PushSample(sample);
+      harmonicRms = rmsCoeff * sample * sample + (1.0 - rmsCoeff) * harmonicRms;
+      harmonicPhase += harmonicInc;
+    }
+    det.GetResult().level.store(std::sqrt(harmonicRms));
+  }
+  const Result::Snapshot harmonic = det.GetResult().ReadSnapshot();
+  std::printf("      harmonic pitchHz = %.3f Hz\n", harmonic.pitchHz);
+  EXPECT_NEAR(harmonic.pitchHz, 110.0, 2.0);
+  EXPECT_EQ_INT(harmonic.noteIndex, 9);
+  EXPECT_EQ_INT(harmonic.octave, 2);
 
   // ---- Summary ----
   std::printf("\n=== Summary ===\n");

@@ -89,16 +89,15 @@ FAUSTFLOAT* TunerDSPWrapper::GetZone(const char* label) {
 // Algorithm (exceeds the Cmajor source on every axis):
 //   1. YIN with cumulative mean normalized difference function
 //   2. Adaptive threshold 0.10..0.18 based on signal level
-//   3. 4-point Neville polynomial interpolation on the CMND minimum
+//   3. Parabolic interpolation on the CMND minimum
 //   4. MPM (McLeod Pitch Method) cross-validation via NSDF
 //   5. 7-tap median filter for octave rejection
-//   6. Asymmetric pitch smoother (>2 semi -> 0.6; >0.5 -> 0.2;
-//      else 0.03 + 0.4 * userSmooth)
-//   7. Asymmetric cents smoother (alpha = 1 / (1 + 0.05 * |cents|))
+//   6. Candidate hysteresis + short confidence hold for harmonic rejection
+//   7. Time-constant pitch smoothing in log-frequency (constant-cent glide)
 //
-// CPU: analysis passes every kAnalysisStride=1024 samples (~47 Hz @ 48 kHz).
-// YIN + MPM each cost O(N*maxLag) = 2048*1024 ≈ 2.1M ops; ~100M ops/sec on
-// the audio thread.
+// CPU: analysis passes every 1024 source samples (~47 Hz @ 48 kHz) after a
+// 2:1 decimation stage. This doubles history for bass notes without increasing
+// the O(N*lag) work per pass.
 
 // TunerAnalysis::Detector now lives in TunerAnalysis.h (header-only: it
 // includes TunerAnalysis_impl.h at the bottom for the inline impls).  This
@@ -140,11 +139,12 @@ void TunerReadoutControl::Draw(IGraphics& g) {
 
   // ---- read detector results ----
   const TunerAnalysis::Result& r = mTuner->GetAnalysisResult();
-  const double freq    = r.pitchHz.load();
-  const double cents   = r.cents.load();
-  const double clarity = r.clarity.load();
-  const int    noteIdx = r.noteIndex.load();
-  const int    octave  = r.octave.load();
+  const TunerAnalysis::Result::Snapshot snapshot = r.ReadSnapshot();
+  const double freq    = snapshot.pitchHz;
+  const double cents   = snapshot.cents;
+  const double clarity = snapshot.clarity;
+  const int    noteIdx = snapshot.noteIndex;
+  const int    octave  = snapshot.octave;
 
   const bool hasSignal = clarity > 0.25 && freq > 0.0;
 
@@ -152,17 +152,22 @@ void TunerReadoutControl::Draw(IGraphics& g) {
   const float target = hasSignal
     ? (float)std::max(0.0, std::min(100.0, 50.0 + (cents / 50.0) * 50.0))
     : 50.0f;
-  const float dist = std::abs(target - mNeedlePos);
-  float baseRate;
-  if      (dist > 15.0f) baseRate = 0.30f;
-  else if (dist >  5.0f) baseRate = 0.12f;
-  else if (dist >  1.5f) baseRate = 0.05f;
-  else                   baseRate = 0.015f;
   const double smoothVal = mTuner->GetParam(kParamSmoothing)->Value() / 100.0;
-  const float smoothMul = (smoothVal < 0.01)
-    ? 100.0f
-    : (float)(0.02 + (1.0 - smoothVal) * 1.8);
-  const float rate = std::min(1.0f, baseRate * smoothMul);
+  const auto now = std::chrono::steady_clock::now();
+  float elapsed = 1.0f / 60.0f;
+  if (mHasLastDrawTime) {
+    elapsed = std::clamp(std::chrono::duration<float>(now - mLastDrawTime).count(),
+                         0.0f, 0.100f);
+  }
+  mLastDrawTime = now;
+  mHasLastDrawTime = true;
+
+  // Frame-rate-independent display smoothing. The old per-frame multiplier
+  // made the same input look noticeably less stable on high-refresh displays.
+  const float tau = (smoothVal < 0.01)
+    ? 0.0f
+    : (float)(0.010 + 0.350 * smoothVal * smoothVal);
+  const float rate = (tau <= 0.0f) ? 1.0f : 1.0f - std::exp(-elapsed / tau);
   mNeedlePos += (target - mNeedlePos) * rate;
 
   const float targetGlow = (hasSignal && std::abs(cents) <= 2.0) ? 1.0f : 0.0f;
@@ -684,13 +689,14 @@ void Tuner::OnIdle() {
   if (++s_idleFrames >= 30) {
     s_idleFrames = 0;
     const double avgUs = mDetector.Profiler().ReadAndReset();
-    // Compute the fraction of one analysis-pass slot (kAnalysisStride=1024
-    // samples / SR) that the detector consumed -- this is the metric that
+    // Compute the fraction of one analysis-pass slot (decimated stride
+    // converted back to source samples / SR) that the detector consumed -- this is the metric that
     // matters for real-time budgeting regardless of the actual pass rate.
-    const double slotUs = (double)TunerAnalysis::kAnalysisStride / GetSampleRate() * 1e6;
+    const int sourceStride = TunerAnalysis::kAnalysisStride * TunerAnalysis::kDecimationFactor;
+    const double slotUs = (double)sourceStride / GetSampleRate() * 1e6;
     [[maybe_unused]] const double pctSlot = (slotUs > 0.0) ? (avgUs / slotUs * 100.0) : 0.0;
     DBGMSG("Tuner: analysis avg=%.1f us (%.2f%% of %d-sample slot @ %.0f Hz)\n",
-           avgUs, pctSlot, (int)TunerAnalysis::kAnalysisStride, GetSampleRate());
+           avgUs, pctSlot, sourceStride, GetSampleRate());
   }
   if (mSendUpdate) {
     SendCurrentParamValuesFromDelegate();

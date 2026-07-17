@@ -20,7 +20,7 @@
 namespace TunerAnalysis {
 
 inline void Detector::Init(int sampleRate) {
-  mSampleRate = sampleRate;
+  mSampleRate = std::max(1.0, static_cast<double>(sampleRate) / kDecimationFactor);
   Reset();
 }
 
@@ -32,18 +32,30 @@ inline void Detector::Reset() {
   mMedianBuf.fill(0.0);
   mMedianIdx = 0;
   mLastPitch = 0.0;
-  mLastCents = 0.0;
-  mResult.pitchHz.store(0.0);
-  mResult.cents.store(0.0);
-  mResult.clarity.store(0.0);
+  mCommittedPitch = 0.0;
+  mPendingPitch = 0.0;
+  mLastStableClarity = 0.0;
+  mPendingFrames = 0;
+  mNoPitchFrames = 0;
+  mDecimationAccumulator = 0.0;
+  mDecimationCount = 0;
+  mResult.Publish(0.0, 0.0, 0.0, -1, 4);
   mResult.level.store(0.0);
-  mResult.noteIndex.store(-1);
-  mResult.octave.store(4);
 }
 
 inline void Detector::PushSample(double mono) {
   if (!std::isfinite(mono)) mono = 0.0;  // RT-3: guard NaN/Inf before writing to ring buffer
-  mBuffer[mWriteIdx] = mono;
+  // A two-sample box average is a cheap, deterministic anti-alias filter for
+  // 2:1 decimation. Pitch fundamentals below 1.5 kHz remain far below the
+  // 12 kHz decimated Nyquist limit, while bass notes gain one octave of lag
+  // history without increasing the O(N*lag) detector cost.
+  mDecimationAccumulator += mono;
+  if (++mDecimationCount < kDecimationFactor) return;
+  const double analysisSample = mDecimationAccumulator / kDecimationFactor;
+  mDecimationAccumulator = 0.0;
+  mDecimationCount = 0;
+
+  mBuffer[mWriteIdx] = analysisSample;
   mWriteIdx = (mWriteIdx + 1) % kBufferSize;
   if (mSampleCount < kBufferSize) mSampleCount++;
 
@@ -92,20 +104,24 @@ inline double Detector::DetectYIN(double& clarityOut) {
   }
   if (bestTau < 0) { clarityOut = 0.0; return 0.0; }
 
-  double refined = RefineLagNeville(dN.data(), bestTau);
+  double refined = RefineLagParabolic(dN.data(), bestTau);
   if (refined < minLag || refined > maxLag) return 0.0;
 
   clarityOut = std::min(1.0, std::max(0.0, 1.0 - dN[(int)std::round(refined)]));
   return mSampleRate / refined;
 }
 
-inline double Detector::RefineLagNeville(const double* y, int bestLag) const {
+inline double Detector::RefineLagParabolic(const double* y, int bestLag) const {
   if (bestLag < 1 || bestLag > kMaxLag - 2) return (double)bestLag;
-  const double w0 = 1.0 / (1.0 + std::abs(y[bestLag - 1]));
-  const double w1 = 1.0 / (1.0 + std::abs(y[bestLag]));
-  const double w2 = 1.0 / (1.0 + std::abs(y[bestLag + 1]));
-  const double wsum = w0 + w1 + w2;
-  return ((-1.0) * w0 + 0.0 * w1 + 1.0 * w2) / wsum + (double)bestLag;
+  const double y0 = y[bestLag - 1];
+  const double y1 = y[bestLag];
+  const double y2 = y[bestLag + 1];
+  const double denom = y0 - 2.0 * y1 + y2;
+  if (std::abs(denom) < 1e-12) return (double)bestLag;
+  // Vertex of the local CMNDF minimum. Unlike the previous inverse-weight
+  // average, this is unbiased for a locally parabolic peak/minimum.
+  const double offset = std::clamp(0.5 * (y0 - y2) / denom, -0.5, 0.5);
+  return (double)bestLag + offset;
 }
 
 inline double Detector::DetectMPM(double& clarityOut) {
@@ -127,12 +143,30 @@ inline double Detector::DetectMPM(double& clarityOut) {
     nsdf[tau] = (den > 1e-12) ? (num / den) : 0.0;
   }
 
+  // MPM's global maximum can be a later multiple of the period (or a strong
+  // harmonic). Prefer the first credible local maximum after an NSDF trough:
+  // this tracks the fundamental and makes the MPM vote agree with YIN more
+  // often on plucked/string-rich material.
   int bestTau = -1;
-  double bestVal = 0.5;
-  for (int tau = minLag; tau <= maxLag; ++tau) {
-    if (nsdf[tau] > bestVal) {
-      bestVal = nsdf[tau];
+  double bestVal = 0.55;
+  bool sawNegative = false;
+  for (int tau = minLag + 1; tau < maxLag; ++tau) {
+    if (nsdf[tau] <= 0.0) sawNegative = true;
+    if (sawNegative && nsdf[tau] >= bestVal &&
+        nsdf[tau] > nsdf[tau - 1] && nsdf[tau] >= nsdf[tau + 1]) {
       bestTau = tau;
+      bestVal = nsdf[tau];
+      break;
+    }
+  }
+  // Some nearly sinusoidal windows never cross below zero in the searched
+  // range. Keep a bounded best-peak fallback rather than reporting no pitch.
+  if (bestTau < 0) {
+    for (int tau = minLag; tau <= maxLag; ++tau) {
+      if (nsdf[tau] > bestVal) {
+        bestVal = nsdf[tau];
+        bestTau = tau;
+      }
     }
   }
   if (bestTau < 0) { clarityOut = 0.0; return 0.0; }
@@ -175,22 +209,83 @@ inline double Detector::MedianFilter(double candidate) {
 inline double Detector::SmoothPitch(double candidate) {
   if (!std::isfinite(candidate) || candidate <= 0.0) { mLastPitch = 0.0; return 0.0; }
   if (mLastPitch <= 0.0) { mLastPitch = candidate; return candidate; }
-  const double ratio = candidate / mLastPitch;
-  const double semitones = std::abs(12.0 * std::log2(ratio));
-  double alpha;
-  if (semitones > 2.0)       alpha = 0.60;
-  else if (semitones > 0.5)  alpha = 0.20;
-  else                       alpha = 0.01 + 0.50 * (1.0 - mSmooth);
-  mLastPitch = (1.0 - alpha) * mLastPitch + alpha * candidate;
+  const double semitones = std::abs(12.0 * std::log2(candidate / mLastPitch));
+  const double smooth = std::clamp(mSmooth.load(std::memory_order_relaxed), 0.0, 1.0);
+  // Express smoothing in seconds, not arbitrary per-analysis coefficients.
+  // Log-frequency interpolation keeps a constant-cent glide across registers.
+  const double dt = static_cast<double>(kAnalysisStride) / mSampleRate;
+  const double tau = (semitones > 2.0) ? 0.030 : (0.010 + 0.350 * smooth * smooth);
+  const double alpha = (smooth < 0.001) ? 1.0 : 1.0 - std::exp(-dt / tau);
+  const double logPitch = std::log2(mLastPitch) + alpha * std::log2(candidate / mLastPitch);
+  mLastPitch = std::exp2(logPitch);
   return mLastPitch;
 }
 
-inline double Detector::SmoothCents(double candidate) {
-  if (!std::isfinite(candidate)) { mLastCents = 0.0; return 0.0; }
-  const double absCents = std::abs(candidate);
-  const double alpha = 1.0 / (1.0 + 0.05 * absCents) * (1.0 - 0.95 * mSmooth);
-  mLastCents = (1.0 - alpha) * mLastCents + alpha * candidate;
-  return mLastCents;
+inline double Detector::ChooseCandidate(double yinHz, double yinClarity,
+                                        double mpmHz, double mpmClarity) const {
+  if (yinHz <= 0.0) return mpmHz;
+  if (mpmHz <= 0.0) return yinHz;
+
+  const double disagreement = std::abs(12.0 * std::log2(yinHz / mpmHz));
+  if (disagreement < 0.35) return (yinClarity >= mpmClarity) ? yinHz : mpmHz;
+
+  // During disagreement, continuity is more reliable than a one-frame
+  // clarity contest. This specifically rejects one-off octave/harmonic votes.
+  if (mCommittedPitch > 0.0) {
+    const double yinDistance = std::abs(12.0 * std::log2(yinHz / mCommittedPitch));
+    const double mpmDistance = std::abs(12.0 * std::log2(mpmHz / mCommittedPitch));
+    if (std::abs(yinDistance - mpmDistance) > 0.15)
+      return (yinDistance < mpmDistance) ? yinHz : mpmHz;
+  }
+  return (yinClarity >= mpmClarity) ? yinHz : mpmHz;
+}
+
+inline double Detector::StabilizeCandidate(double candidate, double& clarityInOut) {
+  constexpr int kConfirmFrames = 2;
+  constexpr int kHoldFrames = 5; // ~107 ms at 48 kHz (analysis pass ~=21 ms)
+
+  if (!std::isfinite(candidate) || candidate <= 0.0) {
+    if (mCommittedPitch > 0.0 && ++mNoPitchFrames <= kHoldFrames) {
+      clarityInOut = std::max(clarityInOut, mLastStableClarity * 0.70);
+      return mCommittedPitch;
+    }
+    mCommittedPitch = 0.0;
+    mPendingPitch = 0.0;
+    mPendingFrames = 0;
+    mNoPitchFrames = 0;
+    mLastStableClarity = 0.0;
+    return 0.0;
+  }
+
+  mNoPitchFrames = 0;
+  if (mCommittedPitch <= 0.0) {
+    mCommittedPitch = candidate;
+    mLastStableClarity = clarityInOut;
+    return candidate;
+  }
+
+  const double delta = std::abs(12.0 * std::log2(candidate / mCommittedPitch));
+  if (delta <= 0.45) {
+    mCommittedPitch = candidate;
+    mPendingPitch = 0.0;
+    mPendingFrames = 0;
+    mLastStableClarity = clarityInOut;
+    return candidate;
+  }
+
+  const bool matchesPending = mPendingPitch > 0.0 &&
+    std::abs(12.0 * std::log2(candidate / mPendingPitch)) <= 0.35;
+  mPendingPitch = matchesPending ? 0.5 * (mPendingPitch + candidate) : candidate;
+  mPendingFrames = matchesPending ? mPendingFrames + 1 : 1;
+  if (mPendingFrames >= kConfirmFrames) {
+    mCommittedPitch = mPendingPitch;
+    mPendingPitch = 0.0;
+    mPendingFrames = 0;
+    mLastStableClarity = clarityInOut;
+  } else {
+    clarityInOut = std::max(clarityInOut, mLastStableClarity * 0.85);
+  }
+  return mCommittedPitch;
 }
 
 inline double Detector::NoteFromPitch(double hz, int& noteIdxOut, int& octaveOut) const {
@@ -208,16 +303,7 @@ inline void Detector::RunAnalysis() {
   const double yinHz  = DetectYIN(yClarity);
   const double mpmHz  = DetectMPM(mClarity);
 
-  double rawPitch = 0.0;
-  if (yinHz > 0.0 && mpmHz > 0.0) {
-    const double ratio = yinHz / mpmHz;
-    if (ratio > 0.97 && ratio < 1.03) rawPitch = yinHz;
-    else rawPitch = (yClarity >= mClarity) ? yinHz : mpmHz;
-  } else if (yinHz > 0.0) {
-    rawPitch = yinHz;
-  } else if (mpmHz > 0.0) {
-    rawPitch = mpmHz;
-  }
+  double rawPitch = ChooseCandidate(yinHz, yClarity, mpmHz, mClarity);
 
   const double lvl = mResult.level.load();
   if (lvl < 0.005 || !std::isfinite(rawPitch)) rawPitch = 0.0;
@@ -235,20 +321,14 @@ inline void Detector::RunAnalysis() {
       mA4Ref = a4Target;
   }
 
-  const double medianPitch  = MedianFilter(rawPitch);
+  double clarity = std::max(yClarity, mClarity);
+  const double stablePitch = StabilizeCandidate(rawPitch, clarity);
+  const double medianPitch  = MedianFilter(stablePitch);
   const double smoothedPitch = SmoothPitch(medianPitch);
 
   int noteIdx = -1, octave = 4;
-  const double rawCents = NoteFromPitch(smoothedPitch, noteIdx, octave);
-  const double smoothedCents = SmoothCents(rawCents);
-
-  const double clarity = std::max(yClarity, mClarity);
-
-  mResult.pitchHz.store(smoothedPitch);
-  mResult.cents.store(smoothedCents);
-  mResult.clarity.store(clarity);
-  mResult.noteIndex.store(noteIdx);
-  mResult.octave.store(octave);
+  const double cents = NoteFromPitch(smoothedPitch, noteIdx, octave);
+  mResult.Publish(smoothedPitch, cents, clarity, noteIdx, octave);
   mProfiler.End();
 }
 

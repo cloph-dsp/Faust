@@ -100,6 +100,8 @@ private:
   // Animated needle position (0..100%) -- mirrors Amorph's needle state.
   float mNeedlePos = 50.0f;
   float mGlow      = 0.0f;
+  std::chrono::steady_clock::time_point mLastDrawTime {};
+  bool mHasLastDrawTime = false;
 
   // Smoothing slider hit rect (set during Draw, used by mouse handlers).
   IRECT mSmoothRect;
