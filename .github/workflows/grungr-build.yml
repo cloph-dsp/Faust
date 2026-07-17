@@ -223,7 +223,14 @@ jobs:
           $validator = Get-ChildItem -Path $buildDir -Recurse -Filter validator.exe | Select-Object -First 1 -ExpandProperty FullName
           if (-not $validator) { throw "Steinberg VST3 validator executable was not produced" }
           $plugin = (Resolve-Path "artifacts/vst3/Grungr.vst3").Path
-          & $validator $plugin
+          # Grungr ships as the user's preferred loose Windows .vst3 DLL. The
+          # Steinberg validator additionally requires the formal VST3 bundle
+          # layout, so wrap the exact same binary only for this validation step.
+          $validationBundle = Join-Path $env:RUNNER_TEMP "Grungr-validator.vst3"
+          $validationBinaryDir = Join-Path $validationBundle "Contents\x86_64-win"
+          New-Item -ItemType Directory -Path $validationBinaryDir -Force | Out-Null
+          Copy-Item -LiteralPath $plugin -Destination (Join-Path $validationBinaryDir "Grungr.vst3") -Force
+          & $validator $validationBundle
           if ($LASTEXITCODE -ne 0) { throw "Steinberg VST3 validation failed" }
 
       - name: Verify CLAP binary
