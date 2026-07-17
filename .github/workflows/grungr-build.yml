@@ -228,8 +228,9 @@ jobs:
           # layout, so wrap the exact same binary only for this validation step.
           $validationBundle = Join-Path $env:RUNNER_TEMP "Grungr-validator.vst3"
           $validationBinaryDir = Join-Path $validationBundle "Contents\x86_64-win"
+          $validationModule = Join-Path $validationBinaryDir (Split-Path $validationBundle -Leaf)
           New-Item -ItemType Directory -Path $validationBinaryDir -Force | Out-Null
-          Copy-Item -LiteralPath $plugin -Destination (Join-Path $validationBinaryDir "Grungr.vst3") -Force
+          Copy-Item -LiteralPath $plugin -Destination $validationModule -Force
           & $validator $validationBundle
           if ($LASTEXITCODE -ne 0) { throw "Steinberg VST3 validation failed" }
 
