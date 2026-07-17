@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "4F3EE1BA231438D000004786"
-               BuildableName = "DODGrunge.app"
+               BuildableName = "Grungr.app"
                BlueprintName = "AUv3App"
-               ReferencedContainer = "container:DODGrunge-macOS.xcodeproj">
+               ReferencedContainer = "container:Grungr-macOS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -31,9 +31,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "4F3EE1BA231438D000004786"
-            BuildableName = "DODGrunge.app"
+            BuildableName = "Grungr.app"
             BlueprintName = "AUv3App"
-            ReferencedContainer = "container:DODGrunge-macOS.xcodeproj">
+            ReferencedContainer = "container:Grungr-macOS.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -56,9 +56,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "4F3EE1BA231438D000004786"
-            BuildableName = "DODGrunge.app"
+            BuildableName = "Grungr.app"
             BlueprintName = "AUv3App"
-            ReferencedContainer = "container:DODGrunge-macOS.xcodeproj">
+            ReferencedContainer = "container:Grungr-macOS.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -73,9 +73,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "4F3EE1BA231438D000004786"
-            BuildableName = "DODGrunge.app"
+            BuildableName = "Grungr.app"
             BlueprintName = "AUv3App"
-            ReferencedContainer = "container:DODGrunge-macOS.xcodeproj">
+            ReferencedContainer = "container:Grungr-macOS.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

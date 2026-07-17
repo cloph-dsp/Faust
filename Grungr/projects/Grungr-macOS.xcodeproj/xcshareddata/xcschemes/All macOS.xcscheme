@@ -17,7 +17,7 @@
                BlueprintIdentifier = "4F78DAF113B643600032E0F3"
                BuildableName = "All"
                BlueprintName = "All"
-               ReferencedContainer = "container:DODGrunge-macOS.xcodeproj">
+               ReferencedContainer = "container:Grungr-macOS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -48,7 +48,7 @@
             BlueprintIdentifier = "4F78DAF113B643600032E0F3"
             BuildableName = "All"
             BlueprintName = "All"
-            ReferencedContainer = "container:DODGrunge-macOS.xcodeproj">
+            ReferencedContainer = "container:Grungr-macOS.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
    </LaunchAction>

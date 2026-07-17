@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "4FB600121567CB0A0020189A"
-               BuildableName = "DODGrunge.aaxplugin"
+               BuildableName = "Grungr.aaxplugin"
                BlueprintName = "AAX"
-               ReferencedContainer = "container:DODGrunge-macOS.xcodeproj">
+               ReferencedContainer = "container:Grungr-macOS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -51,9 +51,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "4FB600121567CB0A0020189A"
-            BuildableName = "DODGrunge.aaxplugin"
+            BuildableName = "Grungr.aaxplugin"
             BlueprintName = "AAX"
-            ReferencedContainer = "container:DODGrunge-macOS.xcodeproj">
+            ReferencedContainer = "container:Grungr-macOS.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
    </LaunchAction>

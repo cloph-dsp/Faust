@@ -1,4 +1,5 @@
 #define PLUG_NAME "Three Beat Problem"
+#define VOLUNMO_FN "volunmo.ttf"
 #define PLUG_MFR "cloph"
 #define PLUG_VERSION_HEX 0x00010000
 #define PLUG_VERSION_STR "1.0.0"

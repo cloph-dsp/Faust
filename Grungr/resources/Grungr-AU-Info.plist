@@ -12,7 +12,7 @@
 			<key>manufacturer</key>
 			<string>Clph</string>
 			<key>name</key>
-			<string>CLOPH: Grungr</string>
+			<string>cloph: Grungr</string>
 			<key>sandboxSafe</key>
 			<true/>
 			<key>subtype</key>
@@ -30,7 +30,7 @@
 	<key>CFBundleExecutable</key>
 	<string>Grungr</string>
 	<key>CFBundleGetInfoString</key>
-	<string>Grungr v1.0.0 Copyright 2025 cloph</string>
+	<string>Grungr v2.7.0 Copyright 2026 cloph</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.cloph.audiounit.Grungr</string>
 	<key>CFBundleInfoDictionaryVersion</key>

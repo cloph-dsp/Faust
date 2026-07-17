@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "4F9828AA140A9EB700F3FCC1"
-               BuildableName = "DODGrunge.vst3"
+               BuildableName = "Grungr.vst3"
                BlueprintName = "VST3"
-               ReferencedContainer = "container:DODGrunge-macOS.xcodeproj">
+               ReferencedContainer = "container:Grungr-macOS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -50,9 +50,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "4F9828AA140A9EB700F3FCC1"
-            BuildableName = "DODGrunge.vst3"
+            BuildableName = "Grungr.vst3"
             BlueprintName = "VST3"
-            ReferencedContainer = "container:DODGrunge-macOS.xcodeproj">
+            ReferencedContainer = "container:Grungr-macOS.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <CommandLineArguments>

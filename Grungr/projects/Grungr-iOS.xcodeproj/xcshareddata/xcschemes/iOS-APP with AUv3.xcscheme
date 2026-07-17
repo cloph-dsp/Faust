@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "91236D0C1B08F42B00734C5E"
-               BuildableName = "DODGrunge.app"
+               BuildableName = "Grungr.app"
                BlueprintName = "App"
-               ReferencedContainer = "container:DODGrunge-iOS.xcodeproj">
+               ReferencedContainer = "container:Grungr-iOS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -31,9 +31,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "91236D0C1B08F42B00734C5E"
-            BuildableName = "DODGrunge.app"
+            BuildableName = "Grungr.app"
             BlueprintName = "App"
-            ReferencedContainer = "container:DODGrunge-iOS.xcodeproj">
+            ReferencedContainer = "container:Grungr-iOS.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -56,9 +56,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "91236D0C1B08F42B00734C5E"
-            BuildableName = "DODGrunge.app"
+            BuildableName = "Grungr.app"
             BlueprintName = "App"
-            ReferencedContainer = "container:DODGrunge-iOS.xcodeproj">
+            ReferencedContainer = "container:Grungr-iOS.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -73,9 +73,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "91236D0C1B08F42B00734C5E"
-            BuildableName = "DODGrunge.app"
+            BuildableName = "Grungr.app"
             BlueprintName = "App"
-            ReferencedContainer = "container:DODGrunge-iOS.xcodeproj">
+            ReferencedContainer = "container:Grungr-iOS.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

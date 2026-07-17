@@ -6,8 +6,8 @@ import("stdfaust.lib");
 
 declare name "Grungr";
 declare author "cloph";
-declare version "2.7";
-declare description "Three-knob DOD FX69B Grunge pedal emulation with RAW/MOD/BASS voicing switch and analog-style stomp bypass.";
+declare version "2.7.0";
+declare description "Three-knob drive effect with RAW, MOD, and BASS voicings plus a click-free stomp bypass.";
 
 //============================================================================
 // UI Controls
@@ -19,6 +19,10 @@ face_knob = hslider("[3]Face[style:knob]", 0.56, 0, 1, 0.01) : si.smoo;
 loud_knob = hslider("[4]Loud[style:knob]", 0.72, 0, 1, 0.01) : si.smoo;
 voicing_raw = hslider("[5]RAW Voicing[style:knob]", 0, 0, 2, 1);
 bypass_switch = checkbox("[6]Bypass[style:switch]");
+// Smoothly crossfade dry and processed paths so toggling bypass cannot create
+// a discontinuity. The effect remains stateful while bypassed, avoiding a
+// startup transient when it is engaged again.
+bypass_mix = bypass_switch : si.smoo;
 
 mode_select = int(voicing_raw + 0.5) : min(2) : max(0);
 raw_mode = (mode_select == 0);
@@ -206,13 +210,15 @@ mod_tanh_warmth = _
     <: _, (*(0.4) : ma.tanh : *(0.05 * voicing_blend))
     : +;
 
-// In mod mode, engage a gentle lookahead limiter then a noise gate to control
-// peaks and suppress hiss/hum during silent passages. Limiter: 5 ms lookahead,
-// ceiling -0.5 dBFS (linear 0.944), 1 ms attack, 10 ms hold, 50 ms release.
+// The former lookahead limiter added mode-dependent latency. This bounded tanh
+// limiter has no lookahead, so host latency compensation is always exact.
+zero_latency_limiter = \(x).(0.944 * ma.tanh(x / 0.944));
+
+// In mod mode, limit peaks and suppress hiss/hum during silent passages.
 // Gate: hold 10 ms, release 80 ms, threshold -50 dB, 2:1 expansion. RAW mode
-// bypassed entirely. These are mono (applied per channel via the outer par).
+// is unaffected. These are mono (applied per channel via the outer par).
 mod_limiter = ba.bypass1(1.0 - mod_active,
-    co.limiter_lad_mono(0.005, 0.944, 0.001, 0.01, 0.05));
+    zero_latency_limiter);
 
 mod_noise_gate = ba.bypass1(1.0 - mod_active,
     co.expander_N_chan(2.0, -50.0, -30.0, 0.005, 0.01, 0.08, 6.0, 0, 0.5, _, 1024, 1));
@@ -273,10 +279,8 @@ bass_lomid_dip = fi.peak_eq_cq(-bass_voicing_blend * 2.0, 250.0, 1.0);
 bass_air_cut = ba.bypass1(1.0 - bass_active,
     fi.lowpass(2, 18000.0 - 12000.0 * bass_voicing_blend));
 
-// T3 "Polished" — lookahead limiter, slower than mod's for "round" level hold.
-// 10 ms lookahead, -0.5 dBFS ceiling (linear 0.944), 5/20/80 ms A/H/R. Mono.
-bass_lookahead_limiter = ba.bypass1(1.0 - bass_active,
-    co.limiter_lad_mono(0.010, 0.944, 0.005, 0.02, 0.08));
+// T3 "Polished" — zero-latency peak control for round, bounded output.
+bass_limiter = ba.bypass1(1.0 - bass_active, zero_latency_limiter);
 
 // T3 "Polished" — subsonic expander, kills sub-bass rumble between notes. 4:1
 // expansion (vs mod's 2:1), deeper threshold (-55 dB), longer release (120 ms).
@@ -357,7 +361,7 @@ output_buffer = _
     : mod_limiter
     : mod_noise_gate
     : mod_makeup_curve
-    : bass_lookahead_limiter
+    : bass_limiter
     : bass_subsonic_gate
     : bass_makeup_curve;
 
@@ -372,5 +376,5 @@ grunge_process = _
 // Main Process
 //============================================================================
 
-process = par(i, 2, ba.bypass1(bypass_switch, grunge_process));
+process = par(i, 2, _ <: *(bypass_mix), (grunge_process : *(1.0 - bypass_mix)) : +);
 process_stereo = process;

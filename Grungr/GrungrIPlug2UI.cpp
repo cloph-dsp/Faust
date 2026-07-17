@@ -671,7 +671,6 @@ public:
       const float cellX = mRECT.L + cellGap + i * (cellW + cellGap);
       const igraphics::IRECT cellRect(cellX, mRECT.T, cellX + cellW, mRECT.T + cellH);
       const bool isActive = (i == mode);
-      const bool isHovered = GetMouseIsOver() && mRECT.Intersects(cellRect);
 
       // Depression animation offset (1-2px on press)
       const float pressOffset = (mPressT > 0.001f && mPressedCell == i) ? (mPressT * 1.5f) : 0.f;
@@ -1870,7 +1869,6 @@ void BuildOrRelayout(igraphics::IGraphics* pGraphics,
   const char* labelFontID = (fonts.mainFontTag != nullptr) ? fonts.mainFontTag
                             : (fonts.secondaryFontTag != nullptr) ? fonts.secondaryFontTag
                             : "Roboto-Regular";
-  // BoxPot has full symbol coverage (% . -) needed for value display.
   const char* valueFontID = (fonts.tertiaryFontTag != nullptr) ? fonts.tertiaryFontTag
                             : (fonts.secondaryFontTag != nullptr) ? fonts.secondaryFontTag
                             : (fonts.mainFontTag != nullptr) ? fonts.mainFontTag

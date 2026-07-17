@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>Grungr</string>
 	<key>CFBundleGetInfoString</key>
-	<string>Grungr v1.0.0 Copyright 2025 cloph</string>
+	<string>Grungr v2.7.0 Copyright 2026 cloph</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.cloph.app.Grungr.AUv3</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>2.7.0</string>
 	<key>CFBundleVersion</key>
-	<string>1.0.0</string>
+	<string>2.7.0</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>10.14.0</string>
 	<key>NSExtension</key>
@@ -34,7 +34,7 @@
 					<key>description</key>
 					<string>Grungr</string>
 					<key>manufacturer</key>
-					<string>Acme</string>
+					<string>CLPH</string>
 					<key>name</key>
 					<string>cloph: Grungr</string>
 					<key>sandboxSafe</key>

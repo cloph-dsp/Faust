@@ -1,53 +1,60 @@
+param(
+  [switch]$Deploy
+)
+
 $project = Join-Path $PSScriptRoot "projects\Grungr-vst3.vcxproj"
 $solutionDir = $PSScriptRoot
-$solutionDirArgument = $solutionDir + "\\"
-
-Write-Host "Building Grungr VST3 plugin..."
-Write-Host "Project: $project"
-Write-Host "Solution Dir: $solutionDir"
-
+$solutionDirArgument = $solutionDir + "\"
 $msbuild = "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+$sourcePlugin = Join-Path $PSScriptRoot "build-win\vst3\x64\Release\Grungr.vst3"
 
-if (-not (Test-Path $msbuild)) {
-    throw "MSBuild not found at: $msbuild"
+if (-not (Test-Path -LiteralPath $msbuild)) {
+  throw "MSBuild not found at: $msbuild"
 }
 
-Write-Host "Using MSBuild: $msbuild"
-
-& $msbuild $project /p:Configuration=Release /p:Platform=x64 "/p:SolutionDir=$solutionDirArgument" /v:m
-
+Write-Host "Building Grungr VST3 (Release x64)..."
+& $msbuild $project /p:Configuration=Release /p:Platform=x64 "/p:SolutionDir=$solutionDirArgument" /p:PostBuildEventUseInBuild=false /v:minimal /nologo
 if ($LASTEXITCODE -ne 0) {
-    Write-Warning "Build returned exit code $LASTEXITCODE, but continuing because post-build script has known non-critical errors."
+  throw "MSBuild failed with exit code $LASTEXITCODE. No existing artifact was deployed."
 }
 
-Write-Host "Build completed successfully"
-
-$sourceBundle = Join-Path $PSScriptRoot "build-win\Grungr.vst3"
-$commonFilesDir = Join-Path $PSScriptRoot "..\common files\vst3"
-
-if (-not (Test-Path $sourceBundle)) {
-    Write-Error "Build output not found: $sourceBundle"
-    exit 1
+if (-not (Test-Path -LiteralPath $sourcePlugin -PathType Leaf)) {
+  throw "Expected VST3 artifact was not produced: $sourcePlugin"
 }
 
-Write-Host "Deploying VST3 bundle..."
-
-if (-not (Test-Path $commonFilesDir)) {
-    New-Item -ItemType Directory -Path $commonFilesDir -Force | Out-Null
+Write-Host "Build complete: $sourcePlugin"
+if (-not $Deploy) {
+  Write-Host "Use -Deploy to copy this verified artifact to the test locations."
+  exit 0
 }
-Remove-Item -Recurse -Force (Join-Path $commonFilesDir "Grungr.vst3") -ErrorAction SilentlyContinue
-Copy-Item -Path $sourceBundle -Destination $commonFilesDir -Recurse -Force
-Write-Host "  -> $commonFilesDir"
+
+function Copy-PluginWithRetry {
+  param(
+    [Parameter(Mandatory = $true)][string]$DestinationDirectory
+  )
+
+  New-Item -ItemType Directory -Path $DestinationDirectory -Force | Out-Null
+  $destination = Join-Path $DestinationDirectory (Split-Path -Leaf $sourcePlugin)
+
+  for ($attempt = 1; $attempt -le 5; $attempt++) {
+    try {
+      Copy-Item -LiteralPath $sourcePlugin -Destination $destination -Force -ErrorAction Stop
+      Write-Host "  -> $destination"
+      return
+    }
+    catch {
+      if ($attempt -eq 5) {
+        throw "Could not deploy to $destination after $attempt attempts: $($_.Exception.Message)"
+      }
+      Start-Sleep -Seconds 2
+    }
+  }
+}
+
+$workspaceVst3 = Join-Path $PSScriptRoot "..\common files\vst3"
+Copy-PluginWithRetry -DestinationDirectory $workspaceVst3
 
 $systemVst3 = Join-Path $env:CommonProgramW6432 "VST3"
-$systemBundle = Join-Path $systemVst3 "Grungr.vst3"
+Copy-PluginWithRetry -DestinationDirectory $systemVst3
 
-try {
-    Remove-Item -Recurse -Force $systemBundle -ErrorAction SilentlyContinue
-    Copy-Item -Path $sourceBundle -Destination $systemVst3 -Recurse -Force
-    Write-Host "  -> $systemVst3"
-} catch {
-    Write-Warning "Could not write to system VST3 folder (need admin?): $_"
-}
-
-Write-Host "Build and deployment complete!"
+Write-Host "Deployment complete."

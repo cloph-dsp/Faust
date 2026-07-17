@@ -17,7 +17,7 @@
                BlueprintIdentifier = "4FA61F6D22E899B500A92C58"
                BuildableName = "AUv3Framework.framework"
                BlueprintName = "AUv3Framework"
-               ReferencedContainer = "container:DODGrunge-iOS.xcodeproj">
+               ReferencedContainer = "container:Grungr-iOS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -48,7 +48,7 @@
             BlueprintIdentifier = "4FA61F6D22E899B500A92C58"
             BuildableName = "AUv3Framework.framework"
             BlueprintName = "AUv3Framework"
-            ReferencedContainer = "container:DODGrunge-iOS.xcodeproj">
+            ReferencedContainer = "container:Grungr-iOS.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
    </LaunchAction>
@@ -64,7 +64,7 @@
             BlueprintIdentifier = "4FA61F6D22E899B500A92C58"
             BuildableName = "AUv3Framework.framework"
             BlueprintName = "AUv3Framework"
-            ReferencedContainer = "container:DODGrunge-iOS.xcodeproj">
+            ReferencedContainer = "container:Grungr-iOS.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
    </ProfileAction>

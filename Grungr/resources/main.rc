@@ -142,9 +142,10 @@ BEGIN
     "resource.h\0"
     "NOMOREHERO_FN TTF \"NoMoreHeroV2-Regular.ttf\"\r\n"
     "FUTUREERODED_FN OTF \"Future2097Eroded-Regular.otf\"\r\n"
+    "ROBOTO_FN TTF \"Roboto-Regular.ttf\"\r\n"
     "GRUNGE_BG_SVG_FN SVG \"GrungrFaceplate.svg\"\r\n"
     "POWERBUTTON_SVG_FN SVG \"knob-cropped.svg\"\r\n"
-    "CLOPH_LOGO_SVG_FN SVG \"cloph-logo.svg\"\r\n"
+    "cloph_logo_svg_fn SVG \"cloph-logo.svg\"\r\n"
     "GRUNGR_LOGO_SVG_FN SVG \"logo-grungr.svg\"\r\n"
     "BOXPOT_FN TTF \"boxpot1.ttf\"\r\n"
     "STOMP_SOLE_SVG_FN SVG \"stomp-sole.svg\"\0"
@@ -196,8 +197,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 0,0,1,0
-PRODUCTVERSION 0,0,1,0
+FILEVERSION 2,7,0,0
+PRODUCTVERSION 2,7,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -212,8 +213,8 @@ BEGIN
     BEGIN
         BLOCK "040004e4"
         BEGIN
-            VALUE "FileVersion", "0.0.1"
-            VALUE "ProductVersion", "0.0.1"
+            VALUE "FileVersion", "2.7.0"
+            VALUE "ProductVersion", "2.7.0"
             VALUE "FileDescription", "Grungr"
             VALUE "InternalName", "Grungr"
             VALUE "ProductName", "Grungr"
@@ -243,7 +244,7 @@ NOMOREHERO_FN TTF "NoMoreHeroV2-Regular.ttf"
 FUTUREERODED_FN OTF "Future2097Eroded-Regular.otf"
 GRUNGE_BG_SVG_FN SVG "GrungrFaceplate.svg"
 POWERBUTTON_SVG_FN SVG "knob-cropped.svg"
-CLOPH_LOGO_SVG_FN SVG "cloph-logo.svg"
+cloph_logo_svg_fn SVG "cloph-logo.svg"
 GRUNGR_LOGO_SVG_FN SVG "logo-grungr.svg"
 ROBOTO_FN TTF ROBOTO_FN
 BOXPOT_FN TTF "boxpot1.ttf"

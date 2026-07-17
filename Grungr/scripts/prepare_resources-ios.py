@@ -21,6 +21,7 @@ from parse_config import parse_config, parse_xcconfig
 def copy_resources_to_destination(projectpath, dst, label=""):
   """Copy image and font resources from project to destination folder."""
   display_dst = label if label else dst
+  resource_dir = os.path.join(projectpath, "resources")
 
   if os.path.exists(projectpath + "/resources/img/"):
     for img in os.listdir(projectpath + "/resources/img/"):
@@ -31,6 +32,12 @@ def copy_resources_to_destination(projectpath, dst, label=""):
     for font in os.listdir(projectpath + "/resources/fonts/"):
       print("copying " + font + " to " + display_dst)
       shutil.copy(projectpath + "/resources/fonts/" + font, dst)
+
+  for pattern in ("*.svg", "*.ttf", "*.otf", "*.png", "*.ico"):
+    for asset in glob.glob(os.path.join(resource_dir, pattern)):
+      if os.path.isfile(asset):
+        print("copying " + os.path.basename(asset) + " to " + display_dst)
+        shutil.copy(asset, dst)
 
 def main():
   if(len(sys.argv) == 2):
@@ -100,10 +107,10 @@ def main():
     
   if config['PLUG_HAS_UI'] == 1:
     auv3['NSExtension']['NSExtensionAttributes']['AudioComponents'][0]['tags'][1] = "size:{" + str(config['PLUG_WIDTH']) + "," + str(config['PLUG_HEIGHT']) + "}"
-    auv3['NSExtension']['NSExtensionAttributes']['AudioComponents'][0]['factoryFunction'] = "IPlugAUViewController_vDODGrunge"
+    auv3['NSExtension']['NSExtensionAttributes']['AudioComponents'][0]['factoryFunction'] = "IPlugAUViewController_vGrungr"
     auv3['NSExtension']['NSExtensionMainStoryboard'] = config['BUNDLE_NAME'] + "-iOS-MainInterface"
   else:
-    auv3['NSExtension']['NSExtensionPrincipalClass'] = "IPlugAUViewController_vDODGrunge"
+    auv3['NSExtension']['NSExtensionPrincipalClass'] = "IPlugAUViewController_vGrungr"
 
   with open(plistpath, 'wb') as fp:
     plistlib.dump(auv3, fp)

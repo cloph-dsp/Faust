@@ -23,6 +23,7 @@ from parse_config import parse_config, parse_xcconfig
 def copy_resources_to_destination(projectpath, dst, label=""):
   """Copy image and font resources from project to destination folder."""
   display_dst = label if label else dst
+  resource_dir = os.path.join(projectpath, "resources")
 
   if os.path.exists(projectpath + "/resources/img/"):
     for img in os.listdir(projectpath + "/resources/img/"):
@@ -33,6 +34,15 @@ def copy_resources_to_destination(projectpath, dst, label=""):
     for font in os.listdir(projectpath + "/resources/fonts/"):
       print("copying " + font + " to " + display_dst)
       shutil.copy(projectpath + "/resources/fonts/" + font, dst)
+
+  # Grungr's release assets live directly in resources/ rather than the
+  # framework's optional img/ and fonts/ folders. Copy them explicitly so
+  # every macOS bundle can load the same custom fonts and SVG controls.
+  for pattern in ("*.svg", "*.ttf", "*.otf", "*.png", "*.ico"):
+    for asset in glob.glob(os.path.join(resource_dir, pattern)):
+      if os.path.isfile(asset):
+        print("copying " + os.path.basename(asset) + " to " + display_dst)
+        shutil.copy(asset, dst)
 
 def main():
   config = parse_config(projectpath)
@@ -186,11 +196,11 @@ def main():
   auv3['CFBundlePackageType'] = "XPC!"
   auv3['NSExtension'] = dict(
   NSExtensionAttributes = dict(
-                               AudioComponentBundle = "com.DODAudio.app." + config['BUNDLE_NAME'] + ".AUv3Framework",
+                               AudioComponentBundle = config['BUNDLE_DOMAIN'] + "." + config['BUNDLE_MFR'] + ".app." + config['BUNDLE_NAME'] + ".AUv3Framework",
                                AudioComponents = [{}]),
 #                               NSExtensionServiceRoleType = "NSExtensionServiceRoleTypeEditor",
   NSExtensionPointIdentifier = NSEXTENSIONPOINTIDENTIFIER,
-  NSExtensionPrincipalClass = "IPlugAUViewController_vDODGrunge"
+  NSExtensionPrincipalClass = "IPlugAUViewController_vGrungr"
                              )
   auv3['NSExtension']['NSExtensionAttributes']['AudioComponents'] = [{}]
   auv3['NSExtension']['NSExtensionAttributes']['AudioComponents'][0]['description'] = config['PLUG_NAME']

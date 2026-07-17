@@ -20,7 +20,7 @@ struct Params {
 struct Assets {
   const char* backgroundSVG = GRUNGE_BG_SVG_FN;
   const char* knobSVG = POWERBUTTON_SVG_FN;
-  const char* logoSVG = CLOPH_LOGO_SVG_FN;
+  const char* logoSVG = cloph_logo_svg_fn;
   const char* titleSVG = GRUNGR_LOGO_SVG_FN;
   const char* stompSoleSVG = STOMP_SOLE_SVG_FN;
   const char* mainFont = NOMOREHERO_FN;
@@ -37,9 +37,7 @@ bool HandleGlobalKey(igraphics::IGraphics* pGraphics,
                      bool isUp);
 
 // Push I/O meter peak values to the SimpleMeterControl widgets.
-// Input peaks should already be delayed by PLUG_LATENCY samples
-// so they visually align with the output (which is processed input
-// from N samples ago).
+// The zero-latency signal path lets both meters show the current block.
 void UpdateMeterLevels(igraphics::IGraphics* pGraphics,
                        float inputL, float inputR,
                        float outputL, float outputR);

@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "4F3AE17812C0E5E2001FD7A4"
-               BuildableName = "DODGrunge.component"
+               BuildableName = "Grungr.component"
                BlueprintName = "AU"
-               ReferencedContainer = "container:DODGrunge-macOS.xcodeproj">
+               ReferencedContainer = "container:Grungr-macOS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -50,9 +50,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "4F3AE17812C0E5E2001FD7A4"
-            BuildableName = "DODGrunge.component"
+            BuildableName = "Grungr.component"
             BlueprintName = "AU"
-            ReferencedContainer = "container:DODGrunge-macOS.xcodeproj">
+            ReferencedContainer = "container:Grungr-macOS.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
    </LaunchAction>

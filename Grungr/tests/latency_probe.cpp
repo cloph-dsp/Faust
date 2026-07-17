@@ -1,5 +1,5 @@
-// latency_probe.cpp — measure Grungr impulse-response latency
-// ponytail: one-shot standalone, no doctest dep, links only the Faust DSP class.
+// latency_probe.cpp — inspect Grungr's impulse response.
+// One-shot standalone, no doctest dependency, links only the Faust DSP class.
 #include "faust/dsp/dsp.h"
 #include "faust/gui/meta.h"
 #include "faust/gui/MapUI.h"
@@ -76,7 +76,7 @@ int main() {
                 peakIdxL, peakL, peakIdxR, peakR);
     std::printf("Leading-edge L @ %d  |  R @ %d  (threshold %.1f%% of peak)\n",
                 leadL, leadR, kThreshold * 100.0f);
-    std::printf("Recommended PLUG_LATENCY: %d samples (%.3f ms @ 48k)\n",
-                peakIdxL, 1000.0f * peakIdxL / SR);
+    std::printf("The peak position is IIR filter phase response, not an explicit delay line.\n");
+    std::printf("Release PDC remains PLUG_LATENCY=0 (no lookahead or buffered delay).\n");
     return 0;
 }

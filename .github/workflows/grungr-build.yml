@@ -178,6 +178,23 @@ jobs:
           # Windows VST3 is a single DLL file, not a macOS-style bundle directory
           test -f artifacts/vst3/Grungr.vst3
 
+      - name: Validate VST3 with the Steinberg validator
+        shell: pwsh
+        working-directory: Grungr
+        run: |
+          $sdk = (Resolve-Path "../iPlug2/Dependencies/IPlug/VST3_SDK").Path
+          $buildDir = Join-Path $env:RUNNER_TEMP "grungr-vst3-validator"
+          cmake -S $sdk -B $buildDir -G "Visual Studio 17 2022" -A x64 `
+            -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=ON
+          if ($LASTEXITCODE -ne 0) { throw "Could not configure the Steinberg VST3 validator" }
+          cmake --build $buildDir --config Release --target validator --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw "Could not build the Steinberg VST3 validator" }
+          $validator = Get-ChildItem -Path $buildDir -Recurse -Filter validator.exe | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $validator) { throw "Steinberg VST3 validator executable was not produced" }
+          $plugin = (Resolve-Path "artifacts/vst3/Grungr.vst3").Path
+          & $validator $plugin
+          if ($LASTEXITCODE -ne 0) { throw "Steinberg VST3 validation failed" }
+
       - name: Verify CLAP binary
         shell: bash
         working-directory: Grungr
@@ -334,6 +351,16 @@ jobs:
           ARCHS = $(ARCHS_STANDARD_64_BIT)
           XCCONFIG_EOF
 
+      - name: Read release version from config
+        id: release_version
+        working-directory: Grungr
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/^#define PLUG_VERSION_STR "\(.*\)"$/\1/p' config.h)
+          test -n "$VERSION"
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Release version: $VERSION"
+
       - name: Build VST3 (macOS, universal)
         working-directory: Grungr
         run: |
@@ -342,7 +369,7 @@ jobs:
            xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
              -scheme "macOS-VST3" \
              -configuration Release \
-              -arch x86_64 \
+              ARCHS="x86_64 arm64" \
              BUILD_DIR="$GITHUB_WORKSPACE/Grungr/build-mac" \
              VST3_PATH="$GITHUB_WORKSPACE/Grungr/build-mac/Products" \
               ONLY_ACTIVE_ARCH=NO \
@@ -361,7 +388,7 @@ jobs:
            xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
              -scheme "macOS-CLAP" \
              -configuration Release \
-              -arch x86_64 \
+              ARCHS="x86_64 arm64" \
              BUILD_DIR="$GITHUB_WORKSPACE/Grungr/build-mac" \
              CLAP_PATH="$GITHUB_WORKSPACE/Grungr/build-mac/Products" \
               ONLY_ACTIVE_ARCH=NO \
@@ -380,7 +407,7 @@ jobs:
            xcodebuild -project projects/IPlugEffect-macOS.xcodeproj \
              -scheme "macOS-AUv2" \
              -configuration Release \
-              -arch x86_64 \
+              ARCHS="x86_64 arm64" \
              BUILD_DIR="$GITHUB_WORKSPACE/Grungr/build-mac" \
              AU_PATH="$GITHUB_WORKSPACE/Grungr/build-mac/Products" \
               ONLY_ACTIVE_ARCH=NO \
@@ -441,23 +468,24 @@ jobs:
             PL="$BUNDLE/Contents/Info.plist"
             $PLISTBUDDY -c "Set :CFBundleExecutable Grungr"            "$PL"
             $PLISTBUDDY -c "Set :CFBundleName Grungr"                  "$PL"
-            $PLISTBUDDY -c "Set :CFBundleShortVersionString 2.7.0"     "$PL"
-            $PLISTBUDDY -c "Set :CFBundleVersion 2.7.0"                "$PL"
+            $PLISTBUDDY -c "Set :CFBundleShortVersionString ${{ steps.release_version.outputs.value }}" "$PL"
+            $PLISTBUDDY -c "Set :CFBundleVersion ${{ steps.release_version.outputs.value }}"            "$PL"
+            $PLISTBUDDY -c "Set :CFBundleGetInfoString Grungr v${{ steps.release_version.outputs.value }} Copyright 2026 cloph" "$PL"
             $PLISTBUDDY -c "Set :LSMinimumSystemVersion 10.15"         "$PL"
           done
 
           # VST3
           PL="$PROD/Grungr.vst3/Contents/Info.plist"
-          $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph-dsp.Grungr"          "$PL"
+          $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph.vst3.Grungr"          "$PL"
           $PLISTBUDDY -c "Set :CFBundleSignature GRNR"                            "$PL"
 
           # CLAP
           PL="$PROD/Grungr.clap/Contents/Info.plist"
-          $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph-dsp.clap.Grungr"      "$PL"
+          $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph.clap.Grungr"      "$PL"
 
           # AUv2: set remaining fields on the copied template
           PL="$PROD/Grungr.component/Contents/Info.plist"
-          $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph-dsp.audiounit.Grungr" "$PL"
+          $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph.audiounit.Grungr" "$PL"
 
           echo "Plists updated for VST3, CLAP, AUv2"
 
@@ -467,6 +495,7 @@ jobs:
           B="${{ steps.locate.outputs.VST3 }}/Contents/MacOS/Grungr"
           file "$B" | grep -q "Mach-O"
           lipo -info "$B" | grep -q "x86_64"
+          lipo -info "$B" | grep -q "arm64"
 
       - name: Verify CLAP binary
         run: |
@@ -474,6 +503,7 @@ jobs:
           B="${{ steps.locate.outputs.CLAP }}/Contents/MacOS/Grungr"
           file "$B" | grep -q "Mach-O"
           lipo -info "$B" | grep -q "x86_64"
+          lipo -info "$B" | grep -q "arm64"
 
       - name: Verify AUv2 binary
         run: |
@@ -481,18 +511,23 @@ jobs:
           B="${{ steps.locate.outputs.AU }}/Contents/MacOS/Grungr"
           file "$B" | grep -q "Mach-O"
           lipo -info "$B" | grep -q "x86_64"
+          lipo -info "$B" | grep -q "arm64"
 
       - name: Verify plist integrity
         run: |
+          set -euo pipefail
           for BUNDLE in "${{ steps.locate.outputs.VST3 }}" "${{ steps.locate.outputs.CLAP }}" "${{ steps.locate.outputs.AU }}"; do
             plutil -lint "$BUNDLE/Contents/Info.plist"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$BUNDLE/Contents/Info.plist")" = "${{ steps.release_version.outputs.value }}"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$BUNDLE/Contents/Info.plist")" = "${{ steps.release_version.outputs.value }}"
           done
 
       - name: Verify no IPlugEffect residue in plists
         run: |
           for BUNDLE in "${{ steps.locate.outputs.VST3 }}" "${{ steps.locate.outputs.CLAP }}" "${{ steps.locate.outputs.AU }}"; do
             if grep -qi "IPlugEffect\|Acme" "$BUNDLE/Contents/Info.plist" 2>/dev/null; then
-              echo "::warning::IPlugEffect residue in $BUNDLE plist"
+              echo "IPlugEffect residue in $BUNDLE plist"
+              exit 1
             fi
           done
 

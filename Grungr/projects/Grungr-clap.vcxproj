@@ -332,10 +332,20 @@
     <ClCompile Include="..\..\iPlug2\IPlug\IPlugProcessor.cpp" />
     <ClCompile Include="..\..\iPlug2\IPlug\IPlugTimer.cpp" />
     <ClCompile Include="..\Grungr.cpp" />
+    <ClCompile Include="..\GrungrIPlug2UI.cpp" />
     <ClCompile Include="..\..\iPlug2\WDL\win32_utf8.c" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\resources\main.rc" />
+    <EmbeddedResource Include="..\resources\NoMoreHeroV2-Regular.ttf" />
+    <EmbeddedResource Include="..\resources\Future2097Eroded-Regular.otf" />
+    <EmbeddedResource Include="..\resources\Roboto-Regular.ttf" />
+    <EmbeddedResource Include="..\resources\boxpot1.ttf" />
+    <EmbeddedResource Include="..\resources\GrungrFaceplate.svg" />
+    <EmbeddedResource Include="..\resources\knob-cropped.svg" />
+    <EmbeddedResource Include="..\resources\cloph-logo.svg" />
+    <EmbeddedResource Include="..\resources\logo-grungr.svg" />
+    <EmbeddedResource Include="..\resources\stomp-sole.svg" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\config\Grungr-ios.xcconfig" />

@@ -5,7 +5,12 @@
 
 #include <algorithm>
 #include <cmath>
+#if ((_MSC_VER && (_M_IX86 || _M_X64)) || defined(__SSE__))
+#define GRUNGR_HAS_SSE_DENORMALS 1
 #include <xmmintrin.h>
+#else
+#define GRUNGR_HAS_SSE_DENORMALS 0
+#endif
 
 Grungr::Grungr(const InstanceInfo& info)
 : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
@@ -79,6 +84,10 @@ Grungr::Grungr(const InstanceInfo& info)
 
 #if IPLUG_DSP
   mFaustDSP.buildUserInterface(&mFaustUI);
+  // Hosts can legally submit larger buffers after instantiation. Reserve a
+  // bounded working area here, never from the audio callback.
+  mSilentInput.assign(kMaxBlockFrames, 0.0);
+  mScratchOutput.assign(kMaxBlockFrames, 0.0);
 #endif
 
 #if IPLUG_EDITOR // http://bit.ly/2S64BDd
@@ -125,7 +134,43 @@ void Grungr::OnHostSelectedViewConfiguration(int width, int height)
     GetUI()->Resize(width, height, 1.f, true);
   }
 }
+
+void Grungr::OnParentWindowResize(int width, int height)
+{
+  ConstrainEditorResize(width, height);
+  OnHostSelectedViewConfiguration(width, height);
+}
+
+bool Grungr::ConstrainEditorResize(int& width, int& height) const
+{
+  const float aspect = static_cast<float>(PLUG_WIDTH) / static_cast<float>(PLUG_HEIGHT);
+
+  width = std::clamp(width, PLUG_MIN_WIDTH, PLUG_MAX_WIDTH);
+  height = std::clamp(height, PLUG_MIN_HEIGHT, PLUG_MAX_HEIGHT);
+  height = static_cast<int>(static_cast<float>(width) / aspect + 0.5f);
+
+  if (height < PLUG_MIN_HEIGHT) {
+    height = PLUG_MIN_HEIGHT;
+    width = static_cast<int>(static_cast<float>(height) * aspect + 0.5f);
+  }
+  else if (height > PLUG_MAX_HEIGHT) {
+    height = PLUG_MAX_HEIGHT;
+    width = static_cast<int>(static_cast<float>(height) * aspect + 0.5f);
+  }
+
+  // VST3 and CLAP use false to apply the adjusted rectangle.
+  return false;
+}
 #endif
+
+void Grungr::OnRestoreState()
+{
+  iplug::Plugin::OnRestoreState();
+#if IPLUG_DSP
+  // Some hosts restore a state without a subsequent reset callback.
+  OnReset();
+#endif
+}
 
 #if IPLUG_DSP
 void Grungr::SyncParamToFaust(int paramIdx)
@@ -159,20 +204,8 @@ void Grungr::SyncParamToFaust(int paramIdx)
 void Grungr::OnReset()
 {
   mFaustDSP.init(std::max(1, static_cast<int>(GetSampleRate())));
-
-  const int preallocFrames = std::max(16384, GetBlockSize());
-  mSilentInput.assign(preallocFrames, 0.0);
-  mScratchOutput.assign(preallocFrames, 0.0);
-
-  // Input meter is delayed by PLUG_LATENCY so it visually aligns with the
-  // output meter (which is the processed input from N samples ago).
-  // Queue depth = ceil(PLUG_LATENCY / blockSize) + 1 (older value reads out first).
-  const int blockSize = std::max(1, GetBlockSize());
-  mInputDelayBlocks = (PLUG_LATENCY + blockSize - 1) / blockSize;
-  mInputPeakHistoryL.clear();
-  mInputPeakHistoryR.clear();
-  mInputPeakDelayedL.store(0.f, std::memory_order_relaxed);
-  mInputPeakDelayedR.store(0.f, std::memory_order_relaxed);
+  mInputPeakL.store(0.f, std::memory_order_relaxed);
+  mInputPeakR.store(0.f, std::memory_order_relaxed);
   mOutputPeakL.store(0.f, std::memory_order_relaxed);
   mOutputPeakR.store(0.f, std::memory_order_relaxed);
 
@@ -205,13 +238,10 @@ void Grungr::OnParamChange(int paramIdx)
 
 void Grungr::OnIdle()
 {
-  // Push current I/O peaks to GUI meters. Input peak is delayed
-  // (see ProcessBlock + mInputPeakHistoryL/R) so the input bar
-  // tracks the same audio frame as the output bar.
   if (auto* pGraphics = GetUI()) {
     grungr::ui::UpdateMeterLevels(pGraphics,
-                                  mInputPeakDelayedL.load(std::memory_order_relaxed),
-                                  mInputPeakDelayedR.load(std::memory_order_relaxed),
+                                  mInputPeakL.load(std::memory_order_relaxed),
+                                  mInputPeakR.load(std::memory_order_relaxed),
                                   mOutputPeakL.load(std::memory_order_relaxed),
                                   mOutputPeakR.load(std::memory_order_relaxed));
   }
@@ -223,83 +253,56 @@ void Grungr::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     return;
   }
 
-#ifdef _WIN32
+#if GRUNGR_HAS_SSE_DENORMALS
   _mm_setcsr(_mm_getcsr() | 0x8040);
 #endif
 
   const int nIn = NInChansConnected();
   const int nOut = NOutChansConnected();
 
-  if (nOut <= 0 || outputs == nullptr) {
+  if (nOut <= 0 || outputs == nullptr || outputs[0] == nullptr) {
     return;
   }
 
-  if (static_cast<int>(mSilentInput.size()) < nFrames) {
-    nFrames = static_cast<int>(mSilentInput.size());
-  }
+  float inPeakL = 0.f, inPeakR = 0.f;
+  float outPeakL = 0.f, outPeakR = 0.f;
 
-  std::fill(mSilentInput.begin(), mSilentInput.begin() + nFrames, 0.0);
+  for (int offset = 0; offset < nFrames; offset += kMaxBlockFrames) {
+    const int frames = std::min(kMaxBlockFrames, nFrames - offset);
+    std::fill_n(mSilentInput.data(), frames, 0.0);
 
-  sample* in0 = (nIn > 0 && inputs && inputs[0]) ? inputs[0] : mSilentInput.data();
-  sample* in1 = (nIn > 1 && inputs && inputs[1]) ? inputs[1] : in0;
+    sample* in0 = (nIn > 0 && inputs && inputs[0]) ? inputs[0] + offset : mSilentInput.data();
+    sample* in1 = (nIn > 1 && inputs && inputs[1]) ? inputs[1] + offset : in0;
+    sample* out0 = outputs[0] + offset;
+    sample* out1 = (nOut > 1 && outputs[1]) ? outputs[1] + offset : mScratchOutput.data();
+    FAUSTFLOAT* faustInputs[2] = {in0, in1};
+    FAUSTFLOAT* faustOutputs[2] = {out0, out1};
 
-  sample* out0 = outputs[0];
-  sample* out1 = (nOut > 1 && outputs[1]) ? outputs[1] : mScratchOutput.data();
+    mFaustDSP.compute(frames, faustInputs, faustOutputs);
 
-  FAUSTFLOAT* faustInputs[2] = {in0, in1};
-  FAUSTFLOAT* faustOutputs[2] = {out0, out1};
+    for (int s = 0; s < frames; ++s) {
+      if (!std::isfinite(out0[s])) out0[s] = 0.0;
+      if (nOut > 1 && !std::isfinite(out1[s])) out1[s] = 0.0;
 
-  mFaustDSP.compute(nFrames, faustInputs, faustOutputs);
+      const float inL = std::fabs(static_cast<float>(in0[s]));
+      const float inR = std::fabs(static_cast<float>(in1[s]));
+      const float oL = std::fabs(static_cast<float>(out0[s]));
+      const float oR = (nOut > 1) ? std::fabs(static_cast<float>(out1[s])) : oL;
+      inPeakL = std::max(inPeakL, inL);
+      inPeakR = std::max(inPeakR, inR);
+      outPeakL = std::max(outPeakL, oL);
+      outPeakR = std::max(outPeakR, oR);
+    }
 
-  // ponytail: ADAA warm-up in OnReset() prevents NaN from zero-state
-  // δ=0 singularity. This clamp remains as a safety net only.
-  for (int s = 0; s < nFrames; ++s) {
-    if (!std::isfinite(out0[s])) out0[s] = 0.0;
-    if (nOut > 1 && !std::isfinite(out1[s])) out1[s] = 0.0;
-  }
-
-  if (nOut > 1) {
     for (int c = 2; c < nOut; ++c) {
-      for (int s = 0; s < nFrames; ++s) {
-        outputs[c][s] = out0[s];
+      if (outputs[c]) {
+        std::copy_n(out0, frames, outputs[c] + offset);
       }
     }
   }
 
-  // ---- Meter peaks ----
-  // Compute per-block peak (max abs) for input and output. The current
-  // output peak reflects the processed input from PLUG_LATENCY samples
-  // ago, so to align the meters visually we delay the input peak by the
-  // same amount. PLUG_LATENCY is small (<=128 samples) and the variable
-  // block-size assumption means the delay is rounded up to whole audio
-  // blocks; sub-block drift is imperceptible at the GUI refresh rate.
-  float inPeakL = 0.f, inPeakR = 0.f;
-  float outPeakL = 0.f, outPeakR = 0.f;
-  for (int s = 0; s < nFrames; ++s) {
-    const float inL = std::fabs(static_cast<float>(in0[s]));
-    const float inR = std::fabs(static_cast<float>(in1[s]));
-    const float oL  = std::fabs(static_cast<float>(out0[s]));
-    const float oR  = (nOut > 1) ? std::fabs(static_cast<float>(out1[s])) : oL;
-    if (inL > inPeakL) inPeakL = inL;
-    if (inR > inPeakR) inPeakR = inR;
-    if (oL  > outPeakL) outPeakL = oL;
-    if (oR  > outPeakR) outPeakR = oR;
-  }
-
-  // Push current input peak into the delay history; pop oldest if the
-  // deque grew past the configured delay depth. The front of the deque
-  // is what "reaches" the output stage N blocks later, so it becomes
-  // the displayed input peak. Output peak is direct.
-  mInputPeakHistoryL.push_back(inPeakL);
-  mInputPeakHistoryR.push_back(inPeakR);
-  while (static_cast<int>(mInputPeakHistoryL.size()) > mInputDelayBlocks + 1) {
-    mInputPeakHistoryL.pop_front();
-    mInputPeakHistoryR.pop_front();
-  }
-  const float delayedInL = mInputPeakHistoryL.front();
-  const float delayedInR = mInputPeakHistoryR.front();
-  mInputPeakDelayedL.store(delayedInL, std::memory_order_relaxed);
-  mInputPeakDelayedR.store(delayedInR, std::memory_order_relaxed);
+  mInputPeakL.store(inPeakL, std::memory_order_relaxed);
+  mInputPeakR.store(inPeakR, std::memory_order_relaxed);
   mOutputPeakL.store(outPeakL, std::memory_order_relaxed);
   mOutputPeakR.store(outPeakR, std::memory_order_relaxed);
 }
