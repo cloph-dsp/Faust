@@ -105,6 +105,7 @@ jobs:
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -requires Microsoft.Component.MSBuild -property installationPath
           $msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
           if (-not $msbuild) {
             $msbuild = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\*\MSBuild\Current\Bin\MSBuild.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
@@ -112,8 +113,23 @@ jobs:
           if (-not $msbuild) {
             throw "MSBuild not found"
           }
+          if (-not $vsInstall) {
+            # Fallback for runners where vswhere is present but does not return
+            # installationPath: MSBuild lives under <VS instance>\MSBuild\Current\Bin.
+            $vsInstall = Split-Path (Split-Path (Split-Path (Split-Path $msbuild -Parent) -Parent) -Parent) -Parent
+          }
+          $vsMajor = [int](Split-Path (Split-Path $vsInstall -Parent) -Leaf)
+          $cmakeGenerator = switch ($vsMajor) {
+            18 { "Visual Studio 18 2026" }
+            17 { "Visual Studio 17 2022" }
+            16 { "Visual Studio 16 2019" }
+            default { throw "Unsupported Visual Studio installation for CMake: $vsInstall" }
+          }
           echo "MSBUILD=$msbuild" >> "$env:GITHUB_OUTPUT"
+          echo "VS_INSTALL=$vsInstall" >> "$env:GITHUB_OUTPUT"
+          echo "CMAKE_GENERATOR=$cmakeGenerator" >> "$env:GITHUB_OUTPUT"
           echo "Found MSBuild: $msbuild"
+          echo "Using CMake generator: $cmakeGenerator ($vsInstall)"
 
       - name: Build VST3 (Windows)
         shell: pwsh
@@ -184,7 +200,9 @@ jobs:
         run: |
           $sdk = (Resolve-Path "../iPlug2/Dependencies/IPlug/VST3_SDK").Path
           $buildDir = Join-Path $env:RUNNER_TEMP "grungr-vst3-validator"
-          cmake -S $sdk -B $buildDir -G "Visual Studio 17 2022" -A x64 `
+          $generator = "${{ steps.msbuild.outputs.CMAKE_GENERATOR }}"
+          $vsInstall = "${{ steps.msbuild.outputs.VS_INSTALL }}"
+          cmake -S $sdk -B $buildDir -G $generator -A x64 "-DCMAKE_GENERATOR_INSTANCE=$vsInstall" `
             -DSMTG_ADD_VST3_PLUGINS_SAMPLES=OFF -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=ON
           if ($LASTEXITCODE -ne 0) { throw "Could not configure the Steinberg VST3 validator" }
           cmake --build $buildDir --config Release --target validator --parallel 2
