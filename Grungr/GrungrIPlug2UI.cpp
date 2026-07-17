@@ -337,6 +337,14 @@ public:
     SetDirty(false);
   }
 
+  void SetBackgroundBounds(const igraphics::IRECT& bounds)
+  {
+    // The stomp redraws the faceplate for its cave-in animation, so its
+    // reference bounds must follow the background on every host resize.
+    mBackgroundBounds = bounds;
+    SetDirty(false);
+  }
+
   void ToggleFromKeyboard()
   {
     static constexpr float kTreadRelY =
@@ -1548,7 +1556,12 @@ void Relayout(igraphics::IGraphics& g, const LayoutRects& layout)
   SetBoundsIfPresent(g, kTagFaceValue, layout.faceValue);
   SetBoundsIfPresent(g, kTagLoudValue, layout.loudValue);
 
-  SetBoundsIfPresent(g, kTagBypassToggle, layout.bypassToggle);
+  if (auto* pControl = g.GetControlWithTag(kTagBypassToggle)) {
+    pControl->SetTargetAndDrawRECTs(layout.bypassToggle);
+    if (auto* pStomp = dynamic_cast<AnimatedStompBypassControl*>(pControl)) {
+      pStomp->SetBackgroundBounds(layout.background);
+    }
+  }
   SetBoundsIfPresent(g, kTagRawToggle, layout.rawToggle);
 
   SetBoundsIfPresent(g, kTagInputMeter, layout.inputMeter);
