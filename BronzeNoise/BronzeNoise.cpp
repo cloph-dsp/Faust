@@ -3,19 +3,23 @@
 #include "IControls.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <string>
 
 // SSE intrinsics are x86/x64-only. On Apple Silicon (arm64) Clang defines
 // __SSE__=0 and rejects these headers with "This header is only meant to be
 // used on x86 and x64 architecture" errors. macOS math library handles
 // denormal flushing at the OS level on arm64 (no SSE FTZ needed), so
-// gating is safe � the runtime _mm_setcsr calls become no-ops there.
-#ifdef __SSE__
-  #include <xmmintrin.h>
-  #include <pmmintrin.h>
+// gating is safe; the runtime _mm_setcsr calls become no-ops there.
+#if (defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))) || defined(__SSE__)
+  #define BRONZENOISE_HAS_SSE_DENORMALS 1
+  #if defined(_MSC_VER)
+    #include <intrin.h>
+  #else
+    #include <xmmintrin.h>
+  #endif
 #endif
 
 // ponytail: Two-channel peak meter with peak-hold indicator. 0 dBFS at top, 60 dB at bottom.
@@ -170,25 +174,6 @@ constexpr float kLowBandProtectionDb = 6.f;
 // Fast denormal protection - flushes subnormal floats to zero (prevents DSP stalls)
 inline float FlushDenorm(float x) { return (std::abs(x) < 1.0e-15f) ? 0.f : x; }
 
-// Simple deterministic LCG dither for audio - 16-bit equivalent dither
-inline float Dither16()
-{
-  static uint32_t state = 0x7FED0456;
-  state = state * 1103515245 + 12345;
-  return (static_cast<int>(state) & 0xFFFF) / 65536.f - 0.5f;
-}
-
-// Noise-shaped dither: triangular PDF + simple 1st-order noise shaping
-inline float DitherAndNoiseShape(float& lastShapedError, float lastSample)
-{
-  const float dither = Dither16() + Dither16(); // TPDF
-  const float sum = lastSample + dither * 0.5f;
-  const float error = sum - std::round(sum); // quantization error
-  const float shaped = sum + (error - lastShapedError) * 0.5f; // simple noise shaping
-  lastShapedError = error;
-  return shaped;
-}
-
 float Lerp(float start, float end, float blend)
 {
   return start + ((end - start) * Clip(blend, 0.f, 1.f));
@@ -197,8 +182,10 @@ float Lerp(float start, float end, float blend)
 // NaN/Inf safety guard - returns safe value if input is invalid
 inline float SafeValue(float x) { return (std::isfinite(x) ? x : 0.f); }
 
-// Bound check helper - ensures value stays within AudioManifesto "sterile" range
-inline float Sanitize(float x) { return Clip(x, -10.f, 10.f); }
+inline float SanitizeCorrection(float x)
+{
+  return std::isfinite(x) ? Clip(x, -36.f, 36.f) : 0.f;
+}
 
 // Maps Amount (0-1) to drive factor for spectral processing intensity
 // 0 -> 0.0 (no processing), 1.0 -> 1.0 (full effect)
@@ -206,16 +193,6 @@ float MapAmountDrive(float amount)
 {
   return std::pow(Clip(amount, 0.f, 1.f), 0.82f);
 }
-
-float LinearToDb(float linearValue) 
-{ 
-  return 20.f * std::log10(std::max(1.0e-6f, linearValue)); 
-} 
-
-float DbToLinearFunc(float dbValue) 
-{ 
-  return std::pow(10.f, dbValue / 20.f); 
-} 
 
 float SmoothStepFunc(float edge0, float edge1, float x) 
 { 
@@ -229,19 +206,6 @@ float MapAggression(float amount)
   float extraBoost = SmoothStepFunc(0.85f, 1.0f, amount) * 0.35f; 
   return base + extraBoost; 
 } 
-
-float ComputeMakeupGain(float amount) 
-{ 
-  float linearAmount = Clip(amount, 0.f, 1.f); 
-  // Increased makeup gain from 6dB to 12dB for more power at high amounts
-  float makeupDb = std::pow(linearAmount, 1.2f) * 12.0f; 
-  return DbToLinearFunc(makeupDb); 
-} 
-
-float SoftClip(float x) 
-{ 
-  return 1.5f * std::tanh(x / 1.5f); 
-}
 
 float ComputeDifferenceAccent(float differenceDb, float aggression)
 {
@@ -299,15 +263,15 @@ public:
     : ISVGKnobControl(bounds, svg, paramIdx)
     , mKnobSVG(svg), mLabel(label), mLabelText(labelText), mValueText(valueText)
   {
-    // No AttachIControl � ISVGKnobControl doesn't inherit IVectorBase.
+    // No AttachIControl: ISVGKnobControl doesn't inherit IVectorBase.
   }
 
   void Draw(IGraphics& g) override
   {
-    // Static body � render SVG without rotation. ISVGKnobControl::Draw would rotate it; we want body fixed.
+    // Static body: render SVG without rotation. ISVGKnobControl::Draw would rotate it; we want body fixed.
     g.DrawSVG(mKnobSVG, mRECT, &mBlend);
 
-    // Rotating pointer: triangle from center pointing outward, angle = -135� (min) to +135� (max).
+    // Rotating pointer: triangle from center pointing outward, angle = -135 deg to +135 deg.
     if (const IParam* p = GetParam()) {
       const float normalized = static_cast<float>(p->ToNormalized(p->Value()));
       const float angleDeg = -135.f + normalized * 270.f;
@@ -365,12 +329,9 @@ public:
   }
   void OnMouseUp(float x, float y, const IMouseMod& mod) override { mIsActive = false; ISVGKnobControl::OnMouseUp(x, y, mod); SetDirty(false); }
   void OnMouseDblClick(float x, float y, const IMouseMod& mod) override {
-    if (const IParam* p = GetParam()) {
-      const_cast<IParam*>(p)->SetToDefault();
-      // Match single-click value-change behaviour: redraw + notify host via parent.
-      SetValueFromDelegate(p->ToNormalized(p->GetDefault()));
-      const_cast<KnobWithTextControl*>(this)->SetDirty();
-    }
+    GetDelegate()->BeginInformHostOfParamChangeFromUI(GetParamIdx());
+    SetValueToDefault();
+    GetDelegate()->EndInformHostOfParamChangeFromUI(GetParamIdx());
   }
 
   // F-04 (P3): circular hit area so corners aren't clickable deadzone.
@@ -397,15 +358,16 @@ private:
 
 class TargetSelectorControl final : public IControl, public IVectorBase {
 public:
-  TargetSelectorControl(const IRECT& bounds, int parameterIndex, const char* label, const IVStyle& style)
-    : IControl(bounds, parameterIndex), IVectorBase(style, false, true) {
+  TargetSelectorControl(const IRECT& bounds, int parameterIndex, const char* label, const IVStyle& style,
+                        std::function<void(int)> onSelect = {})
+    : IControl(bounds, parameterIndex), IVectorBase(style, false, true), mOnSelect(std::move(onSelect)) {
     AttachIControl(this, label);
   }
-  // ponytail: SegmentedSelector � draw N click-target cells, each one an enum choice. Click a cell = set that value. Visible list always, no popup.
+  // Draw N click-target cells, one per enum choice. The list stays visible; no popup.
   void Draw(IGraphics& graphics) override {
     IParam* parameter = const_cast<IParam*>(GetParam());
     if (!parameter) return;
-    // ponytail: last known local mouse coords captured by OnMouseOver � used to highlight the cell under the cursor.
+    // Last known local mouse coordinates highlight the cell under the cursor.
     const int n = static_cast<int>(parameter->GetRange()) + 1;
     const int current = static_cast<int>(parameter->Value());
     const IColor panel(255, 24, 27, 34);
@@ -440,7 +402,7 @@ public:
       else            border = IColor(255, 70, 74, 82);
       graphics.DrawRoundRect(border.WithOpacity(isCurrent ? 1.f : (isHot ? 0.95f : 0.55f)),
                              cell.GetPadded(-1.f), 2.f, &mBlend, isCurrent ? 1.4f : 1.0f);
-      // Cell text � fetch the enum's display string for this index. withDisplayText=true returns the named label ("White", "4096", etc).
+      // withDisplayText=true returns the named label ("White", "4096", etc.).
       WDL_String cellText;
       parameter->GetDisplay(static_cast<double>(i), false, cellText, true);
       // F-05 (P3): shrink text to fit narrow cells (especially at minimum window width).
@@ -467,7 +429,10 @@ public:
     const float cellW = cellsRect.W() / static_cast<float>(n);
     if (cellW <= 0.f) return;
     const int col = Clip(static_cast<int>((x - cellsRect.L) / cellW), 0, n - 1);
-    parameter->Set(static_cast<double>(col));
+    GetDelegate()->BeginInformHostOfParamChangeFromUI(GetParamIdx());
+    SetValueFromUserInput(parameter->ToNormalized(static_cast<double>(col)));
+    GetDelegate()->EndInformHostOfParamChangeFromUI(GetParamIdx());
+    if (mOnSelect) mOnSelect(col);
   }
   void OnMouseOver(float x, float y, const IMouseMod& mod) override {
     mLastMouseX = x; mLastMouseY = y;
@@ -483,14 +448,14 @@ public:
         parameter->GetDisplay(static_cast<double>(col), false, cellText, true);
         WDL_String tip;
         tip.Set(mLabelStr.Get());
-        tip.Append(" � ");
+        tip.Append(" : ");
         tip.Append(cellText.Get());
         SetTooltip(tip.Get());
       }
     }
     SetDirty(false);
   }
-  void OnMouseOut() override { SetDirty(false); }
+  void OnMouseOut() override { mLastMouseX = -1.f; mLastMouseY = -1.f; SetDirty(false); }
   void OnResize() override { SetTargetRECT(MakeRects(mRECT)); }
   void OnInit() override {
     if (const IParam* parameter = GetParam()) parameter->GetDisplay(mValueStr);
@@ -502,12 +467,13 @@ public:
 private:
   float mLastMouseX = -1.f;
   float mLastMouseY = -1.f;
+  std::function<void(int)> mOnSelect;
 };
 // Spectrum visualizer control for before/after/reference
 class SpectrumVisualizerControl : public IControl {
 public:
   SpectrumVisualizerControl(const IRECT& bounds, const char* fontID = nullptr)
-    : IControl(bounds, -1), mFontID(fontID) {  // -1 means not linked to parameter, but still receives mouse events
+    : IControl(bounds, kBnVisualMode), mFontID(fontID) {
     mBefore.fill(0.f);
     mAfter.fill(0.f);
     mReference.fill(0.f);
@@ -541,22 +507,23 @@ public:
       mFreqs[i] = freqs[i];
     }
     mBands = bands;
-    SetDirty();
+    SetDirty(false);
   }
   void OnMouseWheel(float x, float y, const IMouseMod& mod, float d) override {
-    float zoom = d * 3.f;
-    mMinDb -= zoom;
-    mMaxDb += zoom;
-    mMinDb = std::max(mMinDb, -100.f);
-    mMaxDb = std::min(mMaxDb, 48.f);
-    SetDirty();
+    const float center = 0.5f * (mMinDb + mMaxDb);
+    const float range = Clip((mMaxDb - mMinDb) + d * 8.f, 18.f, 144.f);
+    mMinDb = center - range * 0.5f;
+    mMaxDb = center + range * 0.5f;
+    if (mMinDb < -120.f) { mMaxDb += -120.f - mMinDb; mMinDb = -120.f; }
+    if (mMaxDb > 36.f) { mMinDb -= mMaxDb - 36.f; mMaxDb = 36.f; }
+    SetDirty(false);
   }
   void OnMouseDown(float x, float y, const IMouseMod& mod) override {
     mDragging = true;
     mDragStartY = y;
     mDragStartMinDb = mMinDb;
     mDragStartMaxDb = mMaxDb;
-    SetDirty();
+    SetDirty(false);
   }
   void OnMouseDrag(float x, float y, float dX, float dY, const IMouseMod& mod) override {
     if (mDragging) {
@@ -564,9 +531,9 @@ public:
       float deltaDb = (dY / mRECT.H()) * range;
       mMinDb = mDragStartMinDb + deltaDb;
       mMaxDb = mDragStartMaxDb + deltaDb;
-      mMinDb = std::max(mMinDb, -100.f);
-      mMaxDb = std::min(mMaxDb, 48.f);
-      SetDirty();
+      if (mMinDb < -120.f) { mMaxDb += -120.f - mMinDb; mMinDb = -120.f; }
+      if (mMaxDb > 36.f) { mMinDb -= mMaxDb - 36.f; mMaxDb = 36.f; }
+      SetDirty(false);
     }
   }
   void OnMouseUp(float x, float y, const IMouseMod& mod) override {
@@ -626,8 +593,23 @@ public:
                   kLabelTexts[i], labelRect, &mBlend);
     }
 
-    // Target curve (warm amber, dashed feel via thinner stroke + slight opacity)
-    for (int i = 1; i < mBands; ++i) {
+    const int visualMode = GetParam() ? GetParam()->Int() : kVisualAllCurves;
+    const bool drawBefore = visualMode == kVisualAllCurves || visualMode == kVisualBeforeTarget;
+    const bool drawTarget = visualMode == kVisualAllCurves || visualMode == kVisualBeforeTarget;
+    const bool drawAfter = visualMode != kVisualBeforeTarget;
+
+    // Delta mode: softly fill the correction region before drawing the output.
+    if (visualMode == kVisualDeltaFill) {
+      for (int i = 0; i < mBands; ++i) {
+        const float x = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
+        const float yBefore = Clip(r.B - ((mBefore[i] - minDb) / (maxDb - minDb)) * h, r.T, r.B);
+        const float yAfter = Clip(r.B - ((mAfter[i] - minDb) / (maxDb - minDb)) * h, r.T, r.B);
+        g.DrawLine(mAfterCol.WithOpacity(0.18f), x, yBefore, x, yAfter, &mBlend,
+                   std::max(1.f, w / static_cast<float>(mBands)));
+      }
+    }
+
+    if (drawTarget) for (int i = 1; i < mBands; ++i) {
       const float x0 = r.L + (w * std::log10(std::max(20.f, mFreqs[i - 1]) / 20.f) / std::log10(20000.f / 20.f));
       const float x1 = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
       const float y0 = Clip(r.B - ((mReference[i - 1] - minDb) / (maxDb - minDb)) * h, r.T, r.B);
@@ -636,7 +618,7 @@ public:
     }
 
     // Input curve (cool cyan-grey, what we're matching FROM)
-    for (int i = 1; i < mBands; ++i) {
+    if (drawBefore) for (int i = 1; i < mBands; ++i) {
       const float x0 = r.L + (w * std::log10(std::max(20.f, mFreqs[i - 1]) / 20.f) / std::log10(20000.f / 20.f));
       const float x1 = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
       const float y0 = Clip(r.B - ((mBefore[i - 1] - minDb) / (maxDb - minDb)) * h, r.T, r.B);
@@ -645,7 +627,7 @@ public:
     }
 
     // Output curve (bronze, bold, the result)
-    for (int i = 1; i < mBands; ++i) {
+    if (drawAfter) for (int i = 1; i < mBands; ++i) {
       const float x0 = r.L + (w * std::log10(std::max(20.f, mFreqs[i - 1]) / 20.f) / std::log10(20000.f / 20.f));
       const float x1 = r.L + (w * std::log10(std::max(20.f, mFreqs[i]) / 20.f) / std::log10(20000.f / 20.f));
       const float y0 = Clip(r.B - ((mAfter[i - 1] - minDb) / (maxDb - minDb)) * h, r.T, r.B);
@@ -656,9 +638,11 @@ public:
     // Legend (small caps, top-left)
     const float legendY = r.T + 4.f;
     IText legendTxt(10.f, mAxisLabel, mFontID, EAlign::Near, EVAlign::Middle);
-    g.DrawText(legendTxt, "In", IRECT(r.L + 4.f, legendY, r.L + 24.f, legendY + 12.f), &mBlend);
-    g.DrawText(legendTxt, "Tgt", IRECT(r.L + 28.f, legendY, r.L + 56.f, legendY + 12.f), &mBlend);
-    g.DrawText(legendTxt, "Out", IRECT(r.L + 62.f, legendY, r.L + 90.f, legendY + 12.f), &mBlend);
+    const char* legend = visualMode == kVisualAfterOnly ? "OUTPUT" :
+                         visualMode == kVisualDeltaFill ? "CORRECTION DELTA" :
+                         visualMode == kVisualBeforeTarget ? "INPUT / TARGET" :
+                         "INPUT / TARGET / OUTPUT";
+    g.DrawText(legendTxt, legend, IRECT(r.L + 6.f, legendY, r.L + 180.f, legendY + 12.f), &mBlend);
   }
 private:
   std::array<float, 64> mBefore;
@@ -666,8 +650,8 @@ private:
   std::array<float, 64> mReference;
   std::array<float, 64> mFreqs;
   int mBands = 0;
-  float mMinDb = -100.f;
-  float mMaxDb = 48.f;
+  float mMinDb = -84.f;
+  float mMaxDb = 12.f;
   bool mDragging = false;
   float mDragStartY = 0.f;
   float mDragStartMinDb = 0.f;
@@ -681,13 +665,11 @@ private:
 class BypassOverlayControl : public IControl
 {
 public:
-  BypassOverlayControl(const IRECT& bounds) : IControl(bounds, -1) { SetIgnoreMouse(true); }
+  BypassOverlayControl(const IRECT& bounds) : IControl(bounds, kBypass) { SetIgnoreMouse(true); }
   
   void Draw(IGraphics& g) override
   {
-    // Check bypass param via plugin delegate
-    IParam* bypassParam = GetUI()->GetDelegate()->GetParam(kBypass);
-    if (!bypassParam || bypassParam->Int() == 0)
+    if (!GetParam() || !GetParam()->Bool())
       return;
     
     // Semi-transparent dark overlay
@@ -735,27 +717,28 @@ float InterpolateLogTable(float frequencyHz,
   GetParam(kTarget)->InitEnum("Target", kTargetBronze, {"Loud", "Violet", "White", "Red", "Orange", "Pink", "Bronze", "Brown", "Olive", "Blue"});
   GetParam(kSmoothing)->InitDouble("Smoothing", 0.55, 0.0, 1.0, 0.001);
   GetParam(kQ)->InitDouble("Bandwidth", 0.5, 0.01, 4.0, 0.01);
-  GetParam(kFFTSize)->InitEnum("FFT Size", kFFTSize4096, {"256", "512", "1024", "2048", "4096", "8192", "16384"});
+  GetParam(kFFTSize)->InitEnum("FFT Size", kFFTSize4096, {"256", "512", "1024", "2048", "4096", "8192", "16384"}, IParam::kFlagCannotAutomate);
   GetParam(kCharacter)->InitDouble("Character", 0.0, -1.0, 1.0, 0.01);
   GetParam(kTransient)->InitDouble("Transient", 0.5, 0.0, 1.0, 0.01);
-  GetParam(kBnMix)->InitPercentage("Mix", 100.0);  // 0-100% wet (100% = full spectral replace)
+  GetParam(kBnMix)->InitPercentage("Mix", 100.0);  // 0-100% latency-aligned dry/wet blend
   GetParam(kBnStereoMode)->InitEnum("Stereo", kStereoLinked, {"Linked", "Mid", "Side", "Independent"});
-  GetParam(kBnAutoGain)->InitInt("AutoGain", 1, 0, 1, "");
-  GetParam(kBnVisualMode)->InitEnum("Visual", kVisualAllCurves, {"All", "After", "Delta", "B+T"});
-  GetParam(kBnReset)->InitInt("Reset", 0, 0, 1, "");
-  GetParam(kBnABCompare)->InitInt("A/B", 0, 0, 2, "");  // 0=idle, 1=captured, 2=comparing
-  GetParam(kBypass)->InitInt("Bypass", 0, 0, 1, "Bypass");
+  GetParam(kBnAutoGain)->InitBool("Auto Gain", true);
+  GetParam(kBnVisualMode)->InitEnum("Visual", kVisualAllCurves, {"All", "Output", "Delta", "In+Target"}, IParam::kFlagCannotAutomate);
+  GetParam(kBnReset)->InitBool("Reset", false, "", IParam::kFlagCannotAutomate);
+  GetParam(kBnABCompare)->InitEnum("A/B", 0, {"Off", "A", "B"}, IParam::kFlagCannotAutomate);
+  GetParam(kBypass)->InitBool("Bypass", false);
 
-  // Factory presets � arg order matches EParams: Amount, Target, Smoothing, Q, FFTSize, Character, Transient, Bypass.
+  // Factory presets: always provide every parameter. Keeping this list aligned
+  // with EParams prevents newly-added parameters from silently shifting values.
   // Target / FFTSize are enum indices, not display strings.
-  MakePreset("Bronze (Default)", 100.0, kTargetBronze,  0.55, 0.50, kFFTSize4096, 0.0,  0.50, 0);
-  MakePreset("Vocal Warmth",     70.0,  kTargetRed,     0.40, 0.70, kFFTSize2048, 0.2,  0.30, 0);
-  MakePreset("Podcast Clarity",  80.0,  kTargetLoud,    0.60, 0.50, kFFTSize1024, 0.1,  0.20, 0);
-  MakePreset("Master Glue",      35.0,  kTargetWhite,   0.75, 0.80, kFFTSize8192, 0.0,  0.60, 0);
-  MakePreset("Tame Harsh",       75.0,  kTargetOlive,   0.50, 1.50, kFFTSize4096, -0.3, 0.20, 0);
-  MakePreset("Lo-Fi Texture",    50.0,  kTargetPink,    0.30, 0.60, kFFTSize512,  -0.5, 0.10, 0);
-  MakePreset("Bright Air",       50.0,  kTargetViolet,  0.40, 0.70, kFFTSize2048, 0.4,  0.40, 0);
-  MakePreset("Subtle Match",     25.0,  kTargetBronze,  0.80, 1.00, kFFTSize4096, 0.0,  0.50, 0);
+  MakePreset("Bronze (Default)", 100.0, kTargetBronze, 0.55, 0.50, kFFTSize4096,  0.0, 0.50, 100.0, kStereoLinked, 1, kVisualAllCurves, 0, 0, 0);
+  MakePreset("Vocal Warmth",      70.0, kTargetOrange, 0.40, 0.70, kFFTSize2048,  0.2, 0.30, 100.0, kStereoLinked, 1, kVisualAllCurves, 0, 0, 0);
+  MakePreset("Podcast Clarity",   80.0, kTargetLoud,   0.60, 0.50, kFFTSize1024,  0.1, 0.20, 100.0, kStereoLinked, 1, kVisualAllCurves, 0, 0, 0);
+  MakePreset("Master Glue",       35.0, kTargetWhite,  0.75, 0.80, kFFTSize8192,  0.0, 0.60, 100.0, kStereoLinked, 1, kVisualAllCurves, 0, 0, 0);
+  MakePreset("Tame Harsh",        75.0, kTargetOlive,  0.50, 1.50, kFFTSize4096, -0.3, 0.20, 100.0, kStereoLinked, 1, kVisualAllCurves, 0, 0, 0);
+  MakePreset("Lo-Fi Texture",     50.0, kTargetPink,   0.30, 0.60, kFFTSize512,  -0.5, 0.10, 100.0, kStereoLinked, 1, kVisualAllCurves, 0, 0, 0);
+  MakePreset("Bright Air",        50.0, kTargetBlue,   0.40, 0.70, kFFTSize2048,  0.4, 0.40, 100.0, kStereoLinked, 1, kVisualAllCurves, 0, 0, 0);
+  MakePreset("Subtle Match",      25.0, kTargetBronze, 0.80, 1.00, kFFTSize4096,  0.0, 0.50, 100.0, kStereoLinked, 1, kVisualAllCurves, 0, 0, 0);
 
 #if IPLUG_DSP
   // Initialize vector buffers with maximum size
@@ -852,6 +835,48 @@ private:
   const char* mFontID;
 };
 
+class MomentaryActionControl final : public IControl
+{
+public:
+  MomentaryActionControl(const IRECT& bounds, const char* label,
+                         const char* fontID, IColor accent, IColor panel,
+                         IColor frame, IColor text, std::function<void()> action)
+    : IControl(bounds, -1), mLabel(label), mFontID(fontID), mAccent(accent),
+      mPanel(panel), mFrame(frame), mText(text), mAction(std::move(action)) {}
+
+  void Draw(IGraphics& g) override
+  {
+    const bool hot = mMouseIsOver || mPressed;
+    g.FillRoundRect(hot ? mAccent.WithOpacity(0.22f) : mPanel, mRECT, 3.f, &mBlend);
+    g.DrawRoundRect(hot ? mAccent : mFrame, mRECT, 3.f, &mBlend, hot ? 1.5f : 1.f);
+    g.DrawText(IText(15.f, hot ? mAccent : mText, mFontID, EAlign::Center, EVAlign::Middle),
+               mLabel, mRECT, &mBlend);
+  }
+
+  void OnMouseDown(float x, float y, const IMouseMod& mod) override
+  {
+    mPressed = true;
+    if (mAction) mAction();
+    SetDirty(false);
+  }
+
+  void OnMouseUp(float x, float y, const IMouseMod& mod) override
+  {
+    mPressed = false;
+    SetDirty(false);
+  }
+
+  void OnMouseOver(float x, float y, const IMouseMod& mod) override { SetDirty(false); }
+  void OnMouseOut() override { mPressed = false; SetDirty(false); }
+
+private:
+  const char* mLabel;
+  const char* mFontID;
+  IColor mAccent, mPanel, mFrame, mText;
+  std::function<void()> mAction;
+  bool mPressed = false;
+};
+
 #if IPLUG_EDITOR
 void BronzeNoise::LayoutUI(IGraphics* pGraphics)
 {
@@ -890,7 +915,7 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
 
   // Two fonts: titleFont (IronSans) for plugin title, uiFont (Kenyan Coffee) for everything else.
   // 2-arg LoadFont looks up the TTF as a Windows resource by name (matches main.rc macro).
-  // 3-arg overload takes a system font FACE name, not a resource id � that's why system fallback chain keeps its 3-arg form.
+  // The 3-arg overload takes a system font face name, not a resource ID.
   const char* kTitleFontID = "BronzeNoiseTitleFont";
   const char* titleFont = nullptr;
   if (pGraphics->LoadFont(kTitleFontID, IRON_SANS_FN)
@@ -907,11 +932,11 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
     uiFont = kUIFontID;
   }
 
-  // Load knob SVG once � KNOB_SVG_FN macro expands to "knob.svg" which is the resource name compiled into the DLL by main.rc.
+  // Load the knob SVG once from the binary resource compiled by main.rc.
   ISVG knobSVG = pGraphics->LoadSVG(KNOB_SVG_FN);
   const bool knobSVGOk = knobSVG.IsValid();
 
-  // iPlug2 logo SVG � drawn opposite the title (right side of title bar).
+  // CLOPH logo, opposite the title.
   ISVG clophSVG = pGraphics->LoadSVG(CLOPH_LOGO_FN);
   const bool clophSVGOk = clophSVG.IsValid();
 
@@ -936,20 +961,20 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
   const IRECT bounds = pGraphics->GetBounds().GetPadded(-16.f);
 
   // ponytail: title-only strip (no subtitle). Bumped height for larger text. IronSans for the title.
-  const float titleH = 72.f;
+  const float titleH = 64.f;
   // Header chassis: thin frame + 1-px divider through middle, no brand text. Drawn UNDER title + segmented bars.
-  const IRECT chassisHeader(bounds.L, bounds.T, bounds.R, bounds.B - 200.f);
+  const IRECT chassisHeader(bounds.L, bounds.T, bounds.R, bounds.B);
   pGraphics->AttachControl(new ChassisPanelControl(chassisHeader, ChassisPanelControl::Position::kHeader,
     panelColor, frameColor, dividerColor, accentColor, "", "", titleFont ? titleFont : uiFont));
 
-  const IRECT titleRect(bounds.L, bounds.T, bounds.L + 320.f, bounds.T + titleH);
+  const IRECT titleRect(bounds.L + 12.f, bounds.T, bounds.L + 340.f, bounds.T + titleH);
   pGraphics->AttachControl(new ITextControl(titleRect,
     "BRONZE NOISE",
     IText(36.f, accentColor, titleFont ? titleFont : uiFont, EAlign::Near, EVAlign::Middle)));
 
-  // ponytail: CLOPH logo, right side of title bar, vertically centered. ViewBox 1462�569 ? aspect 2.57:1.
+  // CLOPH logo, right side of title bar, vertically centered (aspect 2.57:1).
   if (clophSVGOk) {
-    const float logoH = 54.f;
+    const float logoH = 42.f;
     const float logoW = logoH * (1462.f / 569.f); // ~154px wide
     const float logoRightPad = 20.f;
     const float logoY = bounds.T + (titleH - logoH) * 0.5f;
@@ -957,36 +982,38 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
     pGraphics->AttachControl(new ISVGControl(logoRect, clophSVG));
   }
 
+  const IRECT bypassBar(bounds.R - 300.f, bounds.T + 9.f, bounds.R - 150.f, bounds.T + 55.f);
+  auto* bypassControl = new TargetSelectorControl(bypassBar, kBypass, "Bypass", selectorStyle);
+  bypassControl->SetTooltip("Latency-compensated effect bypass");
+  pGraphics->AttachControl(bypassControl);
+
   // Latency readout — initially empty; updated in OnReset when block size / sample rate change.
-  const IRECT latencyRect(bounds.L + 200.f, bounds.T + 4.f, bounds.L + 380.f, bounds.T + 18.f);
+  const IRECT latencyRect(bounds.L + 344.f, bounds.T + 8.f, bounds.L + 590.f, bounds.T + 28.f);
   mLatencyLabel = new ITextControl(latencyRect, "",
     IText(12.f, secondaryTextColor, uiFont, EAlign::Near, EVAlign::Middle));
   mLatencyLabel->SetTooltip("Current processing latency (varies with FFT size)");
   pGraphics->AttachControl(mLatencyLabel);
   // TitleBarLEDPulseControl removed — was a low-value distraction.
 
-  // ponytail: knobs ride at top of spectrum area (below title), bars sit at bottom � visualizer fills the band between them.
-  // Layout: title at top, full-width visualizer in the middle, knobs row BELOW visualizer, segmented bars at bottom.
-  // Knobs move to the bottom for better tactile grouping — the visualizer gets full vertical real estate.
-  const float barsH = 44.f;
-  const float barsTop = bounds.B - barsH - 8.f;
-  // Knob row sits just above the segmented bars (with a 12px gap).
-  const float knobsTop = barsTop - 92.f;  // 80px knob height + 12px gap above bars
-
-  // ponytail: knobs + bars reflow with window width. Default 1000 ? 72px / 320px FFT; min 600 ? 60px / 240px; max 1600 ? 92px / 380px.
-  const float knobSize = Clip(barsTop - titleH - 80.f, 56.f, 80.f);
-  // Recompute knobsTop now that knobSize is known — keep a 12px gap above bars.
-  const float knobsTopFinal = barsTop - knobSize - 12.f;
-  const float knobY = knobsTopFinal;
+  // Production layout: one hero analyzer plus a deliberate 3-tier control deck.
+  // The analyzer stays large, while every audible/operational parameter remains
+  // visible without menus or hidden pages.
+  const float utilityH = 46.f;
+  const float targetH = 48.f;
+  const float rowGap = 8.f;
+  const float utilityTop = bounds.B - utilityH;
+  const float targetTop = utilityTop - rowGap - targetH;
+  const float knobSize = 82.f;
+  const float knobY = targetTop - rowGap - knobSize;
   const float gap = Clip(knobSize * 0.18f, 10.f, 18.f);
-  const float knobRowW = knobSize * 5 + gap * 4;
+  const float knobRowW = knobSize * 6 + gap * 5;
   const float knobStartX = bounds.L + (bounds.W() - knobRowW) * 0.5f;
 
   // ponytail: I/O meters flank the visualizer (which now fills the full band between title and knob row).
-  const float meterW = 36.f;
+  const float meterW = 60.f;
   const float meterGap = 10.f;
-  const IRECT inputMeterRect(bounds.L, bounds.T + titleH + 12.f, bounds.L + meterW, knobY - 12.f);
-  const IRECT outputMeterRect(bounds.R - meterW, bounds.T + titleH + 12.f, bounds.R, knobY - 12.f);
+  const IRECT inputMeterRect(bounds.L, bounds.T + titleH + 8.f, bounds.L + meterW, knobY - 10.f);
+  const IRECT outputMeterRect(bounds.R - meterW, bounds.T + titleH + 8.f, bounds.R, knobY - 10.f);
   mInputMeter = new IOMeterControl(inputMeterRect, "IN",
     IText(11.f, secondaryTextColor, uiFont, EAlign::Center, EVAlign::Middle), uiFont);
   mInputMeter->SetTooltip("Input level (L/R) with peak hold");
@@ -997,9 +1024,11 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
   pGraphics->AttachControl(mOutputMeter);
 
   // Visualizer fills the full band between title and knob row (hero element — biggest area).
-  const IRECT visRect(bounds.L + meterW + meterGap, bounds.T + titleH + 12.f,
-                      bounds.R - meterW - meterGap, knobY - 12.f);
-  pGraphics->AttachControl(mVisControl = new SpectrumVisualizerControl(visRect, uiFont));
+  const IRECT visRect(bounds.L + meterW + meterGap, bounds.T + titleH + 8.f,
+                      bounds.R - meterW - meterGap, knobY - 10.f);
+  mVisControl = new SpectrumVisualizerControl(visRect, uiFont);
+  mVisControl->SetTooltip("Spectrum view: mouse wheel zooms, vertical drag pans");
+  pGraphics->AttachControl(mVisControl);
 
   auto attachKnob = [&](const IRECT& r, int paramIdx, const char* label, const char* tip) {
     IControl* knob = nullptr;
@@ -1016,12 +1045,12 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
     return knob;
   };
 
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < 6; ++i) {
     const float x = knobStartX + i * (knobSize + gap);
     const IRECT kr(x, knobY, x + knobSize, knobY + knobSize);
     switch (i) {
       case 0: attachKnob(kr, kAmount,    "Amount",
-              "Mix level of target noise spectrum (0-100%)\nShift+drag = fine adjust | Double-click = reset"); break;
+              "Strength of spectral matching (0-100%)\nShift+drag = fine adjust | Double-click = reset"); break;
       case 1: attachKnob(kr, kSmoothing, "Smoothing",
               "Spectrum smoothing time constant - higher = smoother but slower response\nShift+drag = fine adjust | Double-click = reset"); break;
       case 2: attachKnob(kr, kQ,         "Bandwidth",
@@ -1030,23 +1059,102 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
               "Spectral tilt: negative = bassier, positive = brighter\nShift+drag = fine adjust | Double-click = reset"); break;
       case 4: attachKnob(kr, kTransient, "Transient",
               "Transient/sustain balance: lower preserves transients, higher boosts body\nShift+drag = fine adjust | Double-click = reset"); break;
+      case 5: attachKnob(kr, kBnMix, "Mix",
+              "Latency-aligned dry/wet mix\nShift+drag = fine adjust | Double-click = reset"); break;
     }
   }
 
-  // ponytail: full-width segmented bars � Target (10 options, ~5x2 cells) on the left, FFT (7 options, single row) on the right.
-  const float barGap = 16.f;
-  const float fftW = Clip(bounds.W() * 0.32f, 240.f, 400.f);
-  const float targetW = bounds.W() - fftW - barGap;
-  const IRECT targetBar(bounds.L, barsTop, bounds.L + targetW, barsTop + barsH);
-  const IRECT fftBar(targetBar.R + barGap, barsTop, targetBar.R + barGap + fftW, barsTop + barsH);
+  // Full-width target palette: all ten spectral slopes are always one click away.
+  const IRECT targetBar(bounds.L, targetTop, bounds.R, targetTop + targetH);
 
   auto* targetControl = new TargetSelectorControl(targetBar, kTarget, "Target", selectorStyle);
-  targetControl->SetTooltip("Target noise spectrum curve");
+  targetControl->SetTooltip("Target spectral slope or equal-loudness contour");
   pGraphics->AttachControl(targetControl);
+
+  // Utility deck: stereo topology, FFT quality/latency, gain matching,
+  // analyzer mode, A/B snapshots, and reset.
+  const float utilityGap = 8.f;
+  const float stereoW = 244.f;
+  const float fftW = 260.f;
+  const float autoW = 112.f;
+  const float viewW = 190.f;
+  const float abW = 120.f;
+  const float resetW = 82.f;
+  float ux = bounds.L;
+  auto nextUtilityRect = [&](float width) {
+    const IRECT result(ux, utilityTop, ux + width, utilityTop + utilityH);
+    ux += width + utilityGap;
+    return result;
+  };
+  const IRECT stereoBar = nextUtilityRect(stereoW);
+  const IRECT fftBar = nextUtilityRect(fftW);
+  const IRECT autoBar = nextUtilityRect(autoW);
+  const IRECT viewBar = nextUtilityRect(viewW);
+  const IRECT abBar = nextUtilityRect(abW);
+  const IRECT resetBar(ux, utilityTop, ux + resetW, utilityTop + utilityH);
+
+  auto* stereoControl = new TargetSelectorControl(stereoBar, kBnStereoMode, "Stereo", selectorStyle);
+  stereoControl->SetTooltip("Linked, Mid-only, Side-only, or independent channel matching");
+  pGraphics->AttachControl(stereoControl);
 
   auto* fftControl = new TargetSelectorControl(fftBar, kFFTSize, "FFT", selectorStyle);
   fftControl->SetTooltip("FFT analysis size - higher = more freq resolution but more latency");
   pGraphics->AttachControl(fftControl);
+
+  auto* autoControl = new TargetSelectorControl(autoBar, kBnAutoGain, "Gain", selectorStyle);
+  autoControl->SetTooltip("Match processed RMS level to the input");
+  pGraphics->AttachControl(autoControl);
+
+  auto* viewControl = new TargetSelectorControl(viewBar, kBnVisualMode, "View", selectorStyle);
+  viewControl->SetTooltip("Choose analyzer curve presentation");
+  pGraphics->AttachControl(viewControl);
+
+  auto abSelection = [this](int state) {
+    auto capture = [&](std::array<double, kNumABParams>& snapshot) {
+      for (int idx = 0; idx < kNumABParams; ++idx)
+        snapshot[idx] = GetParam(idx)->Value();
+    };
+    auto restore = [&](const std::array<double, kNumABParams>& snapshot) {
+      for (int idx = 0; idx < kNumABParams; ++idx) {
+        IParam* param = GetParam(idx);
+        BeginInformHostOfParamChangeFromUI(idx);
+        SendParameterValueFromUI(idx, param->ToNormalized(snapshot[idx]));
+        EndInformHostOfParamChangeFromUI(idx);
+      }
+      SendCurrentParamValuesFromDelegate();
+    };
+
+    if (state == 0) {
+      mABHasSnapshotA = false;
+      mABHasSnapshotB = false;
+    } else if (state == 1) {
+      if (mABPreviousState == 2) { capture(mABSnapshotB); mABHasSnapshotB = true; }
+      if (mABHasSnapshotA) restore(mABSnapshotA);
+      else { capture(mABSnapshotA); mABHasSnapshotA = true; }
+    } else if (state == 2) {
+      if (mABPreviousState == 1) { capture(mABSnapshotA); mABHasSnapshotA = true; }
+      if (mABHasSnapshotB) restore(mABSnapshotB);
+      else { capture(mABSnapshotB); mABHasSnapshotB = true; }
+    }
+    mABPreviousState = state;
+  };
+  auto* abControl = new TargetSelectorControl(abBar, kBnABCompare, "Compare", selectorStyle, abSelection);
+  abControl->SetTooltip("Off clears snapshots; A/B stores and recalls two audible settings");
+  pGraphics->AttachControl(abControl);
+
+  auto resetAction = [this]() {
+    for (int idx = kAmount; idx <= kBnAutoGain; ++idx) {
+      IParam* param = GetParam(idx);
+      BeginInformHostOfParamChangeFromUI(idx);
+      SendParameterValueFromUI(idx, param->GetDefault(true));
+      EndInformHostOfParamChangeFromUI(idx);
+    }
+    SendCurrentParamValuesFromDelegate();
+  };
+  auto* resetControl = new MomentaryActionControl(resetBar, "RESET", uiFont,
+    accentColor, panelColor, frameColor, secondaryTextColor, resetAction);
+  resetControl->SetTooltip("Reset all sound controls to their defaults");
+  pGraphics->AttachControl(resetControl);
 
   // Bypass overlay (full bounds, drawn on top only when bypass is engaged)
   auto* bypassOverlay = new BypassOverlayControl(bounds);
@@ -1056,6 +1164,25 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
   // Initial sync: push current parameter values to all UI controls. OnActivate/OnIdle handles re-activation but the very first UI build needs this.
   SendCurrentParamValuesFromDelegate();
 }
+
+bool BronzeNoise::ConstrainEditorResize(int& width, int& height) const
+{
+  constexpr double aspect = static_cast<double>(PLUG_WIDTH) / static_cast<double>(PLUG_HEIGHT);
+  width = Clip(width, PLUG_MIN_WIDTH, PLUG_MAX_WIDTH);
+  height = static_cast<int>(std::lround(static_cast<double>(width) / aspect));
+
+  if (height < PLUG_MIN_HEIGHT) {
+    height = PLUG_MIN_HEIGHT;
+    width = static_cast<int>(std::lround(static_cast<double>(height) * aspect));
+  } else if (height > PLUG_MAX_HEIGHT) {
+    height = PLUG_MAX_HEIGHT;
+    width = static_cast<int>(std::lround(static_cast<double>(height) * aspect));
+  }
+
+  width = Clip(width, PLUG_MIN_WIDTH, PLUG_MAX_WIDTH);
+  return true;
+}
+
 void BronzeNoise::OnParentWindowResize(int width, int height)
 {
   if (!GetUI())
@@ -1073,6 +1200,7 @@ void BronzeNoise::OnParentWindowResize(int width, int height)
   mOutputMeter = nullptr;
   mLatencyLabel = nullptr;
   mVisControl = nullptr;
+  mLastLatencySamplesUI = -1;
 
   GetUI()->RemoveAllControls();
   GetUI()->Resize(PLUG_WIDTH, PLUG_HEIGHT, scale, false);
@@ -1094,15 +1222,15 @@ void BronzeNoise::OnActivate(bool active)
 // Crash guard: when the host closes the editor, iPlug2 invokes CloseWindow()
 // -> IGraphics::~IGraphics() -> RemoveAllControls() which deletes every IControl
 // the editor owns. The BronzeNoise object outlives that teardown briefly, so any
-// in-flight OnIdle or audio-thread publish (mVisControl->SetData) would
-// dereference a freed pointer. Nulling here, before the destructor runs the
-// RemoveAllControls, eliminates the window.
+// in-flight OnIdle could otherwise dereference a freed pointer. Nulling here,
+// before the destructor runs RemoveAllControls, eliminates that window.
 void BronzeNoise::OnUIClose()
 {
   mInputMeter = nullptr;
   mOutputMeter = nullptr;
   mLatencyLabel = nullptr;
   mVisControl = nullptr;
+  mLastLatencySamplesUI = -1;
 }
 
 void BronzeNoise::OnIdle()
@@ -1121,15 +1249,45 @@ void BronzeNoise::OnIdle()
   IGraphics* ui = GetUI();
   if (ui && ui->NControls() > 0 && mInputMeter && mOutputMeter) {
     mInputMeter->SetLevels(
-      mInputPeakL.load(std::memory_order_relaxed),
-      mInputPeakR.load(std::memory_order_relaxed));
+      mInputPeakL.exchange(0.f, std::memory_order_relaxed),
+      mInputPeakR.exchange(0.f, std::memory_order_relaxed));
     mOutputMeter->SetLevels(
-      mOutputPeakL.load(std::memory_order_relaxed),
-      mOutputPeakR.load(std::memory_order_relaxed));
+      mOutputPeakL.exchange(0.f, std::memory_order_relaxed),
+      mOutputPeakR.exchange(0.f, std::memory_order_relaxed));
+  }
+
+  if (ui && ui->NControls() > 0 && mLatencyLabel) {
+    const int latencySamples = mLatencySamplesForUI.load(std::memory_order_relaxed);
+    const double sampleRate = GetSampleRate() > 0.0 ? GetSampleRate() : 48000.0;
+    if (latencySamples != mLastLatencySamplesUI || sampleRate != mLastLatencySampleRateUI) {
+      const double latencyMs = static_cast<double>(latencySamples) / sampleRate * 1000.0;
+      char text[64];
+      std::snprintf(text, sizeof(text), "%d samples  /  %.1f ms", latencySamples, latencyMs);
+      static_cast<ITextControl*>(mLatencyLabel)->SetStr(text);
+      mLastLatencySamplesUI = latencySamples;
+      mLastLatencySampleRateUI = sampleRate;
+    }
+  }
+
+  const uint32_t generation = mVisGeneration.load(std::memory_order_acquire);
+  if (ui && ui->NControls() > 0 && mVisControl && generation != mLastVisGeneration) {
+    float before[kNumBands] {};
+    float after[kNumBands] {};
+    float reference[kNumBands] {};
+    float frequencies[kNumBands] {};
+    const int bands = Clip(mVisBandsReady.load(std::memory_order_acquire), 0, kNumBands);
+    for (int i = 0; i < bands; ++i) {
+      before[i] = mVisBefore[i].load(std::memory_order_relaxed);
+      after[i] = mVisAfter[i].load(std::memory_order_relaxed);
+      reference[i] = mVisReference[i].load(std::memory_order_relaxed);
+      frequencies[i] = mVisFrequencies[i].load(std::memory_order_relaxed);
+    }
+    static_cast<SpectrumVisualizerControl*>(mVisControl)->SetData(before, after, reference, frequencies, bands);
+    mLastVisGeneration = generation;
   }
 #endif
 }
-#endif // IPLUG_EDITOR (outer�LayoutUI, OnParentWindowResize, OnActivate, OnIdle)
+#endif // IPLUG_EDITOR
 
 #if IPLUG_DSP
 void BronzeNoise::OnReset()
@@ -1147,19 +1305,12 @@ void BronzeNoise::OnReset()
   mFFTSize = kFFTSizes[fftSizeSelector];
   mHopSize = mFFTSize / 2;
 
-  // Report actual latency to host.
-  // With 50% overlap (hop = FFTSize/2), the algorithmic latency is one hop.
-  SetLatency(mHopSize);
-
-  // Update latency readout in title bar (ITextControl not available in headers, cast from base).
-  // GetUI() guard: label pointer can outlive GUI if accessed after destruction.
-  if (GetUI() && mLatencyLabel) {
-    const double ms = static_cast<double>(mHopSize) / mSampleRate * 1000.0;
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%d smp \xC2\xB7 %.1fms @ %.0fHz", mHopSize, ms, mSampleRate);
-    static_cast<ITextControl*>(mLatencyLabel)->SetStr(buf);
-    mLatencyLabel->SetDirty(false);
-  }
+  // A frame becomes processable after two 50%-overlap hops; the first input
+  // sample therefore emerges at FFTSize-1. Report that exact delay so host PDC
+  // and the internal dry path remain sample aligned.
+  mLatencySamples = mFFTSize - 1;
+  SetLatency(mLatencySamples);
+  mLatencySamplesForUI.store(mLatencySamples, std::memory_order_relaxed);
 
   for (int index = 0; index < mFFTSize; ++index)
     mPermutation[index] = WDL_fft_permute(mFFTSize, index);
@@ -1174,69 +1325,6 @@ void BronzeNoise::OnParamChange(int paramIdx)
   {
     OnReset();
   }
-  else if (paramIdx == kBypass)
-  {
-    mBypassed = (GetParam(kBypass)->Int() != 0);
-  }
-  else if (paramIdx == kBnReset)
-  {
-    // Reset all user-tweakable params to defaults. Momentary button � restores to 0 immediately.
-    GetParam(kAmount)->SetToDefault();
-    GetParam(kTarget)->SetToDefault();
-    GetParam(kSmoothing)->SetToDefault();
-    GetParam(kQ)->SetToDefault();
-    GetParam(kCharacter)->SetToDefault();
-    GetParam(kTransient)->SetToDefault();
-    GetParam(kBnMix)->SetToDefault();
-    GetParam(kBnStereoMode)->SetToDefault();
-    GetParam(kBnAutoGain)->SetToDefault();
-    GetParam(kBnVisualMode)->SetToDefault();
-    SendCurrentParamValuesFromDelegate();
-    GetParam(kBnReset)->Set(0);  // momentary � back to idle
-  }
-  else if (paramIdx == kBnABCompare)
-  {
-    // A/B compare: 0=idle, 1=captured, 2=comparing
-    int state = GetParam(kBnABCompare)->Int();
-    if (state == 1)
-    {
-      // Capture current params to snapshot A
-      for (int i = 0; i < 7; ++i) {
-        IParam* p = GetParam(i);
-        if (p) mABSnapshotA[i] = p->Value();
-      }
-      mABHasSnapshot = true;
-      GetParam(kBnABCompare)->Set(2);  // advance to "comparing" state
-    }
-    else if (state == 2)
-    {
-      // Toggle back: restore snapshot A
-      if (mABHasSnapshot) {
-        for (int i = 0; i < 7; ++i) {
-          IParam* p = GetParam(i);
-          if (p) p->Set(mABSnapshotA[i]);
-        }
-        SendCurrentParamValuesFromDelegate();
-      }
-      GetParam(kBnABCompare)->Set(1);  // back to "captured" state (toggleable)
-    }
-    else if (state == 0)
-    {
-      mABHasSnapshot = false;  // clear snapshot
-    }
-  }
-  else
-  {
-    // Update smoothed targets immediately so next ProcessBlock can ramp smoothly
-    switch (paramIdx)
-    {
-      case kAmount:   mSmoothedAmount = static_cast<float>(GetParam(kAmount)->Value()); break;
-      case kSmoothing: mSmoothedSmoothing = static_cast<float>(GetParam(kSmoothing)->Value()); break;
-      case kQ:        mSmoothedQ = static_cast<float>(GetParam(kQ)->Value()); break;
-      case kCharacter: mSmoothedCharacter = static_cast<float>(GetParam(kCharacter)->Value()); break;
-      case kTransient: mSmoothedTransient = static_cast<float>(GetParam(kTransient)->Value()); break;
-    }
-  }
 }
 
 bool BronzeNoise::SerializeState(IByteChunk& chunk) const
@@ -1247,6 +1335,12 @@ bool BronzeNoise::SerializeState(IByteChunk& chunk) const
 int BronzeNoise::UnserializeState(const IByteChunk& chunk, int startPos)
 {
   const int result = UnserializeParams(chunk, startPos);
+  // Action/compare state has no meaningful snapshot across sessions.
+  GetParam(kBnReset)->Set(0);
+  GetParam(kBnABCompare)->Set(0);
+  mABHasSnapshotA = false;
+  mABHasSnapshotB = false;
+  mABPreviousState = 0;
   // Trigger reset to update DSP state with any changed parameters (FFT size, etc.)
   OnReset();
   return result;
@@ -1275,23 +1369,38 @@ void BronzeNoise::ResetDspState()
     }
   }
 
+  for (auto& channelBuffer : mDryDelayBuffer)
+    std::fill(channelBuffer.begin(), channelBuffer.end(), 0.f);
+
   mAverageSpectrumDb.fill(0.f);
+  for (auto& spectrum : mChannelAverageSpectrumDb)
+    spectrum.fill(0.f);
+  mChannelHasSpectrum.fill(false);
   mOutputReadIndex.fill(0);
   mOutputWriteIndex.fill(0);
   mOutputCount.fill(0);
+  mDryDelayIndex.fill(0);
   mHopFill = 0;
   mHasSpectrum = false;
+  mPreviousHopInputDb = -120.f;
   mAutoMakeupGainDb = 0.f;
-  mInputRmsDb = -60.f;
-  mOutputRmsDb = -60.f;
-  mTruePeakLevel = 0.f;
+  mLimiterEnvelope = 0.f;
+  mSmoothedAmount = static_cast<float>(GetParam(kAmount)->Value());
+  mSmoothedSmoothing = static_cast<float>(GetParam(kSmoothing)->Value());
+  mSmoothedQ = static_cast<float>(GetParam(kQ)->Value());
+  mSmoothedCharacter = static_cast<float>(GetParam(kCharacter)->Value());
+  mSmoothedTransient = static_cast<float>(GetParam(kTransient)->Value());
+  mCurrentWetMix = GetParam(kBypass)->Bool() ? 0.f : static_cast<float>(GetParam(kBnMix)->Value() * 0.01);
 
+  double windowSum = 0.0;
   for (int sampleIndex = 0; sampleIndex < mFFTSize; ++sampleIndex)
   {
     const double phase = (kTwoPi * static_cast<double>(sampleIndex)) / static_cast<double>(mFFTSize);
     const double hann = 0.5 - (0.5 * std::cos(phase));
     mWindow[sampleIndex] = static_cast<float>(std::sqrt(std::max(0.0, hann)));
+    windowSum += mWindow[sampleIndex];
   }
+  mAnalyzerMagnitudeOffsetDb = LinearToDb(static_cast<float>(2.0 / std::max(1.0, windowSum)));
 }
 
 void BronzeNoise::UpdateBandLayout(double sampleRate)
@@ -1406,17 +1515,20 @@ float BronzeNoise::EvaluateTargetDb(float frequencyHz, int targetMode) const
 
   float slopeDbPerOctave = 0.f;
 
+  // Canonical power-law colors use amplitude slopes of white 0, pink -3,
+  // red/brown -6, blue +3, and violet +6 dB/octave. The named CLOPH colors
+  // between them provide musically useful intermediate slopes.
   switch (targetMode)
   {
-    case kTargetWhite:   slopeDbPerOctave = 0.f;   break;
-    case kTargetRed:    slopeDbPerOctave = -1.5f; break;
+    case kTargetWhite:  slopeDbPerOctave =  0.f;  break;
+    case kTargetRed:    slopeDbPerOctave = -6.f;  break;
     case kTargetOrange: slopeDbPerOctave = -2.f;  break;
     case kTargetPink:   slopeDbPerOctave = -3.f;  break;
     case kTargetBronze: slopeDbPerOctave = -4.5f; break;
     case kTargetBrown:  slopeDbPerOctave = -6.f;  break;
     case kTargetOlive:  slopeDbPerOctave = -7.5f; break;
-    case kTargetBlue:   slopeDbPerOctave = -9.f;  break;
-    case kTargetViolet: slopeDbPerOctave = +3.f;  break;
+    case kTargetBlue:   slopeDbPerOctave =  3.f;  break;
+    case kTargetViolet: slopeDbPerOctave =  6.f;  break;
     default:            slopeDbPerOctave = 0.f;   break;
   }
 
@@ -1438,19 +1550,8 @@ float BronzeNoise::DbToLinear(float dbValue) const
   return std::pow(10.f, dbValue / 20.f);
 }
 
-// Compute RMS of a float buffer segment in linear scale
-float BronzeNoise::ComputeHopRms(int /*channelIndex*/, const float* buffer, int length) const
-{
-  if (length <= 0)
-    return 0.f;
-  double sumSq = 0.0;
-  for (int i = 0; i < length; ++i)
-    sumSq += static_cast<double>(buffer[i]) * buffer[i];
-  return static_cast<float>(std::sqrt(sumSq / static_cast<double>(length)));
-}
-
 // Update smoothed auto makeup gain based on measured input vs output RMS.
-// Target: output RMS == input RMS within kMakeupGainToleranceDb.
+// Target: output RMS follows input RMS without one-sided loudness bias.
 void BronzeNoise::UpdateMakeupGain(float inputRms, float outputRms)
 {
   // Hardening: sanitize NaN/Inf RMS before log10 (a NaN propagates through
@@ -1461,10 +1562,10 @@ void BronzeNoise::UpdateMakeupGain(float inputRms, float outputRms)
   const float outputDb = 20.f * std::log10(std::max(1.0e-9f, outputRms));
   // Required compensation = level removed by spectral reshaping
   const float requiredCompensationDb = inputDb - outputDb;
-  // Never cut signal; cap at maximum makeup gain
-  const float targetMakeupDb = Clip(requiredCompensationDb, 0.f, kMaxMakeupGainDb);
-  // Exponential smoothing to prevent gain-pumping artefacts
-  mAutoMakeupGainDb += (targetMakeupDb - mAutoMakeupGainDb) * kMakeupGainSmoothAlpha;
+  const float targetMakeupDb = Clip(requiredCompensationDb, -kMaxMakeupGainDb, kMaxMakeupGainDb);
+  const float alpha = static_cast<float>(1.0 - std::exp(
+    -static_cast<double>(mHopSize) / std::max(1.0, 0.250 * mSampleRate)));
+  mAutoMakeupGainDb += (targetMakeupDb - mAutoMakeupGainDb) * alpha;
   // Final NaN guard on the gain itself in case alpha * NaN sneaks in.
   if (!std::isfinite(mAutoMakeupGainDb)) mAutoMakeupGainDb = 0.f;
 }
@@ -1522,7 +1623,7 @@ void BronzeNoise::ProcessHop(int channelCount)
   const float aggression = MapAggression(amount);
   const float smoothing = mSmoothedSmoothing;
   const float qValue = mSmoothedQ;
-  const int targetMode = static_cast<int>(GetParam(kTarget)->Value());  // enum, no smoothing needed
+  const int targetMode = Clip(GetParam(kTarget)->Int(), 0, kNumTargetCurves - 1);
   const float character = mSmoothedCharacter;
   const float liveSpectrumBlend = Lerp(0.10f, 0.58f, aggression);
   const float temporalAlpha = Clip((0.16f + (0.18f * amountDrive)) - (0.12f * smoothing), 0.05f, 0.34f);
@@ -1533,28 +1634,14 @@ void BronzeNoise::ProcessHop(int channelCount)
   std::array<float, kNumBands> targetSpectrumDb {};
   std::array<float, kNumBands> rawCorrectionDb {};
   std::array<float, kNumBands> smoothedCorrectionDb {};
+  std::array<std::array<float, kNumBands>, kMaxChannels> channelSpectrumDb {};
+  std::array<std::array<float, kNumBands>, kMaxChannels> channelCorrectionDb {};
 
   float beforeSpec[64] = {};
   float afterSpec[64] = {};
   float referenceSpec[64] = {};
   float freqSpec[64] = {};
   const int visBands = std::min(kNumBands, 64);
-
-  // Measure input RMS across all channels for makeup gain calculation
-  double inputPowerSum = 0.0;
-  int inputSampleCount = 0;
-  for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
-  {
-    for (int i = 0; i < mHopSize; ++i)
-    {
-      const double s = static_cast<double>(mHopBuffer[channelIndex][i]);
-      inputPowerSum += s * s;
-    }
-    inputSampleCount += mHopSize;
-  }
-  const float hopInputRms = (inputSampleCount > 0)
-    ? static_cast<float>(std::sqrt(inputPowerSum / static_cast<double>(inputSampleCount)))
-    : 0.f;
 
   for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
   {
@@ -1574,12 +1661,34 @@ void BronzeNoise::ProcessHop(int channelCount)
     WDL_fft(mFftBuffer[channelIndex].data(), mFFTSize, 0);
   }
 
+  // The hop being emitted is the oldest half of the current analysis frame.
+  // Measure that same time slice so auto gain and transient protection compare
+  // aligned input/output material rather than adjacent hops.
+  double inputPowerSum = 0.0;
+  int inputSampleCount = 0;
+  for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex) {
+    for (int i = 0; i < mHopSize; ++i) {
+      const double sampleValue = static_cast<double>(mAnalysisBuffer[channelIndex][i]);
+      inputPowerSum += sampleValue * sampleValue;
+    }
+    inputSampleCount += mHopSize;
+  }
+  const float hopInputRms = inputSampleCount > 0 ?
+    static_cast<float>(std::sqrt(inputPowerSum / static_cast<double>(inputSampleCount))) : 0.f;
+  const float hopInputDb = LinearToDb(hopInputRms);
+  const float attackDb = std::max(0.f, hopInputDb - mPreviousHopInputDb);
+  mPreviousHopInputDb = hopInputDb;
+  const float transientProtection = (1.f - Clip(mSmoothedTransient, 0.f, 1.f)) *
+                                    Clip(attackDb / 12.f, 0.f, 1.f);
+  const float transientCorrectionScale = 1.f - (0.82f * transientProtection);
+
   double totalBandPower = 0.0;
   int totalBandBinCount = 0;
 
   for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex)
   {
     double bandPower = 0.0;
+    double perChannelBandPower[kMaxChannels] = {};
     int bandBinCount = 0;
 
     for (int binIndex = mBandStartBins[bandIndex]; binIndex <= mBandEndBins[bandIndex]; ++binIndex)
@@ -1590,7 +1699,10 @@ void BronzeNoise::ProcessHop(int channelCount)
       for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
       {
         const WDL_FFT_COMPLEX& fftBin = mFftBuffer[channelIndex][fftIndex];
-        channelPower += (static_cast<double>(fftBin.re) * fftBin.re) + (static_cast<double>(fftBin.im) * fftBin.im);
+        const double binPower = (static_cast<double>(fftBin.re) * fftBin.re) +
+                                (static_cast<double>(fftBin.im) * fftBin.im);
+        perChannelBandPower[channelIndex] += binPower;
+        channelPower += binPower;
       }
 
       channelPower /= static_cast<double>(activeChannels);
@@ -1601,6 +1713,10 @@ void BronzeNoise::ProcessHop(int channelCount)
     }
 
     currentSpectrumDb[bandIndex] = LinearToDb(static_cast<float>(std::sqrt(bandPower / std::max(1, bandBinCount))));
+    for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex) {
+      channelSpectrumDb[channelIndex][bandIndex] = LinearToDb(static_cast<float>(
+        std::sqrt(perChannelBandPower[channelIndex] / std::max(1, bandBinCount))));
+    }
   }
 
   float currentMeanDb = 0.f;
@@ -1610,7 +1726,8 @@ void BronzeNoise::ProcessHop(int channelCount)
 
   currentMeanDb /= static_cast<float>(kNumBands);
 
-  const float frameRmsDb = LinearToDb(static_cast<float>(std::sqrt(totalBandPower / std::max(1, totalBandBinCount))));
+  const float frameRmsDb = LinearToDb(static_cast<float>(
+    std::sqrt(totalBandPower / std::max(1, totalBandBinCount)))) + mAnalyzerMagnitudeOffsetDb;
   const bool signalIsUsable = frameRmsDb > kSilenceGateDb;
 
   if (signalIsUsable)
@@ -1625,6 +1742,23 @@ void BronzeNoise::ProcessHop(int channelCount)
       for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex)
       {
         mAverageSpectrumDb[bandIndex] += (currentSpectrumDb[bandIndex] - mAverageSpectrumDb[bandIndex]) * temporalAlpha;
+      }
+    }
+  }
+
+  for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex) {
+    float channelMean = 0.f;
+    for (float db : channelSpectrumDb[channelIndex]) channelMean += db;
+    channelMean /= static_cast<float>(kNumBands);
+    const bool channelUsable = channelMean + mAnalyzerMagnitudeOffsetDb > kSilenceGateDb;
+    if (!channelUsable) continue;
+    if (!mChannelHasSpectrum[channelIndex]) {
+      mChannelAverageSpectrumDb[channelIndex] = channelSpectrumDb[channelIndex];
+      mChannelHasSpectrum[channelIndex] = true;
+    } else {
+      for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex) {
+        mChannelAverageSpectrumDb[channelIndex][bandIndex] +=
+          (channelSpectrumDb[channelIndex][bandIndex] - mChannelAverageSpectrumDb[channelIndex][bandIndex]) * temporalAlpha;
       }
     }
   }
@@ -1663,7 +1797,7 @@ void BronzeNoise::ProcessHop(int channelCount)
       const float differenceDb = targetShapeDb - analysisShapeDb;
       const float accent = ComputeDifferenceAccent(differenceDb, aggression);
       const float bandFocus = ComputeBandFocus(mBandCentersHz[bandIndex], aggression);
-      rawCorrectionDb[bandIndex] = amountDrive * differenceDb * accent * bandFocus;
+      rawCorrectionDb[bandIndex] = amountDrive * differenceDb * accent * bandFocus * transientCorrectionScale;
     }
 
     SmoothBandCorrections(rawCorrectionDb, smoothedCorrectionDb, smoothingRadius);
@@ -1684,32 +1818,6 @@ void BronzeNoise::ProcessHop(int channelCount)
                                                           aggression);
     }
 
-    // Enhanced spectral transformation at high amounts
-    // At 100%, replace input spectrum with target spectrum (noise generation mode)
-    const float noiseModeBlend = SmoothStepFunc(0.85f, 1.0f, amountDrive); // Pure noise mode above 85%
-    
-    if (noiseModeBlend > 0.05f)
-    {
-      // In noise mode: discard input characteristics and synthesize target spectrum
-      for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex)
-      {
-        // Get current input level for this band
-        const float inputDb = currentSpectrumDb[bandIndex];
-        // Get target level (absolute, not centered)
-        const float targetDb = targetSpectrumDb[bandIndex];
-        
-        // Calculate gain needed to transform input to target
-        // Limit extreme gains to prevent overflow (especially with brown noise lows)
-        float gainDb = targetDb - inputDb;
-        gainDb = Clip(gainDb, -30.f, 24.f); // Hard limits: -30dB cut to +24dB boost
-        
-        // Blend between correction and pure noise synthesis
-        const float noiseGain = gainDb * noiseModeBlend;
-        const float correctionGain = smoothedCorrectionDb[bandIndex] * (1.0f - noiseModeBlend);
-        
-        smoothedCorrectionDb[bandIndex] = correctionGain + noiseGain;
-      }
-    }
   }
 
   // Apply presence shelf from Character parameter
@@ -1722,60 +1830,107 @@ void BronzeNoise::ProcessHop(int channelCount)
     }
   }
 
-  // Include makeup gain in visualizer output (global gain applied to all bands)
-  const float makeupGainDb = mAutoMakeupGainDb;
+  for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
+    channelCorrectionDb[channelIndex] = smoothedCorrectionDb;
 
+  const int stereoMode = Clip(GetParam(kBnStereoMode)->Int(), 0, kNumStereoModes - 1);
+  if (stereoMode == kStereoIndependent && activeChannels > 1 && amountDrive > 1.0e-4f)
+  {
+    for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
+    {
+      if (!mChannelHasSpectrum[channelIndex]) continue;
+      float liveMean = 0.f;
+      float averageMean = 0.f;
+      for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex) {
+        liveMean += channelSpectrumDb[channelIndex][bandIndex];
+        averageMean += mChannelAverageSpectrumDb[channelIndex][bandIndex];
+      }
+      liveMean /= static_cast<float>(kNumBands);
+      averageMean /= static_cast<float>(kNumBands);
+
+      std::array<float, kNumBands> channelRaw {};
+      std::array<float, kNumBands> channelSmoothed {};
+      for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex) {
+        const float stableShape = mChannelAverageSpectrumDb[channelIndex][bandIndex] - averageMean;
+        const float liveShape = channelSpectrumDb[channelIndex][bandIndex] - liveMean;
+        const float analysisShape = stableShape + (liveShape - stableShape) * liveSpectrumBlend;
+        const float targetShape = targetSpectrumDb[bandIndex] - targetMeanDb;
+        const float difference = targetShape - analysisShape;
+        channelRaw[bandIndex] = amountDrive * difference *
+          ComputeDifferenceAccent(difference, aggression) *
+          ComputeBandFocus(mBandCentersHz[bandIndex], aggression) * transientCorrectionScale;
+      }
+      SmoothBandCorrections(channelRaw, channelSmoothed, smoothingRadius);
+
+      float correctionMean = 0.f;
+      for (float correction : channelSmoothed) correctionMean += correction;
+      correctionMean /= static_cast<float>(kNumBands);
+      const float meanTrim = Lerp(1.f, 0.45f, aggression);
+      for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex) {
+        float correction = channelSmoothed[bandIndex] - correctionMean * meanTrim;
+        correction = ClampCorrectionDb(mBandCentersHz[bandIndex], correction, aggression);
+        correction += ComputePresenceShelf(mBandCentersHz[bandIndex], character);
+        channelCorrectionDb[channelIndex][bandIndex] = correction;
+      }
+    }
+
+    // The analyzer presents the mean correction of the independently processed
+    // channels, while the actual bin gains remain channel-specific.
+    for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex) {
+      smoothedCorrectionDb[bandIndex] = 0.5f *
+        (channelCorrectionDb[0][bandIndex] + channelCorrectionDb[1][bandIndex]);
+    }
+  }
+
+  // Include makeup gain in visualizer output (global gain applied to all bands)
+  const float makeupGainDb = GetParam(kBnAutoGain)->Bool() ? mAutoMakeupGainDb : 0.f;
+
+  // Normalize analyzer magnitudes to a dBFS-like scale and vertically align the
+  // target shape with the live spectrum so all curves remain comparable.
+  const float analyzerOffsetDb = mAnalyzerMagnitudeOffsetDb;
+  const float displayMeanDb = currentMeanDb + analyzerOffsetDb;
   for (int bandIndex = 0; bandIndex < visBands; ++bandIndex)
   {
-    beforeSpec[bandIndex] = displaySpectrumDb[bandIndex];
+    beforeSpec[bandIndex] = displaySpectrumDb[bandIndex] + analyzerOffsetDb;
     // Output = input + correction + makeup gain (makeup is applied in ProcessBlock)
-    afterSpec[bandIndex] = displaySpectrumDb[bandIndex] + smoothedCorrectionDb[bandIndex] + makeupGainDb;
-    // Reference is the target spectral shape centered around mean
-    referenceSpec[bandIndex] = targetSpectrumDb[bandIndex] - targetMeanDb;
+    afterSpec[bandIndex] = beforeSpec[bandIndex] + smoothedCorrectionDb[bandIndex] + makeupGainDb;
+    referenceSpec[bandIndex] = displayMeanDb + targetSpectrumDb[bandIndex] - targetMeanDb;
     freqSpec[bandIndex] = mBandCentersHz[bandIndex];
   }
 
-  double gainPowerSum = 0.0;
-
-  for (float correctionDb : smoothedCorrectionDb)
-  {
-    const double linearGain = DbToLinear(correctionDb);
-    gainPowerSum += linearGain * linearGain;
+  float gainCompensation[kMaxChannels] = {1.f, 1.f};
+  for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex) {
+    double gainPowerSum = 0.0;
+    for (float correctionDb : channelCorrectionDb[channelIndex]) {
+      const double linearGain = DbToLinear(correctionDb);
+      gainPowerSum += linearGain * linearGain;
+    }
+    const float fullCompensation = static_cast<float>(1.0 /
+      std::sqrt(std::max(1.0, gainPowerSum / static_cast<double>(kNumBands))));
+    gainCompensation[channelIndex] = std::pow(std::max(1.0e-4f, fullCompensation),
+                                              Lerp(0.90f, 0.42f, aggression));
   }
-
-  const float fullGainCompensation = static_cast<float>(1.0 / std::sqrt(std::max(1.0, gainPowerSum / static_cast<double>(kNumBands))));
-  const float gainCompensation = std::pow(std::max(1.0e-4f, fullGainCompensation), Lerp(0.90f, 0.42f, aggression));
 
   for (int binIndex = 0; binIndex <= mFFTSize / 2; ++binIndex)
   {
-    float linearGain = 1.f;
-
-    if (binIndex > 0)
-    {
-      const int lowerBand = Clip(mBinLowerBand[binIndex], 0, kNumBands - 1);
-      const int upperBand = Clip(mBinUpperBand[binIndex], 0, kNumBands - 1);
-      const float blend = mBinBandBlend[binIndex];
-      const float lowerDb = smoothedCorrectionDb[lowerBand];
-      const float upperDb = smoothedCorrectionDb[upperBand];
-      // faust-optimize: Sanitize correction before conversion
-      const float correctionDb = Sanitize(lowerDb + ((upperDb - lowerDb) * blend));
-      linearGain = DbToLinear(correctionDb) * gainCompensation;
-    }
-
     const int fftIndex = mPermutation[binIndex];
 
     for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
     {
+      float linearGain = 1.f;
+      if (binIndex > 0) {
+        const int lowerBand = Clip(mBinLowerBand[binIndex], 0, kNumBands - 1);
+        const int upperBand = Clip(mBinUpperBand[binIndex], 0, kNumBands - 1);
+        const float blend = mBinBandBlend[binIndex];
+        const float lowerDb = channelCorrectionDb[channelIndex][lowerBand];
+        const float upperDb = channelCorrectionDb[channelIndex][upperBand];
+        const float correctionDb = SanitizeCorrection(lowerDb + (upperDb - lowerDb) * blend);
+        linearGain = DbToLinear(correctionDb) * gainCompensation[channelIndex];
+      }
       mFftBuffer[channelIndex][fftIndex].re *= linearGain;
       mFftBuffer[channelIndex][fftIndex].im *= linearGain;
-    }
-
-    if (binIndex > 0 && binIndex < mFFTSize / 2)
-    {
-      const int mirrorIndex = mPermutation[mFFTSize - binIndex];
-
-      for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
-      {
+      if (binIndex > 0 && binIndex < mFFTSize / 2) {
+        const int mirrorIndex = mPermutation[mFFTSize - binIndex];
         mFftBuffer[channelIndex][mirrorIndex].re *= linearGain;
         mFftBuffer[channelIndex][mirrorIndex].im *= linearGain;
       }
@@ -1796,7 +1951,8 @@ void BronzeNoise::ProcessHop(int channelCount)
 
     for (int sampleIndex = 0; sampleIndex < mFFTSize; ++sampleIndex)
     {
-      mOverlapAddBuffer[channelIndex][sampleIndex] += mFftBuffer[channelIndex][sampleIndex].re * mWindow[sampleIndex];
+      mOverlapAddBuffer[channelIndex][sampleIndex] +=
+        mFftBuffer[channelIndex][sampleIndex].re * mWindow[sampleIndex];
     }
 
     for (int sampleIndex = 0; sampleIndex < mHopSize; ++sampleIndex)
@@ -1843,8 +1999,14 @@ void BronzeNoise::ProcessHop(int channelCount)
   if (mVisUpdateCounter >= skipCount) {
     mVisUpdateCounter = 0;
 
-    if (mVisControl)
-      static_cast<SpectrumVisualizerControl*>(mVisControl)->SetData(beforeSpec, afterSpec, referenceSpec, freqSpec, visBands);
+    for (int i = 0; i < visBands; ++i) {
+      mVisBefore[i].store(beforeSpec[i], std::memory_order_relaxed);
+      mVisAfter[i].store(afterSpec[i], std::memory_order_relaxed);
+      mVisReference[i].store(referenceSpec[i], std::memory_order_relaxed);
+      mVisFrequencies[i].store(freqSpec[i], std::memory_order_relaxed);
+    }
+    mVisBandsReady.store(visBands, std::memory_order_release);
+    mVisGeneration.fetch_add(1, std::memory_order_release);
   }
 }
 
@@ -1858,70 +2020,69 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     // No input — zero the outputs so the DAW doesn't see garbage left over from a previous block.
     const int zeroChans = NOutChansConnected();
     for (int ch = 0; ch < zeroChans; ++ch) {
-      if (outputs[ch]) std::memset(outputs[ch], 0, sizeof(double) * nFrames);
+      if (outputs[ch]) std::memset(outputs[ch], 0, sizeof(sample) * static_cast<size_t>(nFrames));
     }
     return;
   }
 
   // CPU-level denormal protection: flush denormals to zero (FTZ) and set denormals are zero (DAZ).
   // SSE intrinsics are x86/x64-only; on arm64 macOS math library handles this at OS level.
-#ifdef __SSE__
-  _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
-  _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+#ifdef BRONZENOISE_HAS_SSE_DENORMALS
+  _mm_setcsr(_mm_getcsr() | 0x8040);
 #endif
-
-  // Release-readiness CPU meter: measure wall time for the whole block and for
-  // any ProcessHop calls inside it. EWMA-smoothed so the on-screen % is stable.
-  const auto blockStart = std::chrono::steady_clock::now();
-  double hopMsSum = 0.0;
 
   const int activeInputChannels = NInChansConnected();
   const int activeOutputChannels = NOutChansConnected();
+  const int outputChannelsToProcess = Clip(activeOutputChannels, 0, kMaxChannels);
   // Hardening: clamp channel count to [1, kMaxChannels] to prevent
   // out-of-range indexing of mHopBuffer[] / mOutputFifo[] / mFftBuffer[] arrays
   // if the host reports a bogus connection count (some buggy drivers do).
-  const int processedChannels = Clip(std::max(activeInputChannels, activeOutputChannels), 1, kMaxChannels);
+  const int processedChannels = Clip(std::max(activeInputChannels, outputChannelsToProcess), 1, kMaxChannels);
 
-  // Track per-block peak for I/O meters. We sample once per block (the last sample's magnitude) � UI polls at OnIdle rate, so any per-block peak is fine. Cheaper than per-sample max.
+  // Track per-block peak for I/O meters.
   float inPeakL = 0.f, inPeakR = 0.f, outPeakL = 0.f, outPeakR = 0.f;
 
-  // One-pole smoothing coefficient for zipper-free parameter automation (~30ms @ 44.1kHz)
-  constexpr float kSmoothCoeff = 0.0007f;
+  // Read parameter targets once per block. This avoids thousands of parameter
+  // object reads and gives the audio thread a coherent target set.
+  const float amountTarget = static_cast<float>(GetParam(kAmount)->Value());
+  const float smoothingTarget = static_cast<float>(GetParam(kSmoothing)->Value());
+  const float qTarget = static_cast<float>(GetParam(kQ)->Value());
+  const float characterTarget = static_cast<float>(GetParam(kCharacter)->Value());
+  const float transientTarget = static_cast<float>(GetParam(kTransient)->Value());
+  const float mixTarget = GetParam(kBypass)->Bool() ? 0.f :
+                          static_cast<float>(GetParam(kBnMix)->Value() * 0.01);
+  const int stereoMode = processedChannels > 1 ?
+    Clip(GetParam(kBnStereoMode)->Int(), 0, kNumStereoModes - 1) : kStereoLinked;
+  const bool autoGainEnabled = GetParam(kBnAutoGain)->Bool();
+  const float smoothCoeff = static_cast<float>(1.0 - std::exp(-1.0 / (0.030 * mSampleRate)));
+  const float mixCoeff = static_cast<float>(1.0 - std::exp(-1.0 / (0.012 * mSampleRate)));
+  const float limiterRelease = static_cast<float>(std::exp(-1.0 / (0.080 * mSampleRate)));
+  const float ceilingLinear = std::pow(10.f, kOutputCeilingDb / 20.f);
 
   for (int sampleIndex = 0; sampleIndex < nFrames; ++sampleIndex)
   {
     // Per-sample parameter smoothing: ramp smoothed values toward targets
-    mSmoothedAmount += (static_cast<float>(GetParam(kAmount)->Value()) - mSmoothedAmount) * kSmoothCoeff;
-    mSmoothedSmoothing += (static_cast<float>(GetParam(kSmoothing)->Value()) - mSmoothedSmoothing) * kSmoothCoeff;
-    mSmoothedQ += (static_cast<float>(GetParam(kQ)->Value()) - mSmoothedQ) * kSmoothCoeff;
-    mSmoothedCharacter += (static_cast<float>(GetParam(kCharacter)->Value()) - mSmoothedCharacter) * kSmoothCoeff;
-    mSmoothedTransient += (static_cast<float>(GetParam(kTransient)->Value()) - mSmoothedTransient) * kSmoothCoeff;
-
-    if (mBypassed)
-    {
-      // Bypass: dry signal pass-through, skip all DSP processing
-      for (int channelIndex = 0; channelIndex < activeOutputChannels; ++channelIndex)
-      {
-        const float inputSample = channelIndex < activeInputChannels ? static_cast<float>(inputs[channelIndex][sampleIndex]) : 0.f;
-        outputs[channelIndex][sampleIndex] = static_cast<double>(inputSample);
-        // Track peaks even in bypass so the user can see signal flow.
-        if (channelIndex == 0) { const float a = std::abs(inputSample); if (a > inPeakL) inPeakL = a; }
-        else if (channelIndex == 1) { const float a = std::abs(inputSample); if (a > inPeakR) inPeakR = a; }
-        const float outA = std::abs(inputSample);
-        if (channelIndex == 0) { if (outA > outPeakL) outPeakL = outA; }
-        else if (channelIndex == 1) { if (outA > outPeakR) outPeakR = outA; }
-      }
-      continue;
-    }
+    mSmoothedAmount += (amountTarget - mSmoothedAmount) * smoothCoeff;
+    mSmoothedSmoothing += (smoothingTarget - mSmoothedSmoothing) * smoothCoeff;
+    mSmoothedQ += (qTarget - mSmoothedQ) * smoothCoeff;
+    mSmoothedCharacter += (characterTarget - mSmoothedCharacter) * smoothCoeff;
+    mSmoothedTransient += (transientTarget - mSmoothedTransient) * smoothCoeff;
+    mCurrentWetMix += (mixTarget - mCurrentWetMix) * mixCoeff;
 
     // Stereo mode handling: transform L/R input into M/S before pushing into hop buffer.
-//   Linked: process L and R independently (current behavior � both channels get matched to target).
-//   Mid: extract M = (L+R)/2, send M to BOTH hop buffers (L/R outputs identical after processing).
-//   Side: extract S = (L-R)/2, send S to BOTH hop buffers.
-//   Independent: link off, but per-channel params already apply per hop � same as Linked.
-    const int stereoMode = GetParam(kBnStereoMode)->Int();
-    float lInput = activeInputChannels >= 1 ? static_cast<float>(inputs[0][sampleIndex]) : 0.f;
-    float rInput = activeInputChannels >= 2 ? static_cast<float>(inputs[1][sampleIndex]) : 0.f;
+//   Linked: derive one correction curve from the averaged stereo spectrum.
+//   Mid/Side: process the selected component and preserve its complement.
+//   Independent: derive and apply a separate curve per channel.
+    const float lInput = activeInputChannels >= 1 && inputs[0] ? static_cast<float>(inputs[0][sampleIndex]) : 0.f;
+    const float rInput = activeInputChannels >= 2 && inputs[1] ? static_cast<float>(inputs[1][sampleIndex]) : 0.f;
+    float delayedDry[2] = {0.f, 0.f};
+    const float dryInput[2] = {lInput, rInput};
+    for (int channelIndex = 0; channelIndex < processedChannels; ++channelIndex) {
+      int& index = mDryDelayIndex[channelIndex];
+      delayedDry[channelIndex] = mDryDelayBuffer[channelIndex][index];
+      mDryDelayBuffer[channelIndex][index] = dryInput[channelIndex];
+      index = (index + 1) % std::max(1, mLatencySamples);
+    }
     float lHop = lInput, rHop = rInput;
     if (stereoMode == kStereoMidOnly) {
       const float m = (lInput + rInput) * 0.5f;
@@ -1940,69 +2101,26 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 
     if (mHopFill >= mHopSize)
     {
-      const auto hopStart = std::chrono::steady_clock::now();
       ProcessHop(processedChannels);
-      const auto hopEnd = std::chrono::steady_clock::now();
-      hopMsSum += std::chrono::duration<double, std::milli>(hopEnd - hopStart).count();
       mHopFill = 0;
     }
 
-    // --- Professional auto makeup gain + true-peak limiting ---
-    // Apply the smoothed RMS-matched makeup gain computed in ProcessHop,
-    // then apply a true-peak brickwall limiter to guarantee no clipping.
+    // Apply the smoothed RMS-matched makeup gain computed in ProcessHop.
     const float makeupLinear = std::pow(10.f, mAutoMakeupGainDb / 20.f);
-    const float truePeakCeilingLinear = std::pow(10.f, kTruePeakCeiling / 20.f); // ~0.9886
 
-    // Process channels: handle M/S inverse by capturing both L and R first, then decoding.
+    // Capture the processed channels first, then reconstruct M/S modes while
+    // preserving the complementary delayed component.
     float lOut = 0.f, rOut = 0.f;
     bool gotL = false, gotR = false;
-    for (int channelIndex = 0; channelIndex < activeOutputChannels; ++channelIndex)
+    for (int channelIndex = 0; channelIndex < outputChannelsToProcess; ++channelIndex)
     {
       float output = PopOutputSample(channelIndex);
-
-      // Apply makeup gain (only if AutoGain is enabled)
-      output *= (GetParam(kBnAutoGain)->Int() != 0) ? makeupLinear : 1.f;
-
-      // True-peak envelope follower: track absolute peak with fast attack, slow release
-      const float absSample = std::abs(output);
-      if (absSample > mTruePeakLevel)
-        mTruePeakLevel = absSample;                             // instant attack
-      else
-        mTruePeakLevel *= 0.9999f;                             // ~4.3 ms release @ 44.1 kHz
-
-      // Compute limiting gain: if peak exceeds ceiling, attenuate proportionally
-      float limiterGain = 1.f;
-      if (mTruePeakLevel > truePeakCeilingLinear)
-        limiterGain = truePeakCeilingLinear / mTruePeakLevel;
-
-      output *= limiterGain;
-
-      // faust-optimize: Final sanitization - prevent any stray NaN/Inf/denorm from reaching output
+      output *= autoGainEnabled ? makeupLinear : 1.f;
       output = SafeValue(output);
       output = FlushDenorm(output);
 
-      // Final safety soft-clip (should never trigger with working limiter)
-      output = SoftClip(output);
-
-      // Final safety clamp
-      output = Clip(output, -1.f, 1.f);
-
-      // Wet/Dry mix: crossfade between dry (input) and processed (output).
-      // 100% wet = full spectral replace, 0% wet = full bypass.
-      const float wetMix = static_cast<float>(GetParam(kBnMix)->Value() / 100.0);
-      if (wetMix < 1.f) {
-        const float drySample = channelIndex < activeInputChannels ? static_cast<float>(inputs[channelIndex][sampleIndex]) : 0.f;
-        output = drySample * (1.f - wetMix) + output * wetMix;
-      }
-
-      // Cache L/R outputs (will be M/S inverse-decoded if stereoMode != Linked)
       if (channelIndex == 0) { lOut = output; gotL = true; }
       else if (channelIndex == 1) { rOut = output; gotR = true; }
-
-      // Track per-channel peak for I/O meters (audio ? UI via atomic).
-      const float outA = std::abs(output);
-      if (channelIndex == 0) { if (outA > outPeakL) outPeakL = outA; }
-      else if (channelIndex == 1) { if (outA > outPeakR) outPeakR = outA; }
     }
 
     // M/S inverse decode: lOut/rOut currently hold the per-channel processed buffer
@@ -2010,39 +2128,61 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     //   Linked/Independent: lOut stays L, rOut stays R.
     //   Mid:  M was sent to both buffers ? L = R = lOut (= rOut).
     //   Side: S was sent to both buffers ? L = +lOut, R = -lOut (preserve polarity).
-    const int outStereoMode = GetParam(kBnStereoMode)->Int();
-    if (gotL && outStereoMode == kStereoMidOnly) { rOut = lOut; }
-    else if (gotL && outStereoMode == kStereoSideOnly) { rOut = -lOut; }
+    const float delayedMid = (delayedDry[0] + delayedDry[1]) * 0.5f;
+    const float delayedSide = (delayedDry[0] - delayedDry[1]) * 0.5f;
+    if (gotL && stereoMode == kStereoMidOnly) {
+      const float processedMid = 0.5f * (lOut + rOut);
+      lOut = processedMid + delayedSide;
+      rOut = processedMid - delayedSide;
+    } else if (gotL && stereoMode == kStereoSideOnly) {
+      const float processedSide = 0.5f * (lOut + rOut);
+      lOut = delayedMid + processedSide;
+      rOut = delayedMid - processedSide;
+    }
 
-    if (gotL) outputs[0][sampleIndex] = static_cast<double>(lOut);
-    if (gotR) outputs[1][sampleIndex] = static_cast<double>(rOut);
+    // Linked, transparent output safety limiter. It is intentionally labelled
+    // sample-peak (not true-peak): no hidden oversampling or false guarantee.
+    const float framePeak = std::max(std::abs(lOut), std::abs(rOut));
+    mLimiterEnvelope = std::max(framePeak, mLimiterEnvelope * limiterRelease);
+    const float limiterGain = mLimiterEnvelope > ceilingLinear ? ceilingLinear / mLimiterEnvelope : 1.f;
+    lOut *= limiterGain;
+    rOut *= limiterGain;
+
+    lOut = delayedDry[0] * (1.f - mCurrentWetMix) + lOut * mCurrentWetMix;
+    rOut = delayedDry[1] * (1.f - mCurrentWetMix) + rOut * mCurrentWetMix;
+    lOut = FlushDenorm(SafeValue(lOut));
+    rOut = FlushDenorm(SafeValue(rOut));
+
+    if (gotL && outputs[0]) outputs[0][sampleIndex] = static_cast<sample>(lOut);
+    if (gotR && outputs[1]) outputs[1][sampleIndex] = static_cast<sample>(rOut);
+    for (int channelIndex = outputChannelsToProcess; channelIndex < activeOutputChannels; ++channelIndex) {
+      if (outputs[channelIndex]) outputs[channelIndex][sampleIndex] = static_cast<sample>(0.0);
+    }
+
+    outPeakL = std::max(outPeakL, std::abs(lOut));
+    outPeakR = std::max(outPeakR, std::abs(rOut));
 
     // Track input peaks after the per-channel loop (input is read once per frame).
     for (int channelIndex = 0; channelIndex < activeInputChannels; ++channelIndex)
     {
+      if (!inputs[channelIndex]) continue;
       const float a = static_cast<float>(std::abs(inputs[channelIndex][sampleIndex]));
       if (channelIndex == 0) { if (a > inPeakL) inPeakL = a; }
       else if (channelIndex == 1) { if (a > inPeakR) inPeakR = a; }
     }
   }
 
-  // Publish per-block peaks to UI thread (relaxed ordering is fine � meters are advisory).
-  mInputPeakL.store(inPeakL, std::memory_order_relaxed);
-  mInputPeakR.store(inPeakR, std::memory_order_relaxed);
-  mOutputPeakL.store(outPeakL, std::memory_order_relaxed);
-  mOutputPeakR.store(outPeakR, std::memory_order_relaxed);
+  // Publish per-block peaks to the UI thread (meters are advisory).
+  auto publishPeak = [](std::atomic<float>& destination, float peak) {
+    float current = destination.load(std::memory_order_relaxed);
+    while (current < peak &&
+           !destination.compare_exchange_weak(current, peak,
+             std::memory_order_relaxed, std::memory_order_relaxed)) {}
+  };
+  publishPeak(mInputPeakL, inPeakL);
+  publishPeak(mInputPeakR, inPeakR);
+  publishPeak(mOutputPeakL, outPeakL);
+  publishPeak(mOutputPeakR, outPeakR);
 
-  // Publish CPU profiling data (release-readiness meter). Atomic read/write only.
-  const auto blockEnd = std::chrono::steady_clock::now();
-  const double blockMs = std::chrono::duration<double, std::milli>(blockEnd - blockStart).count();
-  mBlockCpuMsLast.store(blockMs, std::memory_order_relaxed);
-  // EWMA smoothing (alpha = 0.05 ? ~20-block time constant at typical block sizes).
-  constexpr double kCpuAlpha = 0.05;
-  const double prevAvg = mBlockCpuMsAvg.load(std::memory_order_relaxed);
-  mBlockCpuMsAvg.store(prevAvg + kCpuAlpha * (blockMs - prevAvg), std::memory_order_relaxed);
-  if (hopMsSum > 0.0) {
-    const double prevHop = mHopCpuMsAvg.load(std::memory_order_relaxed);
-    mHopCpuMsAvg.store(prevHop + kCpuAlpha * (hopMsSum - prevHop), std::memory_order_relaxed);
-  }
 }
 #endif

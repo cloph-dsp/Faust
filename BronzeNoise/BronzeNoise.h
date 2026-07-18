@@ -5,6 +5,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <vector>
 
 static constexpr int kNumPresets = 8;
@@ -95,6 +96,7 @@ public:
 
 #if IPLUG_EDITOR
   void LayoutUI(IGraphics* pGraphics);
+  bool ConstrainEditorResize(int& width, int& height) const override;
   void OnParentWindowResize(int width, int height) override;
   void OnActivate(bool active) override;
   void OnIdle() override;
@@ -112,6 +114,8 @@ public:
   // Spectrum visualizer (cached pointer so the audio->UI publish path skips the
   // dynamic_cast scan). Nulled in OnParentWindowResize before RemoveAllControls().
   IControl* mVisControl = nullptr;
+  int mLastLatencySamplesUI = -1;
+  double mLastLatencySampleRateUI = 0.0;
 #endif
 
 private:
@@ -126,6 +130,7 @@ private:
   // Current runtime FFT size - 4096 for better HF resolution (~10.8 Hz/bin vs ~21.5 Hz/bin at 2048)
   int mFFTSize = 4096;
   int mHopSize = 2048;
+  int mLatencySamples = 4095;
 
   void ResetDspState();
   void UpdateBandLayout(double sampleRate);
@@ -140,7 +145,6 @@ private:
   void SmoothBandCorrections(const std::array<float, kNumBands>& input,
                              std::array<float, kNumBands>& output,
                              int radius) const;
-  float ComputeHopRms(int channelIndex, const float* buffer, int length) const;
   void UpdateMakeupGain(float inputRms, float outputRms);
 
   // Use vectors for runtime-sized buffers
@@ -163,6 +167,7 @@ private:
   std::array<std::vector<float>, kMaxChannels> mDryDelayBuffer;
   std::array<int, kMaxChannels> mDryDelayIndex {};
   std::array<float, kNumBands> mAverageSpectrumDb {};
+  std::array<std::array<float, kNumBands>, kMaxChannels> mChannelAverageSpectrumDb {};
 
   std::array<int, kMaxChannels> mOutputReadIndex {};
   std::array<int, kMaxChannels> mOutputWriteIndex {};
@@ -172,32 +177,26 @@ private:
   int mVisUpdateCounter = 0;
   double mSampleRate = 44100.0;
   bool mHasSpectrum = false;
+  std::array<bool, kMaxChannels> mChannelHasSpectrum {};
+  float mPreviousHopInputDb = -120.f;
+  float mAnalyzerMagnitudeOffsetDb = 0.f;
 
   // Auto makeup gain state - professional RMS-based gain compensation
   float mAutoMakeupGainDb = 0.f;          // Current smoothed makeup gain in dB
-  float mInputRmsDb = -60.f;             // Measured input RMS per hop (dB)
-  float mOutputRmsDb = -60.f;            // Measured output RMS per hop (dB)
-  float mTruePeakLevel = 0.f;            // Running true peak for limiter
-  static constexpr float kMakeupGainSmoothAlpha = 0.15f;  // Time constant for gain smoothing
-  static constexpr float kTruePeakCeiling = -0.1f;        // True peak ceiling in dBFS
+  float mLimiterEnvelope = 0.f;          // Linked output safety-limiter envelope
+  static constexpr float kOutputCeilingDb = -0.3f;        // Sample-peak safety ceiling in dBFS
   static constexpr float kMaxMakeupGainDb = 24.f;         // Maximum makeup gain
-  static constexpr float kMakeupGainToleranceDb = 0.1f;   // Target accuracy tolerance
 
   // Wet/dry mix state for smooth transitions
-  float mCurrentWetMix = 1.f;            // Current wet/dry blend (smoothed)
-  float mPreviousWetMix = 1.f;           // Previous frame's wet mix for interpolation
-  static constexpr float kWetMixSmoothing = 0.05f; // Smooth wet/dry transitions
-
-  // Dither state per channel - ensures bit-accurate output
-  float mDitherState[kMaxChannels] = {};         // Last quantization error for noise shaping
-
-  // Bypass state
-  bool mBypassed = false;
-  int mPrevFFTSize = 4096;                       // Track FFT size across state loads
+  float mCurrentWetMix = 1.f;            // Current latency-aligned wet/dry blend
 
   // A/B compare snapshot (capture button → toggle)
-  double mABSnapshotA[7] = {};                   // Stores Amount,Target,Smoothing,Q,FFTSize,Character,Transient
-  bool mABHasSnapshot = false;
+  static constexpr int kNumABParams = kBnAutoGain + 1;
+  std::array<double, kNumABParams> mABSnapshotA {};
+  std::array<double, kNumABParams> mABSnapshotB {};
+  bool mABHasSnapshotA = false;
+  bool mABHasSnapshotB = false;
+  int mABPreviousState = 0;
 
   // VST3 GUI parameter sync (Freeze95 pattern: setComponentState is a no-op in non-distributed VST3)
   bool mSendUpdate = false;
@@ -215,11 +214,15 @@ private:
   std::atomic<float> mOutputPeakL {0.f};
   std::atomic<float> mOutputPeakR {0.f};
 
-  // CPU profiling (release-readiness): audio thread writes per-block wall time
-  // in ms; UI thread polls at OnIdle and renders a "% CPU" overlay. Real-time
-  // safe — atomics only, no allocations.
-  std::atomic<double> mBlockCpuMsLast {0.0};   // wall time of last ProcessBlock
-  std::atomic<double> mBlockCpuMsAvg {0.0};    // EWMA (alpha=0.05) for stable read
-  std::atomic<double> mHopCpuMsAvg {0.0};      // EWMA of per-hop FFT/DSP time
+  // Audio -> UI spectrum publication. Atomics keep the audio thread completely
+  // detached from IControl/IGraphics lifetimes.
+  std::array<std::atomic<float>, kNumBands> mVisBefore {};
+  std::array<std::atomic<float>, kNumBands> mVisAfter {};
+  std::array<std::atomic<float>, kNumBands> mVisReference {};
+  std::array<std::atomic<float>, kNumBands> mVisFrequencies {};
+  std::atomic<int> mVisBandsReady {0};
+  std::atomic<uint32_t> mVisGeneration {0};
+  uint32_t mLastVisGeneration = 0;
+  std::atomic<int> mLatencySamplesForUI {PLUG_LATENCY};
 #endif
 };

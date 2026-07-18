@@ -26,11 +26,6 @@
       <stop offset="0%" stop-color="#EFEAE2" stop-opacity="0.06"/>
       <stop offset="100%" stop-color="#EFEAE2" stop-opacity="0"/>
     </linearGradient>
-    <!-- Paint fill for engraved notch -->
-    <linearGradient id="notchFill" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#EFEAE2"/>
-      <stop offset="100%" stop-color="#D4CFC5"/>
-    </linearGradient>
   </defs>
 
   <!-- Drop shadow -->
@@ -67,12 +62,4 @@
   <!-- Center point -->
   <circle cx="50" cy="50" r="2" fill="#6B4F35" opacity="0.5"/>
 
-  <!-- Engraved notch indicator: painted groove in the metal -->
-  <!-- Shadow groove (the cut itself) -->
-  <polygon points="49,12 51,12 51.8,33 48.2,33" fill="#000" opacity="0.35"/>
-  <!-- Paint fill (cream/off-white, like real engraved hardware indicators) -->
-  <polygon points="49.3,13 50.7,13 51.4,32.5 48.6,32.5" fill="url(#notchFill)"/>
-
-  <!-- Surface highlight on the edge where the notch meets the outer ring -->
-  <line x1="49" y1="13" x2="51" y2="13" stroke="#EFEAE2" stroke-width="0.5" opacity="0.4"/>
 </svg>

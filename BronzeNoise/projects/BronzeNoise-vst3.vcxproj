@@ -76,6 +76,7 @@
       <AdditionalIncludeDirectories>$(VST3_INC_PATHS);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DebugInformationFormat>None</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -90,6 +91,10 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\resources\main.rc" />
+    <EmbeddedResource Include="..\resources\IronSans.ttf" />
+    <EmbeddedResource Include="..\resources\KenyanCoffeeRg.ttf" />
+    <EmbeddedResource Include="..\resources\knob.svg" />
+    <EmbeddedResource Include="..\resources\cloph_logo.svg" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\BronzeNoise.cpp" />

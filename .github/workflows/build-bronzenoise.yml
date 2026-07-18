@@ -79,6 +79,11 @@ jobs:
           path: BronzeNoise/build-win/BronzeNoise.vst3
           if-no-files-found: warn
 
+      - name: VST3 DSP smoke and latency suite
+        working-directory: BronzeNoise
+        shell: pwsh
+        run: ./tests/build_smoke.ps1
+
       - name: Windows PE binary-string hygiene check
         if: always()
         working-directory: BronzeNoise
