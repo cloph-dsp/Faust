@@ -1,7 +1,7 @@
 #define PLUG_NAME "Bronze Noise"
 #define PLUG_MFR "CLOPH"
-#define PLUG_VERSION_HEX 0x00010000
-#define PLUG_VERSION_STR "1.0.0"
+#define PLUG_VERSION_HEX 0x00010100
+#define PLUG_VERSION_STR "1.1.0"
 #define PLUG_UNIQUE_ID 'BrNz'
 #define PLUG_MFR_ID 'Clph'
 #define PLUG_URL_STR "https://cloph.audio"
@@ -60,7 +60,12 @@
 
 // Embedded Kenyan Coffee Rg font resource for consistent cross-platform rendering
 // TTF (not OTF) — GDI on Windows rejects CFF-based OTF files via AddFontMemResourceEx
-#define ROBOTO_FN "KenyanCoffeeRg.ttf"
+#define BODY_FONT_FN "KenyanCoffeeRg.ttf"
+
+// Roboto-Regular is iPlug2's DEFAULT_FONT: any control that draws text without
+// an explicit font ID resolves to it in NanoVG. Embed + register it first so
+// a missing-font handle can never crash the first draw (Grungr/Freeze95 pattern).
+#define ROBOTO_FN "Roboto-Regular.ttf"
 
 // Embedded knob SVG (Freeze95 pattern: macro name == resource name == filename so iPlug2 can locate via kWinBinary)
 #define KNOB_SVG_FN "knob.svg"

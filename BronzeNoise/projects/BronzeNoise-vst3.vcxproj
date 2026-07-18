@@ -93,6 +93,7 @@
     <ResourceCompile Include="..\resources\main.rc" />
     <EmbeddedResource Include="..\resources\IronSans.ttf" />
     <EmbeddedResource Include="..\resources\KenyanCoffeeRg.ttf" />
+    <EmbeddedResource Include="..\resources\Roboto-Regular.ttf" />
     <EmbeddedResource Include="..\resources\knob.svg" />
     <EmbeddedResource Include="..\resources\cloph_logo.svg" />
   </ItemGroup>

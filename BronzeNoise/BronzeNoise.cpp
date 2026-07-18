@@ -376,10 +376,10 @@ public:
     const IColor text(255, 239, 234, 226);
     const IColor textDim(255, 130, 135, 142);
     // Reserve a small label strip at the top
-    const float labelH = 14.f;
+    const float labelH = kLabelStripH;
     const IRECT labelRect = mRECT.GetFromTop(labelH);
     DrawBackground(graphics, mRECT);
-    graphics.DrawText(IText(13.f, textDim, mStyle.valueText.mFont, EAlign::Center, EVAlign::Middle),
+    graphics.DrawText(IText(14.f, textDim, mStyle.valueText.mFont, EAlign::Center, EVAlign::Middle),
                       mLabelStr.Get(), labelRect, &mBlend);
     const IRECT cellsRect = mRECT.GetReducedFromTop(labelH).GetPadded(-2.f);
     const float rows = 1.f;
@@ -424,7 +424,7 @@ public:
     IParam* parameter = const_cast<IParam*>(GetParam());
     if (!parameter) return;
     const int n = static_cast<int>(parameter->GetRange()) + 1;
-    const float labelH = 14.f;
+    const float labelH = kLabelStripH;
     const IRECT cellsRect = mRECT.GetReducedFromTop(labelH).GetPadded(-2.f);
     const float cellW = cellsRect.W() / static_cast<float>(n);
     if (cellW <= 0.f) return;
@@ -439,7 +439,7 @@ public:
     IParam* parameter = const_cast<IParam*>(GetParam());
     if (parameter) {
       const int n = static_cast<int>(parameter->GetRange()) + 1;
-      const float labelH = 14.f;
+      const float labelH = kLabelStripH;
       const IRECT cellsRect = mRECT.GetReducedFromTop(labelH).GetPadded(-2.f);
       const float cellW = cellsRect.W() / static_cast<float>(n > 0 ? n : 1);
       if (cellW > 0.f) {
@@ -465,6 +465,7 @@ public:
     if (const IParam* parameter = GetParam()) parameter->GetDisplay(mValueStr);
   }
 private:
+  static constexpr float kLabelStripH = 16.f;
   float mLastMouseX = -1.f;
   float mLastMouseY = -1.f;
   std::function<void(int)> mOnSelect;
@@ -538,6 +539,23 @@ public:
   }
   void OnMouseUp(float x, float y, const IMouseMod& mod) override {
     mDragging = false;
+  }
+  void OnMouseDblClick(float x, float y, const IMouseMod& mod) override {
+    // Reset zoom/pan to the default view.
+    mMinDb = -84.f;
+    mMaxDb = 12.f;
+    SetDirty(false);
+  }
+  void OnMouseOver(float x, float y, const IMouseMod& mod) override {
+    mHoverX = x;
+    mHoverY = y;
+    SetDirty(false);
+  }
+  void OnMouseOut() override {
+    mHoverX = -1.f;
+    mHoverY = -1.f;
+    mDragging = false;
+    SetDirty(false);
   }
   void Draw(IGraphics& g) override {
     const IRECT r = mRECT.GetPadded(-6.f);
@@ -635,14 +653,78 @@ public:
       g.DrawLine(mAfterCol, x0, y0, x1, y1, &mBlend, 2.2f);
     }
 
-    // Legend (small caps, top-left)
-    const float legendY = r.T + 4.f;
-    IText legendTxt(10.f, mAxisLabel, mFontID, EAlign::Near, EVAlign::Middle);
-    const char* legend = visualMode == kVisualAfterOnly ? "OUTPUT" :
-                         visualMode == kVisualDeltaFill ? "CORRECTION DELTA" :
-                         visualMode == kVisualBeforeTarget ? "INPUT / TARGET" :
-                         "INPUT / TARGET / OUTPUT";
-    g.DrawText(legendTxt, legend, IRECT(r.L + 6.f, legendY, r.L + 180.f, legendY + 12.f), &mBlend);
+    // Legend (top-left): one color swatch + label per visible curve, so the
+    // trace colors are self-documenting instead of a single grey string.
+    {
+      struct LegendEntry { bool visible; IColor col; const char* label; };
+      const LegendEntry entries[] = {
+        { drawBefore, mBeforeCol, "IN" },
+        { drawTarget, mTargetCol, "TARGET" },
+        { drawAfter,  mAfterCol,  visualMode == kVisualDeltaFill ? "OUT (DELTA)" : "OUT" },
+      };
+      float legendX = r.L + 8.f;
+      const float legendY = r.T + 10.f;
+      IText legendTxt(11.f, mAxisLabel, mFontID, EAlign::Near, EVAlign::Middle);
+      for (const auto& e : entries) {
+        if (!e.visible) continue;
+        g.DrawLine(e.col, legendX, legendY, legendX + 14.f, legendY, &mBlend, 2.5f);
+        IRECT textRect(legendX + 18.f, legendY - 7.f, legendX + 110.f, legendY + 7.f);
+        g.DrawText(legendTxt, e.label, textRect, &mBlend);
+        IRECT measured = textRect;
+        g.MeasureText(legendTxt, e.label, measured);
+        legendX += 18.f + measured.W() + 14.f;
+      }
+    }
+
+    // Hover inspector: crosshair + frequency/level readout, with the OUT curve
+    // sampled at the cursor frequency (log-interpolated between band centers).
+    if (!mDragging && mHoverX >= r.L && mHoverX <= r.R && mHoverY >= r.T && mHoverY <= r.B) {
+      const IColor crosshair = mTick.WithOpacity(0.35f);
+      g.DrawLine(crosshair, mHoverX, r.T, mHoverX, r.B, &mBlend, 1.f);
+      g.DrawLine(crosshair, r.L, mHoverY, r.R, mHoverY, &mBlend, 1.f);
+
+      const float freq = 20.f * std::pow(10.f, ((mHoverX - r.L) / w) * std::log10(20000.f / 20.f));
+      const float cursorDb = maxDb - ((mHoverY - r.T) / h) * (maxDb - minDb);
+
+      // Log-interpolate the OUT curve at the cursor frequency.
+      float outDb = 0.f;
+      bool haveOut = false;
+      if (mBands >= 2 && drawAfter) {
+        if (freq <= mFreqs[0]) { outDb = mAfter[0]; haveOut = true; }
+        else if (freq >= mFreqs[mBands - 1]) { outDb = mAfter[mBands - 1]; haveOut = true; }
+        else for (int i = 1; i < mBands; ++i) {
+          if (freq <= mFreqs[i]) {
+            const float lowLog = std::log(std::max(1.f, mFreqs[i - 1]));
+            const float highLog = std::log(std::max(1.f, mFreqs[i]));
+            const float blend = (std::log(freq) - lowLog) / std::max(1.0e-6f, highLog - lowLog);
+            outDb = mAfter[i - 1] + (mAfter[i] - mAfter[i - 1]) * blend;
+            haveOut = true;
+            break;
+          }
+        }
+      }
+
+      char readout[96];
+      if (freq >= 1000.f) {
+        if (haveOut) std::snprintf(readout, sizeof(readout), "%.2f kHz   %.1f dB   OUT %.1f dB", freq / 1000.f, cursorDb, outDb);
+        else         std::snprintf(readout, sizeof(readout), "%.2f kHz   %.1f dB", freq / 1000.f, cursorDb);
+      } else {
+        if (haveOut) std::snprintf(readout, sizeof(readout), "%.0f Hz   %.1f dB   OUT %.1f dB", freq, cursorDb, outDb);
+        else         std::snprintf(readout, sizeof(readout), "%.0f Hz   %.1f dB", freq, cursorDb);
+      }
+
+      // Bubble near the cursor, flipped to stay inside the plot.
+      IText bubbleTxt(12.f, mTick, mFontID, EAlign::Near, EVAlign::Middle);
+      IRECT bubble(mHoverX + 12.f, mHoverY - 24.f, mHoverX + 232.f, mHoverY - 4.f);
+      IRECT measured = bubble;
+      g.MeasureText(bubbleTxt, readout, measured);
+      bubble.R = bubble.L + measured.W() + 12.f;
+      if (bubble.R > r.R - 4.f) bubble.Translate(-(bubble.W() + 24.f), 0.f);
+      if (bubble.T < r.T + 4.f) bubble.Translate(0.f, 28.f);
+      g.FillRoundRect(mBg.WithOpacity(0.92f), bubble, 3.f, &mBlend);
+      g.DrawRoundRect(mBorder, bubble, 3.f, &mBlend, 1.f);
+      g.DrawText(bubbleTxt, readout, bubble.GetPadded(-6.f, 0.f, 0.f, 0.f), &mBlend);
+    }
   }
 private:
   std::array<float, 64> mBefore;
@@ -656,6 +738,8 @@ private:
   float mDragStartY = 0.f;
   float mDragStartMinDb = 0.f;
   float mDragStartMaxDb = 0.f;
+  float mHoverX = -1.f;
+  float mHoverY = -1.f;
   const char* mFontID = nullptr;
   // Modern palette — overridable via SetPalette() from outside
   IColor mBg, mBorder, mGrid, mTick, mBeforeCol, mTargetCol, mAfterCol, mAxisLabel, mNoSignalCol;
@@ -665,22 +749,26 @@ private:
 class BypassOverlayControl : public IControl
 {
 public:
-  BypassOverlayControl(const IRECT& bounds) : IControl(bounds, kBypass) { SetIgnoreMouse(true); }
-  
+  BypassOverlayControl(const IRECT& bounds, const char* fontID)
+    : IControl(bounds, kBypass), mFontID(fontID) { SetIgnoreMouse(true); }
+
   void Draw(IGraphics& g) override
   {
     if (!GetParam() || !GetParam()->Bool())
       return;
-    
+
     // Semi-transparent dark overlay
     g.FillRect(IColor(160, 0, 0, 0), mRECT, &mBlend);
-    
+
     // "BYPASSED" badge
     const IRECT badge = mRECT.GetCentredInside(200.f, 40.f);
     g.FillRoundRect(IColor(200, 205, 127, 50), badge, 6.f, &mBlend);
-    g.DrawText(IText(18.f, IColor(255, 255, 255, 255), nullptr, EAlign::Center, EVAlign::Middle),
+    g.DrawText(IText(18.f, IColor(255, 255, 255, 255), mFontID, EAlign::Center, EVAlign::Middle),
                "BYPASSED", badge, &mBlend);
   }
+
+private:
+  const char* mFontID;
 };
 
 float InterpolateLogTable(float frequencyHz,
@@ -835,6 +923,39 @@ private:
   const char* mFontID;
 };
 
+// BreathingLedControl — small bronze LED beside the title that "breathes"
+// with a slow sinusoidal glow. Subtle idle animation per the CLOPH
+// finished-tool bar; purely decorative, ignores the mouse.
+class BreathingLedControl final : public IControl
+{
+public:
+  BreathingLedControl(const IRECT& bounds, IColor accent)
+    : IControl(bounds, -1), mAccent(accent) { SetIgnoreMouse(true); }
+
+  void OnInit() override { StartBreath(); }
+  void OnEndAnimation() override { StartBreath(); }  // loop forever
+
+  void Draw(IGraphics& g) override
+  {
+    const float t = static_cast<float>(GetAnimationProgress());
+    const float breath = 0.5f - 0.5f * std::cos(t * 6.2831853f);  // 0..1..0
+    const float cx = mRECT.MW();
+    const float cy = mRECT.MH();
+    const float radius = std::min(mRECT.W(), mRECT.H()) * 0.22f;
+    // Outer glow scales with breath; core stays lit so it reads as powered.
+    g.FillCircle(mAccent.WithOpacity(0.10f + 0.16f * breath), cx, cy, radius * 2.2f, &mBlend);
+    g.FillCircle(mAccent.WithOpacity(0.55f + 0.40f * breath), cx, cy, radius, &mBlend);
+  }
+
+private:
+  void StartBreath()
+  {
+    SetAnimation([](IControl* c) { c->SetDirty(false); }, 3200);
+  }
+
+  IColor mAccent;
+};
+
 class MomentaryActionControl final : public IControl
 {
 public:
@@ -913,6 +1034,12 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
   // Backward-compat aliases for downstream code (avoid touching the rest of LayoutUI in this pass).
   const IColor backgroundColor = voidColor;
 
+  // Crash guard (Grungr/Freeze95 pattern): "Roboto-Regular" is iPlug2's
+  // DEFAULT_FONT — every IText that doesn't name a font resolves to it. If the
+  // handle is missing in NanoVG, the first such draw is undefined behaviour.
+  // Register it before anything else can draw.
+  pGraphics->LoadFont("Roboto-Regular", ROBOTO_FN);
+
   // Two fonts: titleFont (IronSans) for plugin title, uiFont (Kenyan Coffee) for everything else.
   // 2-arg LoadFont looks up the TTF as a Windows resource by name (matches main.rc macro).
   // The 3-arg overload takes a system font face name, not a resource ID.
@@ -924,7 +1051,7 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
     titleFont = kTitleFontID;
   }
   const char* uiFont = nullptr;
-  if (pGraphics->LoadFont(kUIFontID, ROBOTO_FN)
+  if (pGraphics->LoadFont(kUIFontID, BODY_FONT_FN)
       || pGraphics->LoadFont(kUIFontID, "Segoe UI", ETextStyle::Normal)
       || pGraphics->LoadFont(kUIFontID, "Arial", ETextStyle::Normal)
       || pGraphics->LoadFont(kUIFontID, "Verdana", ETextStyle::Normal))
@@ -987,13 +1114,17 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
   bypassControl->SetTooltip("Latency-compensated effect bypass");
   pGraphics->AttachControl(bypassControl);
 
-  // Latency readout — initially empty; updated in OnReset when block size / sample rate change.
-  const IRECT latencyRect(bounds.L + 344.f, bounds.T + 8.f, bounds.L + 590.f, bounds.T + 28.f);
+  // Breathing LED between title and status line: subtle "powered" idle glow.
+  const IRECT ledRect(bounds.L + 342.f, bounds.T + 6.f, bounds.L + 362.f, bounds.T + 30.f);
+  pGraphics->AttachControl(new BreathingLedControl(ledRect, accentColor));
+
+  // Status line — PDC latency, auto-makeup gain and safety-limiter telemetry.
+  // Updated from OnIdle when any displayed value changes.
+  const IRECT latencyRect(bounds.L + 368.f, bounds.T + 8.f, bounds.L + 724.f, bounds.T + 28.f);
   mLatencyLabel = new ITextControl(latencyRect, "",
     IText(12.f, secondaryTextColor, uiFont, EAlign::Near, EVAlign::Middle));
-  mLatencyLabel->SetTooltip("Current processing latency (varies with FFT size)");
+  mLatencyLabel->SetTooltip("Processing latency (FFT-size dependent), auto-makeup gain, and safety-limiter activity");
   pGraphics->AttachControl(mLatencyLabel);
-  // TitleBarLEDPulseControl removed — was a low-value distraction.
 
   // Production layout: one hero analyzer plus a deliberate 3-tier control deck.
   // The analyzer stays large, while every audible/operational parameter remains
@@ -1027,16 +1158,17 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
   const IRECT visRect(bounds.L + meterW + meterGap, bounds.T + titleH + 8.f,
                       bounds.R - meterW - meterGap, knobY - 10.f);
   mVisControl = new SpectrumVisualizerControl(visRect, uiFont);
-  mVisControl->SetTooltip("Spectrum view: mouse wheel zooms, vertical drag pans");
+  mVisControl->SetTooltip("Spectrum view: hover inspects, mouse wheel zooms, vertical drag pans, double-click resets");
   pGraphics->AttachControl(mVisControl);
 
   auto attachKnob = [&](const IRECT& r, int paramIdx, const char* label, const char* tip) {
     IControl* knob = nullptr;
     if (knobSVGOk) {
       // ponytail: KnobWithTextControl wraps ISVGKnobControl and overlays label/value text since ISVGKnobControl doesn't inherit IVectorBase.
+      // CLOPH typography bar: control labels >= 16, value text >= 18.
       knob = new KnobWithTextControl(r, knobSVG, paramIdx, label,
-        IText(15.f, secondaryTextColor, uiFont, EAlign::Center, EVAlign::Middle),
-        IText(17.f, accentColor, uiFont, EAlign::Center, EVAlign::Middle));
+        IText(16.f, secondaryTextColor, uiFont, EAlign::Center, EVAlign::Middle),
+        IText(18.f, accentColor, uiFont, EAlign::Center, EVAlign::Middle));
     } else {
       knob = new IVKnobControl(r, paramIdx, label, controlStyle);
     }
@@ -1157,7 +1289,7 @@ void BronzeNoise::LayoutUI(IGraphics* pGraphics)
   pGraphics->AttachControl(resetControl);
 
   // Bypass overlay (full bounds, drawn on top only when bypass is engaged)
-  auto* bypassOverlay = new BypassOverlayControl(bounds);
+  auto* bypassOverlay = new BypassOverlayControl(bounds, uiFont);
   bypassOverlay->SetIgnoreMouse(true);
   pGraphics->AttachControl(bypassOverlay);
 
@@ -1259,13 +1391,26 @@ void BronzeNoise::OnIdle()
   if (ui && ui->NControls() > 0 && mLatencyLabel) {
     const int latencySamples = mLatencySamplesForUI.load(std::memory_order_relaxed);
     const double sampleRate = GetSampleRate() > 0.0 ? GetSampleRate() : 48000.0;
-    if (latencySamples != mLastLatencySamplesUI || sampleRate != mLastLatencySampleRateUI) {
+    // Telemetry, quantized to 0.1 dB so the label only redraws on visible change.
+    const float makeupDb = mMakeupGainDbForUI.load(std::memory_order_relaxed);
+    const float limiterGrDb = mLimiterGrDbForUI.exchange(0.f, std::memory_order_relaxed);
+    const int makeupTenths = static_cast<int>(std::lround(makeupDb * 10.f));
+    const int limiterTenths = static_cast<int>(std::lround(limiterGrDb * 10.f));
+    if (latencySamples != mLastLatencySamplesUI || sampleRate != mLastLatencySampleRateUI ||
+        makeupTenths != mLastMakeupTenthsUI || limiterTenths != mLastLimiterTenthsUI) {
       const double latencyMs = static_cast<double>(latencySamples) / sampleRate * 1000.0;
-      char text[64];
-      std::snprintf(text, sizeof(text), "%d samples  /  %.1f ms", latencySamples, latencyMs);
+      char text[128];
+      if (limiterTenths > 0)
+        std::snprintf(text, sizeof(text), "PDC %d smp / %.1f ms    MAKEUP %+.1f dB    LIM -%.1f dB",
+                      latencySamples, latencyMs, makeupDb, limiterGrDb);
+      else
+        std::snprintf(text, sizeof(text), "PDC %d smp / %.1f ms    MAKEUP %+.1f dB",
+                      latencySamples, latencyMs, makeupDb);
       static_cast<ITextControl*>(mLatencyLabel)->SetStr(text);
       mLastLatencySamplesUI = latencySamples;
       mLastLatencySampleRateUI = sampleRate;
+      mLastMakeupTenthsUI = makeupTenths;
+      mLastLimiterTenthsUI = limiterTenths;
     }
   }
 
@@ -1290,26 +1435,27 @@ void BronzeNoise::OnIdle()
 #endif // IPLUG_EDITOR
 
 #if IPLUG_DSP
-void BronzeNoise::OnReset()
+namespace
 {
-  mSampleRate = GetSampleRate();
+constexpr int kFFTSizes[kNumFFTSizes] = {256, 512, 1024, 2048, 4096, 8192, 16384};
+}
 
-  // Hardening: a misbehaving host (or a freshly constructed plugin before
-  // OnParamChange has fired) may hand us SR == 0 or FFT selector out of range.
-  // Fall back to sane defaults instead of allocating zero-size buffers.
-  if (mSampleRate <= 0.f) mSampleRate = 48000.f;
-
-  // Get FFT size from parameter
-  const int fftSizeSelector = Clip(static_cast<int>(GetParam(kFFTSize)->Value()), 0, kNumFFTSizes - 1);
-  static constexpr int kFFTSizes[kNumFFTSizes] = {256, 512, 1024, 2048, 4096, 8192, 16384};
+// Rebuilds every FFT-size-dependent table (window, bit-reversal permutation,
+// band layout) and clears the streaming state. Called from OnReset (host
+// guarantees processing is suspended) and from ProcessBlock when the audio
+// thread consumes a pending UI-initiated FFT-size change — in both cases the
+// caller's thread owns the DSP state, so no locking is required.
+void BronzeNoise::ApplyFFTSizeSelector(int selector)
+{
+  const int fftSizeSelector = Clip(selector, 0, kNumFFTSizes - 1);
   mFFTSize = kFFTSizes[fftSizeSelector];
   mHopSize = mFFTSize / 2;
 
   // A frame becomes processable after two 50%-overlap hops; the first input
-  // sample therefore emerges at FFTSize-1. Report that exact delay so host PDC
-  // and the internal dry path remain sample aligned.
+  // sample therefore emerges at FFTSize-1. The host is informed via
+  // SetLatency by OnReset / OnParamChange (main thread); this value keeps the
+  // internal dry path sample aligned with the wet path.
   mLatencySamples = mFFTSize - 1;
-  SetLatency(mLatencySamples);
   mLatencySamplesForUI.store(mLatencySamples, std::memory_order_relaxed);
 
   for (int index = 0; index < mFFTSize; ++index)
@@ -1319,22 +1465,86 @@ void BronzeNoise::OnReset()
   ResetDspState();
 }
 
+void BronzeNoise::OnReset()
+{
+  mSampleRate = GetSampleRate();
+
+  // Hardening: a misbehaving host (or a freshly constructed plugin before
+  // OnParamChange has fired) may hand us SR == 0 or FFT selector out of range.
+  // Fall back to sane defaults instead of allocating zero-size buffers.
+  if (mSampleRate <= 0.f) mSampleRate = 48000.f;
+
+  // Host-driven reset: processing is suspended, so applying the full FFT
+  // config here is safe. Any pending UI-side change is superseded.
+  mPendingFFTSelector.store(-1, std::memory_order_relaxed);
+  ApplyFFTSizeSelector(static_cast<int>(GetParam(kFFTSize)->Value()));
+  SetLatency(mLatencySamples);
+}
+
 void BronzeNoise::OnParamChange(int paramIdx)
 {
   if (paramIdx == kFFTSize)
   {
-    OnReset();
+    // Runs on the UI/main thread while the audio thread may be inside
+    // ProcessHop. Never mutate DSP tables here: report the new latency to the
+    // host (restartComponent must come from the main thread) and hand the
+    // selector to the audio thread, which rebuilds its own state at the next
+    // block boundary.
+    const int selector = Clip(GetParam(kFFTSize)->Int(), 0, kNumFFTSizes - 1);
+    const int newSize = kFFTSizes[selector];
+    if (newSize != mFFTSize)
+    {
+      SetLatency(newSize - 1);
+      mLatencySamplesForUI.store(newSize - 1, std::memory_order_relaxed);
+      mPendingFFTSelector.store(selector, std::memory_order_release);
+    }
   }
 }
 
+// State chunk layout (v2+): [int32 magic 'BNZ2'][int32 version][params...]
+// v1.0.0 shipped raw SerializeParams with no header; UnserializeState detects
+// that legacy layout by the missing magic and parses it in place, so old
+// sessions keep loading. The version field is the migration branch point for
+// any future parameter-layout change (Tuner pattern).
 bool BronzeNoise::SerializeState(IByteChunk& chunk) const
 {
+  int magic = kStateMagic;
+  int version = kStateVersion;
+  chunk.Put(&magic);
+  chunk.Put(&version);
   return SerializeParams(chunk);
 }
 
 int BronzeNoise::UnserializeState(const IByteChunk& chunk, int startPos)
 {
-  const int result = UnserializeParams(chunk, startPos);
+  int magic = 0;
+  int result = startPos;
+  const int magicPos = chunk.Get(&magic, startPos);
+
+  if (magicPos > startPos && magic == kStateMagic)
+  {
+    int version = 0;
+    const int versionPos = chunk.Get(&version, magicPos);
+    if (versionPos > magicPos && version >= 1 && version <= kStateVersion)
+    {
+      // Known versioned chunk. All versions so far share the same parameter
+      // layout; add per-version migration here when the layout changes.
+      result = UnserializeParams(chunk, versionPos);
+    }
+    else
+    {
+      // Chunk from a NEWER plugin (or corrupt header): restore defaults
+      // instead of misassigning values to the wrong parameters.
+      for (int i = 0; i < kNumParams; ++i)
+        GetParam(i)->SetToDefault();
+      result = chunk.Size();
+    }
+  }
+  else
+  {
+    // Legacy v1.0.0 chunk: raw params, no header.
+    result = UnserializeParams(chunk, startPos);
+  }
   // Action/compare state has no meaningful snapshot across sessions.
   GetParam(kBnReset)->Set(0);
   GetParam(kBnABCompare)->Set(0);
@@ -1375,6 +1585,11 @@ void BronzeNoise::ResetDspState()
   mAverageSpectrumDb.fill(0.f);
   for (auto& spectrum : mChannelAverageSpectrumDb)
     spectrum.fill(0.f);
+  for (auto& correction : mPrevCorrectionDb)
+    correction.fill(0.f);
+  mHasPrevCorrection = false;
+  mMakeupGainDbForUI.store(0.f, std::memory_order_relaxed);
+  mLimiterGrDbForUI.store(0.f, std::memory_order_relaxed);
   mChannelHasSpectrum.fill(false);
   mOutputReadIndex.fill(0);
   mOutputWriteIndex.fill(0);
@@ -1882,8 +2097,52 @@ void BronzeNoise::ProcessHop(int channelCount)
     }
   }
 
+  // Hop-to-hop smoothing of the APPLIED gain curve. liveSpectrumBlend leaks up
+  // to 58% of the current frame into each correction, which makes the bin
+  // gains jump at frame rate ("musical noise", worst on small FFT sizes).
+  // One-pole per band with a real-time time constant, so responsiveness is
+  // FFT-size independent: at 16384 the hop period already exceeds tau and the
+  // filter is transparent; at 256 it suppresses frame-rate jitter.
+  {
+    constexpr float kCorrectionTauSeconds = 0.045f;
+    const float hopSeconds = static_cast<float>(mHopSize) /
+                             static_cast<float>(std::max(1.0, mSampleRate));
+    const float correctionAlpha = 1.f - std::exp(-hopSeconds / kCorrectionTauSeconds);
+
+    if (mHasPrevCorrection)
+    {
+      for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
+      {
+        for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex)
+        {
+          const float previous = mPrevCorrectionDb[channelIndex][bandIndex];
+          const float smoothed = previous +
+            ((channelCorrectionDb[channelIndex][bandIndex] - previous) * correctionAlpha);
+          channelCorrectionDb[channelIndex][bandIndex] = SanitizeCorrection(smoothed);
+          mPrevCorrectionDb[channelIndex][bandIndex] = channelCorrectionDb[channelIndex][bandIndex];
+        }
+      }
+    }
+    else
+    {
+      for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
+        mPrevCorrectionDb[channelIndex] = channelCorrectionDb[channelIndex];
+      mHasPrevCorrection = true;
+    }
+
+    // The analyzer must show the curve actually applied this hop.
+    for (int bandIndex = 0; bandIndex < kNumBands; ++bandIndex)
+    {
+      float sum = 0.f;
+      for (int channelIndex = 0; channelIndex < activeChannels; ++channelIndex)
+        sum += channelCorrectionDb[channelIndex][bandIndex];
+      smoothedCorrectionDb[bandIndex] = sum / static_cast<float>(activeChannels);
+    }
+  }
+
   // Include makeup gain in visualizer output (global gain applied to all bands)
   const float makeupGainDb = GetParam(kBnAutoGain)->Bool() ? mAutoMakeupGainDb : 0.f;
+  mMakeupGainDbForUI.store(makeupGainDb, std::memory_order_relaxed);
 
   // Normalize analyzer magnitudes to a dBFS-like scale and vertically align the
   // target shape with the live spectrum so all curves remain comparable.
@@ -2031,6 +2290,14 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   _mm_setcsr(_mm_getcsr() | 0x8040);
 #endif
 
+  // Consume a UI-initiated FFT-size change at the block boundary. The audio
+  // thread rebuilds its own tables so nothing mutates under ProcessHop.
+  {
+    const int pendingSelector = mPendingFFTSelector.exchange(-1, std::memory_order_acquire);
+    if (pendingSelector >= 0 && kFFTSizes[Clip(pendingSelector, 0, kNumFFTSizes - 1)] != mFFTSize)
+      ApplyFFTSizeSelector(pendingSelector);
+  }
+
   const int activeInputChannels = NInChansConnected();
   const int activeOutputChannels = NOutChansConnected();
   const int outputChannelsToProcess = Clip(activeOutputChannels, 0, kMaxChannels);
@@ -2039,8 +2306,9 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   // if the host reports a bogus connection count (some buggy drivers do).
   const int processedChannels = Clip(std::max(activeInputChannels, outputChannelsToProcess), 1, kMaxChannels);
 
-  // Track per-block peak for I/O meters.
+  // Track per-block peak for I/O meters + worst-case limiter gain for telemetry.
   float inPeakL = 0.f, inPeakR = 0.f, outPeakL = 0.f, outPeakR = 0.f;
+  float minLimiterGain = 1.f;
 
   // Read parameter targets once per block. This avoids thousands of parameter
   // object reads and gives the audio thread a coherent target set.
@@ -2145,6 +2413,7 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     const float framePeak = std::max(std::abs(lOut), std::abs(rOut));
     mLimiterEnvelope = std::max(framePeak, mLimiterEnvelope * limiterRelease);
     const float limiterGain = mLimiterEnvelope > ceilingLinear ? ceilingLinear / mLimiterEnvelope : 1.f;
+    minLimiterGain = std::min(minLimiterGain, limiterGain);
     lOut *= limiterGain;
     rOut *= limiterGain;
 
@@ -2184,5 +2453,9 @@ void BronzeNoise::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   publishPeak(mOutputPeakL, outPeakL);
   publishPeak(mOutputPeakR, outPeakR);
 
+  // Max-hold limiter gain reduction (dB, >= 0) — OnIdle consumes-and-clears,
+  // so brief limit events between two UI polls are never missed.
+  const float grDb = minLimiterGain < 1.f ? -20.f * std::log10(std::max(1.0e-4f, minLimiterGain)) : 0.f;
+  publishPeak(mLimiterGrDbForUI, grDb);
 }
 #endif

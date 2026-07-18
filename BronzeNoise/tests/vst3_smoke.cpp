@@ -1,6 +1,7 @@
 #define NOMINMAX
 #include <windows.h>
 
+#include "pluginterfaces/base/ibstream.h"
 #include "pluginterfaces/base/ipluginbase.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstcomponent.h"
@@ -136,6 +137,59 @@ bool ProcessSignal(PluginInstance& instance,
   }
   return true;
 }
+
+// Minimal in-memory IBStream for component getState/setState round-trips.
+class MemStream final : public IBStream {
+public:
+  explicit MemStream(std::vector<uint8_t> data = {}) : mData(std::move(data)) {}
+
+  tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override {
+    if (std::memcmp(iid, IBStream::iid, sizeof(TUID)) == 0 ||
+        std::memcmp(iid, FUnknown::iid, sizeof(TUID)) == 0) {
+      *obj = this;
+      return kResultOk;
+    }
+    *obj = nullptr;
+    return kNoInterface;
+  }
+  uint32 PLUGIN_API addRef() override { return 2; }   // stack-owned, no-op refcount
+  uint32 PLUGIN_API release() override { return 1; }
+
+  tresult PLUGIN_API read(void* buffer, int32 numBytes, int32* numBytesRead) override {
+    const int32 available = static_cast<int32>(mData.size()) - mPos;
+    const int32 toRead = std::max(0, std::min(numBytes, available));
+    if (toRead > 0) std::memcpy(buffer, mData.data() + mPos, static_cast<size_t>(toRead));
+    mPos += toRead;
+    if (numBytesRead) *numBytesRead = toRead;
+    return kResultOk;
+  }
+  tresult PLUGIN_API write(void* buffer, int32 numBytes, int32* numBytesWritten) override {
+    const auto* bytes = static_cast<const uint8_t*>(buffer);
+    mData.insert(mData.end(), bytes, bytes + numBytes);
+    mPos = static_cast<int32>(mData.size());
+    if (numBytesWritten) *numBytesWritten = numBytes;
+    return kResultOk;
+  }
+  tresult PLUGIN_API seek(int64 pos, int32 mode, int64* result) override {
+    int64 target = pos;
+    if (mode == kIBSeekCur) target = mPos + pos;
+    else if (mode == kIBSeekEnd) target = static_cast<int64>(mData.size()) + pos;
+    mPos = static_cast<int32>(std::max<int64>(0, std::min<int64>(target, static_cast<int64>(mData.size()))));
+    if (result) *result = mPos;
+    return kResultOk;
+  }
+  tresult PLUGIN_API tell(int64* pos) override {
+    if (pos) *pos = mPos;
+    return kResultOk;
+  }
+
+  const std::vector<uint8_t>& Data() const { return mData; }
+  void Rewind() { mPos = 0; }
+
+private:
+  std::vector<uint8_t> mData;
+  int32 mPos = 0;
+};
 
 } // namespace
 
@@ -314,6 +368,72 @@ int wmain(int argc, wchar_t** argv) {
       }
     }
     std::printf("parameter stress @96k: %d/40 cases finite and bounded\n", casesPassed);
+  }
+
+  {
+    // State versioning round-trip: getState must emit the 'BNZ2' header, and a
+    // second instance restored from those bytes must report identical params.
+    constexpr int numParams = 14;
+    const double setValues[numParams] = {
+      0.42, 2.0 / 9.0, 0.80, 0.25, 2.0 / 6.0, 0.90, 0.10,
+      0.77, 2.0 / 3.0, 1.0, 1.0 / 3.0, 0.0, 0.0, 0.0
+    };
+    PluginInstance source;
+    bool sectionOk = CreateInstance(factory, source, 48000.0, blockSize);
+    for (int p = 0; p < numParams && sectionOk; ++p)
+      sectionOk = SetNormalized(source, p, setValues[p]);
+
+    MemStream saved;
+    sectionOk = sectionOk && source.component->getState(&saved) == kResultOk;
+    const auto& bytes = saved.Data();
+    const bool headerOk = bytes.size() >= 8 &&
+      bytes[0] == 0x42 && bytes[1] == 0x4E && bytes[2] == 0x5A && bytes[3] == 0x32 &&  // 'BNZ2' LE
+      bytes[4] == 0x02 && bytes[5] == 0x00 && bytes[6] == 0x00 && bytes[7] == 0x00;    // version 2
+    sectionOk = sectionOk && headerOk;
+
+    PluginInstance restored;
+    sectionOk = sectionOk && CreateInstance(factory, restored, 48000.0, blockSize);
+    if (sectionOk) {
+      saved.Rewind();
+      sectionOk = restored.component->setState(&saved) == kResultOk;
+    }
+    double maxParamError = 0.0;
+    if (sectionOk && restored.controller) {
+      for (int p = 0; p < numParams; ++p)
+        maxParamError = std::max(maxParamError,
+          std::abs(restored.controller->getParamNormalized(p) - setValues[p]));
+    }
+    sectionOk = sectionOk && maxParamError < 1.0e-6;
+    std::printf("state roundtrip: header=%d maxParamError=%.3e -> %s\n",
+                headerOk ? 1 : 0, maxParamError, sectionOk ? "ok" : "FAIL");
+    ok = ok && sectionOk;
+
+    // Legacy v1.0.0 chunk (raw doubles, no magic/version header) must still load.
+    const double legacyValues[numParams] = {
+      37.5, 2.0, 0.66, 1.5, 3.0, -0.25, 0.90, 80.0, 1.0, 1.0, 2.0, 0.0, 0.0, 0.0
+    };
+    std::vector<uint8_t> legacyBytes(sizeof(legacyValues) + sizeof(int32));
+    std::memcpy(legacyBytes.data(), legacyValues, sizeof(legacyValues));
+    const int32 legacyBypass = 0;
+    std::memcpy(legacyBytes.data() + sizeof(legacyValues), &legacyBypass, sizeof(int32));
+
+    PluginInstance legacy;
+    bool legacyOk = CreateInstance(factory, legacy, 48000.0, blockSize);
+    if (legacyOk) {
+      MemStream legacyStream(std::move(legacyBytes));
+      legacyOk = legacy.component->setState(&legacyStream) == kResultOk;
+    }
+    double legacyError = 1.0e9;
+    if (legacyOk && legacy.controller) {
+      legacyError = 0.0;
+      legacyError = std::max(legacyError, std::abs(legacy.controller->getParamNormalized(0) - 0.375));            // Amount 37.5%
+      legacyError = std::max(legacyError, std::abs(legacy.controller->getParamNormalized(1) - 2.0 / 9.0));        // Target = White
+      legacyError = std::max(legacyError, std::abs(legacy.controller->getParamNormalized(3) - (1.5 - 0.01) / 3.99)); // Q 1.5
+      legacyError = std::max(legacyError, std::abs(legacy.controller->getParamNormalized(7) - 0.80));             // Mix 80%
+    }
+    legacyOk = legacyOk && legacyError < 1.0e-6;
+    std::printf("legacy chunk load: maxParamError=%.3e -> %s\n", legacyError, legacyOk ? "ok" : "FAIL");
+    ok = ok && legacyOk;
   }
 
   if (factory) factory->release();

@@ -243,10 +243,10 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable BronzeNoise" "$PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleName BronzeNoise" "$PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cloph-dsp.BronzeNoise" "$PLIST" || true
-            /usr/libexec/PlistBuddy -c "Set :CFBundleGetInfoString 'BronzeNoise v1.0.0 Copyright 2026 CLOPH'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleGetInfoString 'BronzeNoise v1.1.0 Copyright 2026 CLOPH'" "$PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleSignature 'Bnz1'" "$PLIST" || true
-            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.0.0'" "$PLIST" || true
-            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '1.0.0'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.1.0'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '1.1.0'" "$PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion '10.15'" "$PLIST" || true
           fi
 
@@ -302,7 +302,7 @@ jobs:
 
           [ "$BUNDLE_ID" = "com.cloph-dsp.BronzeNoise" ] || error "CFBundleIdentifier mismatch: $BUNDLE_ID"
           [ "$BUNDLE_NAME" = "BronzeNoise" ]              || error "CFBundleName mismatch: $BUNDLE_NAME"
-          [ "$BUNDLE_VER" = "1.0.0" ]                     || error "CFBundleShortVersionString mismatch: $BUNDLE_VER"
+          [ "$BUNDLE_VER" = "1.1.0" ]                     || error "CFBundleShortVersionString mismatch: $BUNDLE_VER"
 
           if grep -qi "IPlugEffect\|Acme Inc\|Acme" "$PLIST"; then
             error "Info.plist still contains template values"
@@ -441,10 +441,10 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable BronzeNoise" "$PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleName BronzeNoise" "$PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cloph-dsp.clap.BronzeNoise" "$PLIST" || true
-            /usr/libexec/PlistBuddy -c "Set :CFBundleGetInfoString 'BronzeNoise v1.0.0 Copyright 2026 CLOPH'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleGetInfoString 'BronzeNoise v1.1.0 Copyright 2026 CLOPH'" "$PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleSignature 'Bnz1'" "$PLIST" || true
-            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.0.0'" "$PLIST" || true
-            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '1.0.0'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.1.0'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '1.1.0'" "$PLIST" || true
             /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion '10.15'" "$PLIST" || true
           fi
 
@@ -554,10 +554,10 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable BronzeNoise" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Set :CFBundleName BronzeNoise" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cloph-dsp.audiounit.BronzeNoise" "$PLIST" || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleGetInfoString 'BronzeNoise v1.0.0 Copyright 2026 CLOPH'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleGetInfoString 'BronzeNoise v1.1.0 Copyright 2026 CLOPH'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Set :CFBundleSignature 'Bnz1'" "$PLIST" || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.0.0'" "$PLIST" || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '1.0.0'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '1.1.0'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '1.1.0'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion '10.15'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:type aufx" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:subtype Bnz1" "$PLIST" || true
@@ -565,7 +565,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:factoryFunction BronzeNoise_Factory" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:name 'CLOPH: BronzeNoise'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Set :AudioComponents:0:description 'Spectral noise matching EQ with target curves'" "$PLIST" || true
-          /usr/libexec/PlistBuddy -c "Set 'AudioUnit Version' '0x00010000'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set 'AudioUnit Version' '0x00010100'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Set :NSPrincipalClass BronzeNoise_View" "$PLIST" || true
 
       - name: Ad-hoc sign AU bundle

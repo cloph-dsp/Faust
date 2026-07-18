@@ -1,12 +1,71 @@
 # Bronze Noise — Release Audit
 
-**Plugin**: Bronze Noise v1.0.0
+**Plugin**: Bronze Noise v1.1.0
 **Manufacturer**: CLOPH
 **Format**: VST3 (single-file DLL with `.vst3` extension, x64)
 **Platform**: Windows 10/11 (x64)
-**Audit Date**: 2026-07-08
+**Audit Date**: 2026-07-18 (v1.1.0 engineering pass; original audit 2026-07-08)
 **Audit Method**: Release-audit skill (6 dimensions × 0-4 scoring, P0-P3 severity)
-**Source**: `BronzeNoise/` (1708 LOC .cpp, 178 LOC .h)
+**Source**: `BronzeNoise/` (~2350 LOC .cpp, ~250 LOC .h)
+
+---
+
+## v1.1.0 Engineering Pass (2026-07-18)
+
+Production-hardening pass benchmarked against the published CLOPH plugins
+(Freeze95, Grungr, Tuner) and the repo engineering guides. Changes:
+
+### DSP
+- **S-01 RESOLVED — state versioning**: chunk now leads with `'BNZ2'` magic +
+  version int (Tuner pattern). Legacy v1.0.0 headerless chunks are detected and
+  parsed in place; chunks from a *newer* plugin restore defaults instead of
+  misassigning values. Covered by an automated getState/setState round-trip +
+  synthetic legacy-chunk test in `tests/vst3_smoke.cpp`.
+- **NEW — thread-safe FFT-size switching**: `OnParamChange(kFFTSize)` no longer
+  calls `OnReset()` on the UI thread (data race with `ProcessHop` reading
+  `mWindow`/`mPermutation`/`mFFTSize`). It now reports latency to the host from
+  the main thread and publishes the selector through an atomic; the audio
+  thread consumes it at the next block boundary and rebuilds its own tables
+  (`ApplyFFTSizeSelector`).
+- **NEW — applied-gain-curve smoothing**: per-band one-pole (τ = 45 ms, real
+  time, FFT-size independent) on the correction curve actually applied to the
+  bins. Suppresses frame-rate gain jitter ("musical noise") introduced by the
+  live-spectrum blend, worst on small FFT sizes. Analyzer displays the smoothed
+  curve that is really applied.
+- **NEW — telemetry**: auto-makeup gain (dB) and safety-limiter gain reduction
+  (max-hold dB, consume-on-read) published via atomics to the UI status line.
+- **D-01 CLOSED (documented, not implemented)**: no dither. The plugin renders
+  to 32/64-bit float; quantization to fixed point happens in the host, where
+  dithering belongs. Adding TPDF dither inside a float pipeline is inert at
+  best. Decision recorded here per the Freeze95 "Known Limitations (By Design)"
+  convention.
+
+### GUI
+- **NEW — NanoVG default-font crash guard**: `Roboto-Regular.ttf` is embedded
+  (main.rc + vcxproj `EmbeddedResource`) and registered first in `LayoutUI`,
+  because iPlug2's `DEFAULT_FONT` is "Roboto-Regular" and any `IText` without
+  an explicit font resolves to it (Grungr/Freeze95 pattern). The bypass overlay
+  previously drew with a null font ID; it now takes the UI font.
+- **NEW — analyzer hover inspector**: crosshair + bubble readout (frequency,
+  cursor level, OUT-curve level log-interpolated at the cursor frequency).
+  Double-click resets zoom/pan. Legend upgraded to per-curve color swatches.
+- **NEW — status line**: `PDC <smp>/<ms>  MAKEUP <dB>  LIM <dB>` in the header,
+  updated from OnIdle only when the displayed (0.1 dB-quantized) value changes.
+- **NEW — breathing LED**: subtle sinusoidal idle glow beside the title
+  (CLOPH finished-tool bar).
+- **Typography**: knob labels 15→16 px, knob values 17→18 px, selector label
+  strip 13→14 px on a 16 px strip (CLOPH bar: labels ≥16, values ≥18).
+- **G-01/G-02 RESOLVED**: misnamed `ROBOTO_FN` macro renamed to `BODY_FONT_FN`
+  (KenyanCoffeeRg); `ROBOTO_FN` now genuinely points to `Roboto-Regular.ttf`;
+  duplicate `resources/fonts/` copy removed (kept the 145 KB static TTF).
+
+### Tests
+- `tests/vst3_smoke.cpp` extended with a minimal in-memory `IBStream`:
+  versioned-state round-trip (header bytes verified, 14 params compared at
+  1e-6) and legacy v1.0.0 chunk load. Full suite output (2026-07-18): impulse
+  latency exact at all 7 FFT sizes, identity null test max error 2.7e-8,
+  40/40 parameter-stress cases finite and bounded @96 kHz, state round-trip
+  and legacy load exact — **PASS**.
 
 ---
 
@@ -144,13 +203,13 @@
 - None.
 
 ### P2 — Medium (fix or document)
-- **D-01**: `DitherAndNoiseShape()` defined but unused in output path. Spectral noise-shaping plugin should dither output. Fix: add dither call before Clip at L1683.
-- **S-01**: No state version marker in `SerializeState`. Version mismatch could cause silent parameter corruption. Fix: prepend version int + migrate in `UnserializeState`.
+- **D-01**: ~~Dither~~ — CLOSED in v1.1.0 as a documented by-design decision (float pipeline; host owns quantization).
+- **S-01**: ~~No state version marker~~ — RESOLVED in v1.1.0 ('BNZ2' magic + version + legacy fallback, test-covered).
 
 ### P3 — Low (enhancement)
-- **P-01**: FFT size not auto-scaled by sample rate. Consider optional sample-rate-ratio compensation.
-- **G-01**: Orphaned `Roboto-Regular.ttf` in `resources/` and `resources/fonts/`. Delete stale files.
-- **G-02**: `ROBOTO_FN` macro misnamed (points to `KenyanCoffeeRg.ttf`). Rename to `BODY_FONT_FN`.
+- **P-01**: FFT size not auto-scaled by sample rate. Consider optional sample-rate-ratio compensation. (Open; industry norm — FabFilter/iZotope keep FFT constant across SR.)
+- **G-01**: ~~Orphaned Roboto files~~ — RESOLVED in v1.1.0 (single static copy kept, now embedded as the NanoVG default-font crash guard).
+- **G-02**: ~~`ROBOTO_FN` misnamed~~ — RESOLVED in v1.1.0 (`BODY_FONT_FN`).
 
 ---
 
@@ -158,12 +217,17 @@
 
 ### ✅ GO
 
-Bronze Noise scores **24/24** with zero P0 or P1 issues. The two P2 items (unused dither, no state versioning) are real but professional-quality refinements — neither is a shipping blocker. Real-time safety, parameter handling, state management, host integration, performance, and GUI are all production-grade.
+Bronze Noise v1.1.0 scores **24/24** with zero P0/P1 issues and **zero open P2
+items** — both v1.0.0 P2s are resolved or closed-by-design, and the v1.1.0 pass
+additionally removed a latent UI-thread/audio-thread data race on FFT-size
+changes and a latent missing-default-font hazard. Real-time safety, parameter
+handling, state management, host integration, performance, and GUI are
+production-grade and now regression-covered by the extended smoke suite.
 
-**Recommended for next patch**:
-- Fix D-01 (dither) before next feature release
-- Fix S-01 (state versioning) before any parameter layout change
-- Clean up orphaned Roboto-Regular.ttf (G-01)
+**Remaining (P3, optional)**:
+- P-01 sample-rate-scaled FFT default (industry norm is constant; low priority)
+- Manual DAW verification of the new hover inspector / status line (GUI paths
+  are not exercised by the headless smoke test)
 
 ---
 
@@ -176,6 +240,7 @@ Bronze Noise scores **24/24** with zero P0 or P1 issues. The two P2 items (unuse
 - [x] Bypass works via both host and plugin UI
 - [x] All visual states verified (hover, active, disabled, bypassed)
 - [x] Plugin loads at minimum (600×420) and maximum (1600×1120) window sizes
-- [x] Version number set in config.h (`PLUG_VERSION_STR "1.0.0"`)
+- [x] Version number set in config.h (`PLUG_VERSION_STR "1.1.0"`, hex 0x00010100)
+- [x] State chunk round-trip + legacy-chunk load covered by automated test
 - [x] Unique ID `'BrNz'` verified
 - [x] Documentation exists (`docs/BronzeNoise/RELEASE_AUDIT.md`)

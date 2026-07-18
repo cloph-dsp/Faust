@@ -15,6 +15,7 @@ CLOPH_LOGO_FN  SVG  CLOPH_LOGO_FN
 
 // ── Fonts ────────────────────────────────────────────────────────────────────
 IRON_SANS_FN  TTF  IRON_SANS_FN
+BODY_FONT_FN  TTF  BODY_FONT_FN
 ROBOTO_FN  TTF  ROBOTO_FN
 
 IDI_ICON1 ICON "BronzeNoise.ico"

@@ -116,6 +116,10 @@ public:
   IControl* mVisControl = nullptr;
   int mLastLatencySamplesUI = -1;
   double mLastLatencySampleRateUI = 0.0;
+  // Last shown status-line telemetry (quantized to 0.1 dB so the label only
+  // redraws when the displayed text would actually change).
+  int mLastMakeupTenthsUI = INT32_MIN;
+  int mLastLimiterTenthsUI = INT32_MIN;
 #endif
 
 private:
@@ -132,6 +136,13 @@ private:
   int mHopSize = 2048;
   int mLatencySamples = 4095;
 
+  // State-chunk header: magic + version guard against silent parameter
+  // misassignment when the layout changes between releases. Legacy (v1.0.0)
+  // chunks have no header and are detected by the missing magic.
+  static constexpr int kStateMagic = 0x325A4E42;  // 'BNZ2' little-endian
+  static constexpr int kStateVersion = 2;
+
+  void ApplyFFTSizeSelector(int selector);
   void ResetDspState();
   void UpdateBandLayout(double sampleRate);
   void ProcessHop(int channelCount);
@@ -168,6 +179,13 @@ private:
   std::array<int, kMaxChannels> mDryDelayIndex {};
   std::array<float, kNumBands> mAverageSpectrumDb {};
   std::array<std::array<float, kNumBands>, kMaxChannels> mChannelAverageSpectrumDb {};
+  // Hop-to-hop smoothing of the APPLIED correction curve. The analysis average
+  // is already smoothed, but up to 58% of the live frame leaks into each
+  // correction (liveSpectrumBlend), which produces audible frame-rate gain
+  // jitter ("musical noise") on small FFT sizes. One-pole per band, time
+  // constant normalized to real time so behaviour is FFT-size independent.
+  std::array<std::array<float, kNumBands>, kMaxChannels> mPrevCorrectionDb {};
+  bool mHasPrevCorrection = false;
 
   std::array<int, kMaxChannels> mOutputReadIndex {};
   std::array<int, kMaxChannels> mOutputWriteIndex {};
@@ -224,5 +242,14 @@ private:
   std::atomic<uint32_t> mVisGeneration {0};
   uint32_t mLastVisGeneration = 0;
   std::atomic<int> mLatencySamplesForUI {PLUG_LATENCY};
+  // Thread-safe FFT-size switching: OnParamChange (UI thread) publishes the
+  // selector here; ProcessBlock (audio thread) consumes it and rebuilds the
+  // window/permutation/band tables on its own thread. This removes the data
+  // race the previous design had (OnParamChange -> OnReset mutating mWindow /
+  // mPermutation / mFFTSize while ProcessHop was reading them).
+  std::atomic<int> mPendingFFTSelector {-1};
+  // Audio -> UI status telemetry (makeup gain + safety-limiter gain reduction).
+  std::atomic<float> mMakeupGainDbForUI {0.f};
+  std::atomic<float> mLimiterGrDbForUI {0.f};
 #endif
 };
