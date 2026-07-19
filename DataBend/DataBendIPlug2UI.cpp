@@ -9,7 +9,7 @@
 
 namespace databend::ui
 {
-constexpr float kTitleSize = 42.f;
+constexpr float kTitleSize = 36.f;
 constexpr float kSubtitleSize = 17.f;
 constexpr float kVersionSize = 14.f;
 constexpr float kFooterSize = 16.f;
@@ -51,7 +51,16 @@ public:
       const IRECT inner = cell.GetPadded(-gap);
 
       if (active)
+      {
         g.FillRoundRect(GetColor(kPR), inner, 3.f, &mBlend);
+        // C: Cyan halo flash on freshly-clicked cell — fades in ~2 frames.
+        if (mFlashDecay > 0.05f)
+        {
+          const float alpha = mFlashDecay;
+          const IRECT halo = cell.GetPadded(-1.f);
+          g.DrawRoundRect(IColor(255, 103, 196, 214).WithOpacity(alpha), halo, 3.f, &mBlend, 2.f);
+        }
+      }
       else
         g.DrawRoundRect(GetColor(kFR), inner, 3.f, &mBlend, 1.f);
 
@@ -78,6 +87,12 @@ public:
       const IRECT glowLine(activeCell.L, activeCell.B, activeCell.R, activeCell.B + 3.f);
       g.FillRect(IColor(255, 103, 196, 214).WithOpacity(0.8f), glowLine);
     }
+    // C: tick decay — halve each frame; stop redraws when below threshold.
+    if (mFlashDecay > 0.f)
+    {
+      mFlashDecay *= 0.5f;
+      if (mFlashDecay < 0.05f) { mFlashDecay = 0.f; SetDirty(false); }
+    }
   }
 
   void OnMouseDown(float x, float y, const IMouseMod& mod) override
@@ -93,12 +108,31 @@ public:
     GetDelegate()->BeginInformHostOfParamChangeFromUI(GetParamIdx());
     GetDelegate()->GetParam(GetParamIdx())->Set(static_cast<double>(idx));
     GetDelegate()->EndInformHostOfParamChangeFromUI(GetParamIdx());
+    mFlashDecay = 1.0f;  // C: trigger cyan-halo click flash
     SetDirty(true);
   }
+
+  bool IsDirty() override { return IControl::IsDirty() || mFlashDecay > 0.05f; }
 
 private:
   const char* const* mLabels;
   int mN;
+  float mFlashDecay = 0.f;
+};
+
+// B: Static scan-lines overlay — thin horizontal lines spaced 4px apart,
+//    covering the title strip (title bottom → enum bar top).
+//    Color: secondaryTextColor rgba(158,164,171) at alpha 0.15.
+class ScanLinesControl final : public IControl
+{
+public:
+  ScanLinesControl(const IRECT& bounds) : IControl(bounds, kNoParameter) {}
+  void Draw(IGraphics& g) override
+  {
+    const IColor lineColor = IColor(255, 158, 164, 171).WithOpacity(0.15f);
+    for (float y = mRECT.T; y < mRECT.B; y += 4.f)
+      g.DrawLine(lineColor, mRECT.L, y, mRECT.R, y, &mBlend, 0.6f);
+  }
 };
 
 // Custom SVG knob cap: static SVG body + rotating line pointer indicator.
@@ -324,17 +358,19 @@ void BuildLayout(IGraphics* graphics, DataBend* plugin)
   const IRECT titleRect(bounds.L + 4.f, bounds.T + 4.f, bounds.R - 4.f, bounds.T + 58.f);
   const IRECT subtitleRect(bounds.L, titleRect.B - 2.f, bounds.R, titleRect.B + 28.f);
 
-  // A: RGB-shift — three overlapping "DATABEND" layers for chromatic-aberration effect.
-  // Red channel offset 2px left, original accent center, cyan 2px right.
-  graphics->AttachControl(new ITextControl(titleRect.GetFromLeft(titleRect.W()),
+  // A: RGB-shift chromatic aberration on DATABEND title.
+  // Z-order: red-shift (L-2px, warm red) BEHIND, cyan-shift (L+2px) MIDDLE,
+  // main (no shift, coral-yellow accent) ON TOP. ±2px x-only.
+  // Using kTitleSize=36 (task spec).
+  graphics->AttachControl(new ITextControl(IRECT(titleRect.L - 2.f, titleRect.T, titleRect.R - 2.f, titleRect.B),
                                            "DATABEND",
                                            IText(kTitleSize, IColor(255, 255, 80, 80), uiFont, EAlign::Center, EVAlign::Middle)));
   graphics->AttachControl(new ITextControl(IRECT(titleRect.L + 2.f, titleRect.T, titleRect.R + 2.f, titleRect.B),
                                            "DATABEND",
-                                           IText(kTitleSize, accentColor, uiFont, EAlign::Center, EVAlign::Middle)));
-  graphics->AttachControl(new ITextControl(IRECT(titleRect.L - 2.f, titleRect.T, titleRect.R - 2.f, titleRect.B),
-                                           "DATABEND",
                                            IText(kTitleSize, IColor(255, 103, 196, 214), uiFont, EAlign::Center, EVAlign::Middle)));
+  graphics->AttachControl(new ITextControl(titleRect.GetFromLeft(titleRect.W()),
+                                           "DATABEND",
+                                           IText(kTitleSize, accentColor, uiFont, EAlign::Center, EVAlign::Middle)));
 
   graphics->AttachControl(new ITextControl(subtitleRect,
                                            "Real-time packet loss, rewind slips, and crushed decoder damage.",
@@ -365,6 +401,11 @@ void BuildLayout(IGraphics* graphics, DataBend* plugin)
                                            PLUG_MFR " \xb7 " PLUG_VERSION_STR,
                                            IText(kVersionSize, secondaryTextColor, uiFont,
                                                  EAlign::Far, EVAlign::Middle)));
+
+  // B: Static scan-lines overlay — covers title strip between title bottom
+  // and the enum bar top (subtitle bottom + 20px gap).
+  const IRECT scanStrip(bounds.L, titleRect.B, bounds.R, subtitleRect.B + 20.f);
+  graphics->AttachControl(new ScanLinesControl(scanStrip));
 
   // ---- Custom SVG knob body (loaded once, shared by reference across 8 knobs) ----
   // Loaded from the embedded resource referenced by KNOB_BODY_FN. Per AGENTS.md
