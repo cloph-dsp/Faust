@@ -9,8 +9,8 @@
 
 namespace databend::ui
 {
-constexpr float kTitleSize = 36.f;
-constexpr float kSubtitleSize = 16.f;
+constexpr float kTitleSize = 42.f;
+constexpr float kSubtitleSize = 17.f;
 constexpr float kVersionSize = 14.f;
 constexpr float kFooterSize = 16.f;
 constexpr float kKnobLabelSize = 16.f;
@@ -61,6 +61,22 @@ public:
         inner,
         &mBlend
       );
+    }
+
+    // F: Cyan glow line below the active cell when mouse is over.
+    if (mMouseIsOver)
+    {
+      const float cw = mRECT.W() / static_cast<float>(mN);
+      const float cellPad = 2.f;
+      const int activeIdx = static_cast<int>(GetParam()->Value() + 0.5f);
+      const IRECT activeCell(
+        mRECT.L + activeIdx * cw + cellPad,
+        mRECT.T + cellPad,
+        mRECT.L + (activeIdx + 1) * cw - cellPad,
+        mRECT.B - cellPad
+      );
+      const IRECT glowLine(activeCell.L, activeCell.B, activeCell.R, activeCell.B + 3.f);
+      g.FillRect(IColor(255, 103, 196, 214).WithOpacity(0.8f), glowLine);
     }
   }
 
@@ -267,7 +283,7 @@ void BuildLayout(IGraphics* graphics, DataBend* plugin)
   const IColor backgroundColor(255, 14, 15, 18);
   const IColor panelColor(255, 24, 27, 33);
   const IColor frameColor(255, 72, 80, 90);
-  const IColor accentColor(255, 219, 123, 73);
+  const IColor accentColor(255, 255, 92, 130);
   const IColor secondaryAccent(255, 103, 196, 214);
   const IColor primaryTextColor(255, 243, 239, 232);
   const IColor secondaryTextColor(255, 158, 164, 171);
@@ -305,12 +321,20 @@ void BuildLayout(IGraphics* graphics, DataBend* plugin)
   const IVStyle selectorStyle = knobStyle.WithShowValue(false);
 
   const IRECT bounds = graphics->GetBounds().GetPadded(-24.f);
-  const IRECT titleRect(bounds.L, bounds.T + 4.f, bounds.R, bounds.T + 56.f);
+  const IRECT titleRect(bounds.L + 4.f, bounds.T + 4.f, bounds.R - 4.f, bounds.T + 58.f);
   const IRECT subtitleRect(bounds.L, titleRect.B - 2.f, bounds.R, titleRect.B + 28.f);
 
-  graphics->AttachControl(new ITextControl(titleRect,
+  // A: RGB-shift — three overlapping "DATABEND" layers for chromatic-aberration effect.
+  // Red channel offset 2px left, original accent center, cyan 2px right.
+  graphics->AttachControl(new ITextControl(titleRect.GetFromLeft(titleRect.W()),
                                            "DATABEND",
-                                           IText(kTitleSize, accentColor, uiFont, EAlign::Near, EVAlign::Middle)));
+                                           IText(kTitleSize, IColor(255, 255, 80, 80), uiFont, EAlign::Center, EVAlign::Middle)));
+  graphics->AttachControl(new ITextControl(IRECT(titleRect.L + 2.f, titleRect.T, titleRect.R + 2.f, titleRect.B),
+                                           "DATABEND",
+                                           IText(kTitleSize, accentColor, uiFont, EAlign::Center, EVAlign::Middle)));
+  graphics->AttachControl(new ITextControl(IRECT(titleRect.L - 2.f, titleRect.T, titleRect.R - 2.f, titleRect.B),
+                                           "DATABEND",
+                                           IText(kTitleSize, IColor(255, 103, 196, 214), uiFont, EAlign::Center, EVAlign::Middle)));
 
   graphics->AttachControl(new ITextControl(subtitleRect,
                                            "Real-time packet loss, rewind slips, and crushed decoder damage.",
