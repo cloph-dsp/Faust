@@ -3,6 +3,7 @@
 #include "IPlug_include_in_plug_hdr.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <vector>
 
@@ -65,6 +66,9 @@ class DataBend final : public Plugin
 {
 public:
   explicit DataBend(const InstanceInfo& info);
+
+  std::atomic<float> mInputPeak { 0.f };
+  std::atomic<float> mOutputPeak { 0.f };
 
 #if IPLUG_DSP
   void ProcessBlock(sample** inputs, sample** outputs, int nFrames) override;
