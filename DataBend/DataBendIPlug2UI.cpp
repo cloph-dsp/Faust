@@ -8,10 +8,14 @@ namespace
 constexpr const char* kModeChoices[] = { "Repeat", "Dropout", "Rewind", "Hybrid" };
 constexpr const char* kBitChoices[]  = { "4", "6", "8", "10", "12", "14", "16" };
 constexpr const char* kRateChoices[] = { "1x", "2x", "4x", "8x", "12x", "16x", "24x", "32x" };
-
-// Expose plugin pointer for meter controls (set inside BuildLayout)
-::DataBend* sPlugin = nullptr;
 } // namespace
+
+namespace databend::ui
+{
+
+} // namespace
+
+::DataBend* sPlugin = nullptr;
 
 namespace databend::ui
 {
@@ -21,14 +25,10 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin)
   using namespace iplug::igraphics;
   sPlugin = static_cast<::DataBend*>(plugin);
 
-  // Base background color
   const IColor bgColor(255, NeonColors::BG_VAL, NeonColors::BG_VAL, NeonColors::BG_VAL);
   const IColor panelColor(255, NeonColors::PANEL_VAL, NeonColors::PANEL_VAL, NeonColors::PANEL_VAL);
 
-  // --- Attach panel + scan line overlay ---
   graphics->AttachPanelBackground(bgColor);
-
-  // Scan lines covering full canvas (drawn as last control so it's behind)
   graphics->AttachControl(new ScanLinesControl(graphics->GetBounds()));
 
   const char* uiFont = "LayoutFont";
@@ -46,33 +46,30 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin)
   graphics->AttachBubbleControl();
   graphics->AssignParamNameToolTips();
 
-  // --- Layout geometry ---
   const IRECT canvas = graphics->GetBounds();
   const float PAD = 36.f;
   const IRECT content(canvas.L + PAD, canvas.T + PAD,
                       canvas.R - PAD, canvas.B - PAD);
 
-  // Vertical zones
-  const float ZONE_TITLE_H  = 72.f;
+  const float ZONE_TITLE_H    = 80.f;
   const float ZONE_SELECTOR_H = 88.f;
-  const float ZONE_KNOB_H    = 108.f;
-  const float ZONE_KNOB_GAP  = 24.f;
-  const float ZONE_FOOTER_H  = 28.f;
+  const float ZONE_KNOB_H     = 108.f;
+  const float ZONE_KNOB_GAP   = 24.f;
+  const float ZONE_FOOTER_H   = 28.f;
+  const float ZONE_GAP_H      = 16.f;
 
-  const float titleTop     = content.T;
-  const float selectorTop  = titleTop + ZONE_TITLE_H + 20.f;
-  const float knob1Top     = selectorTop + ZONE_SELECTOR_H + 24.f;
-  const float knob2Top     = knob1Top + ZONE_KNOB_H + ZONE_KNOB_GAP;
-  const float footerTop    = knob2Top + ZONE_KNOB_H + 20.f;
+  const float titleTop    = content.T;
+  const float selectorTop = titleTop + ZONE_TITLE_H + 20.f;
+  const float knob1Top   = selectorTop + ZONE_SELECTOR_H + ZONE_GAP_H;
+  const float knob2Top   = knob1Top + ZONE_KNOB_H + ZONE_KNOB_GAP;
+  const float footerTop  = knob2Top + ZONE_KNOB_H + 20.f;
 
-  // Knob sizing
-  const float KNOB_SIZE = 116.f;
-  const float KNOB_GAP   = 20.f;
+  const float KNOB_SIZE  = 116.f;
+  const float KNOB_GAP  = 20.f;
   const float KNOB_COL_W = KNOB_SIZE + KNOB_GAP;
   const float KNOB_ROW_W = KNOB_COL_W * 4.f - KNOB_GAP;
   const float KNOB_ROW_L = content.MW() - KNOB_ROW_W * 0.5f;
 
-  // Selector sizing (3 bars, evenly spaced)
   const float SEL_GAP = 18.f;
   const float SEL_W = (content.W() - SEL_GAP * 2.f) / 3.f;
   const float selL1 = content.L;
@@ -83,15 +80,14 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin)
   const IRECT bitsRect(selL2, selectorTop, selL2 + SEL_W, selectorTop + ZONE_SELECTOR_H);
   const IRECT rateRect(selL3, selectorTop, selL3 + SEL_W, selectorTop + ZONE_SELECTOR_H);
 
-  // Knob rects
   const IRECT r1c1(KNOB_ROW_L,           knob1Top, KNOB_ROW_L + KNOB_SIZE, knob1Top + ZONE_KNOB_H);
-  const IRECT r1c2(r1c1.R + KNOB_GAP,     knob1Top, r1c1.R + KNOB_GAP + KNOB_SIZE, knob1Top + ZONE_KNOB_H);
-  const IRECT r1c3(r1c2.R + KNOB_GAP,     knob1Top, r1c2.R + KNOB_GAP + KNOB_SIZE, knob1Top + ZONE_KNOB_H);
-  const IRECT r1c4(r1c3.R + KNOB_GAP,     knob1Top, r1c3.R + KNOB_GAP + KNOB_SIZE, knob1Top + ZONE_KNOB_H);
+  const IRECT r1c2(r1c1.R + KNOB_GAP,    knob1Top, r1c1.R + KNOB_GAP + KNOB_SIZE, knob1Top + ZONE_KNOB_H);
+  const IRECT r1c3(r1c2.R + KNOB_GAP,    knob1Top, r1c2.R + KNOB_GAP + KNOB_SIZE, knob1Top + ZONE_KNOB_H);
+  const IRECT r1c4(r1c3.R + KNOB_GAP,    knob1Top, r1c3.R + KNOB_GAP + KNOB_SIZE, knob1Top + ZONE_KNOB_H);
   const IRECT r2c1(KNOB_ROW_L,           knob2Top, KNOB_ROW_L + KNOB_SIZE, knob2Top + ZONE_KNOB_H);
-  const IRECT r2c2(r2c1.R + KNOB_GAP,     knob2Top, r2c1.R + KNOB_GAP + KNOB_SIZE, knob2Top + ZONE_KNOB_H);
-  const IRECT r2c3(r2c2.R + KNOB_GAP,     knob2Top, r2c2.R + KNOB_GAP + KNOB_SIZE, knob2Top + ZONE_KNOB_H);
-  const IRECT r2c4(r2c3.R + KNOB_GAP,     knob2Top, r2c3.R + KNOB_GAP + KNOB_SIZE, knob2Top + ZONE_KNOB_H);
+  const IRECT r2c2(r2c1.R + KNOB_GAP,    knob2Top, r2c1.R + KNOB_GAP + KNOB_SIZE, knob2Top + ZONE_KNOB_H);
+  const IRECT r2c3(r2c2.R + KNOB_GAP,    knob2Top, r2c2.R + KNOB_GAP + KNOB_SIZE, knob2Top + ZONE_KNOB_H);
+  const IRECT r2c4(r2c3.R + KNOB_GAP,    knob2Top, r2c3.R + KNOB_GAP + KNOB_SIZE, knob2Top + ZONE_KNOB_H);
 
   const IColor pinkAccent(255, NeonColors::NEON_PINK_R, NeonColors::NEON_PINK_G, NeonColors::NEON_PINK_B);
   const IColor cyanAccent(255, NeonColors::NEON_CYAN_R, NeonColors::NEON_CYAN_G, NeonColors::NEON_CYAN_B);
@@ -99,7 +95,6 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin)
   const IColor warmText(255, NeonColors::TEXT_WARM_R, NeonColors::TEXT_WARM_G, NeonColors::TEXT_WARM_B);
   const IColor dimText(255, NeonColors::TEXT_DIM_R, NeonColors::TEXT_DIM_G, NeonColors::TEXT_DIM_B);
 
-  // Knob style
   const IVStyle knobStyle = DEFAULT_STYLE
     .WithColor(kBG, panelColor)
     .WithColor(kFG, IColor(255, 50, 55, 65))
@@ -112,42 +107,47 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin)
     .WithRoundness(0.20f)
     .WithDrawShadows(false);
 
-  // --- Title area: DATABEND with RGB shift + breathing LED ---
-  const IRECT titleAreaRect(content.L, titleTop, content.L + 320.f, titleTop + ZONE_TITLE_H);
-  graphics->AttachControl(new NeonTitleControl(titleAreaRect, "DATABEND", uiFont));
+  auto* titleCtrl = new NeonTitleControl(
+    IRECT(content.L, titleTop, content.L + 280.f, titleTop + ZONE_TITLE_H),
+    "DATABEND", uiFont);
+  graphics->AttachControl(titleCtrl);
+  if (sPlugin)
+    titleCtrl->SetPeakRef(&sPlugin->mInputPeak);
 
-  // Brand mark top-right
-  const IText brandText(16.f, dimText, uiFont, EAlign::Far, EVAlign::Top);
-  const IRECT brandRect(content.R - 160.f, titleTop, content.R, titleTop + 24.f);
-  graphics->AttachControl(new ITextControl(brandRect, "CLOPH", brandText));
+  const float brandW = 130.f;
+  const IRECT brandRect(content.R - brandW, titleTop, content.R, titleTop + 22.f);
+  graphics->AttachControl(new ITextControl(brandRect, "CLOPH",
+    IText(16.f, dimText, uiFont, EAlign::Far, EVAlign::Top)));
 
-  // Version mark
-  const IText verText(11.f, IColor(180, NeonColors::FRAME_VAL + 20, NeonColors::FRAME_VAL + 20, NeonColors::FRAME_VAL + 20), uiFont, EAlign::Far, EVAlign::Top);
-  const IRECT verRect(content.R - 160.f, titleTop + 22.f, content.R, titleTop + 38.f);
-  graphics->AttachControl(new ITextControl(verRect, "v1.0.0", verText));
+  const IRECT verRect(content.R - brandW, titleTop + 22.f, content.R, titleTop + 38.f);
+  graphics->AttachControl(new ITextControl(verRect, "v1.0.0",
+    IText(11.f, IColor(180, NeonColors::FRAME_VAL + 20, NeonColors::FRAME_VAL + 20, NeonColors::FRAME_VAL + 20), uiFont, EAlign::Far, EVAlign::Top)));
 
-  // Breathing LED top-right corner
   const IRECT ledRect(content.R - 22.f, titleTop + 4.f, content.R - 4.f, titleTop + 22.f);
-  auto* led = new BreathingLedControl(ledRect);
-  graphics->AttachControl(led);
+  graphics->AttachControl(new BreathingLedControl(ledRect));
 
-  // I/O meters flanking the title
   const float meterW = 8.f;
-  const float meterH = 40.f;
+  const float meterH = 44.f;
   const IRECT inMeterL(content.L + 8.f, titleTop + 16.f, content.L + 8.f + meterW, titleTop + 16.f + meterH);
-  const IRECT outMeterR(content.R - 24.f, titleTop + 16.f, content.R - 24.f + meterW, titleTop + 16.f + meterH);
+  const IRECT outMeterR(content.R - 28.f, titleTop + 16.f, content.R - 28.f + meterW, titleTop + 16.f + meterH);
 
   graphics->AttachControl(new NeonMeterControl(inMeterL,
     sPlugin ? &sPlugin->mInputPeak : nullptr));
   graphics->AttachControl(new NeonMeterControl(outMeterR,
     sPlugin ? &sPlugin->mOutputPeak : nullptr));
 
-  // --- Subtitle description ---
   const IRECT subtitleRect(content.L, titleTop + ZONE_TITLE_H - 8.f, content.R, titleTop + ZONE_TITLE_H + 14.f);
   graphics->AttachControl(new NeonSubtitleControl(subtitleRect,
     "Real-time packet loss, rewind slips, and crushed decoder damage."));
 
-  // --- Inline selector bars ---
+  const float visLeft = content.L + 340.f;
+  const IRECT visRect(visLeft, titleTop + 10.f, content.R - 8.f, titleTop + ZONE_TITLE_H - 8.f);
+  graphics->AttachControl(new PeakVisualizerControl(visRect, uiFont,
+    sPlugin ? &sPlugin->mInputPeak : nullptr));
+
+  const IRECT glitchRect(content.L, selectorTop + ZONE_SELECTOR_H + 2.f, content.R, selectorTop + ZONE_SELECTOR_H + 2.f + ZONE_GAP_H - 4.f);
+  graphics->AttachControl(new GlitchOverlayControl(glitchRect));
+
   auto* modeSel = new NeonSelectorControl(
     modeRect, kMode, "Mode",
     kModeChoices, 4,
@@ -169,7 +169,6 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin)
   rateSel->SetTooltip("Sample-hold reduction rate for stepped digital breakup.");
   graphics->AttachControl(rateSel);
 
-  // --- Knob row 1 ---
   auto* intensityKnob = new IVKnobControl(r1c1, kIntensity, "Intensity", knobStyle);
   intensityKnob->SetTooltip("How hard each glitch event diverges from the dry signal.");
   graphics->AttachControl(intensityKnob);
@@ -186,7 +185,6 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin)
   rewindKnob->SetTooltip("How far back the rewind mode jumps into the history buffer.");
   graphics->AttachControl(rewindKnob);
 
-  // --- Knob row 2 ---
   auto* jitterKnob = new IVKnobControl(r2c1, kJitter, "Jitter", knobStyle);
   jitterKnob->SetTooltip("Random variation applied to event timing, size, and offset.");
   graphics->AttachControl(jitterKnob);
@@ -203,16 +201,14 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin)
   outputKnob->SetTooltip("Final trim after the glitch engine and safety clipper.");
   graphics->AttachControl(outputKnob);
 
-  // --- Footer hint ---
+  const IRECT pktRect(content.L, knob2Top + 8.f,
+                       content.R - PAD, footerTop - 8.f);
+  graphics->AttachControl(new PacketStreamControl(pktRect, uiFont));
+
   const IRECT footerRect(content.L, footerTop, content.R, footerTop + ZONE_FOOTER_H);
   graphics->AttachControl(new ITextControl(footerRect,
     "Repeat grabs the last fragment  |  Rewind slips to older audio  |  Dropout kills packets  |  Hybrid blends all",
     IText(12.f, dimText, uiFont, EAlign::Center, EVAlign::Middle)));
-
-  // --- Decorative neon border around the content area ---
-  // Draw a subtle top accent line
-  const IRECT topAccent(content.L, content.T - 1.f, content.R, content.T + 1.f);
-  // (handled by panel bg, skip extra draw — clean is better)
 }
 
 } // namespace databend::ui

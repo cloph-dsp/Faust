@@ -1,8 +1,11 @@
 ﻿#pragma once
 
 #include "IControls.h"
+#include "DataBend.h"
 #include <atomic>
 #include <cmath>
+
+extern ::DataBend* sPlugin;
 
 namespace databend::ui
 {
@@ -37,23 +40,27 @@ public:
   {
     using NC = NeonColors;
     const char* txt = "DATABEND";
+    const float shift = 3.f + (mPeakRef ? mPeakRef->load(std::memory_order_relaxed) * 6.f : 0.f);
     const iplug::igraphics::IText baseStyle(52.f, iplug::igraphics::COLOR_WHITE, mFont,
                                             iplug::igraphics::EAlign::Center,
                                             iplug::igraphics::EVAlign::Middle);
 
-    iplug::igraphics::IRECT pr = mRECT.GetTranslated(-3.f, -2.f);
+    iplug::igraphics::IRECT pr = mRECT.GetTranslated(-shift, -shift * 0.6f);
     g.DrawText(baseStyle.WithFGColor(iplug::igraphics::IColor(255, NC::NEON_PINK_R, NC::NEON_PINK_G, NC::NEON_PINK_B)), txt, pr, nullptr);
-    iplug::igraphics::IRECT cr = mRECT.GetTranslated(3.f, 2.f);
+    iplug::igraphics::IRECT cr = mRECT.GetTranslated(shift, shift * 0.6f);
     g.DrawText(baseStyle.WithFGColor(iplug::igraphics::IColor(255, NC::NEON_CYAN_R, NC::NEON_CYAN_G, NC::NEON_CYAN_B)), txt, cr, nullptr);
-    iplug::igraphics::IRECT pgr = mRECT.GetTranslated(-6.f, 0.f);
+    iplug::igraphics::IRECT pgr = mRECT.GetTranslated(-shift * 2.f, 0.f);
     g.DrawText(baseStyle.WithFGColor(iplug::igraphics::IColor(160, NC::NEON_PURPLE_R, NC::NEON_PURPLE_G, NC::NEON_PURPLE_B)), txt, pgr, nullptr);
-    pgr = mRECT.GetTranslated(6.f, 0.f);
+    pgr = mRECT.GetTranslated(shift * 2.f, 0.f);
     g.DrawText(baseStyle.WithFGColor(iplug::igraphics::IColor(160, NC::NEON_PURPLE_R, NC::NEON_PURPLE_G, NC::NEON_PURPLE_B)), txt, pgr, nullptr);
     g.DrawText(baseStyle, txt, mRECT, nullptr);
   }
 
+  void SetPeakRef(std::atomic<float>* ref) { mPeakRef = ref; }
+
 private:
   const char* mFont;
+  std::atomic<float>* mPeakRef = nullptr;
 };
 
 class ScanLinesControl final : public iplug::igraphics::IControl
@@ -277,6 +284,248 @@ public:
   {
     DisablePrompt(true);
   }
+};
+
+class GlitchOverlayControl final : public iplug::igraphics::IControl
+{
+public:
+  GlitchOverlayControl(const iplug::igraphics::IRECT& bounds)
+    : iplug::igraphics::IControl(bounds, iplug::kNoParameter)
+  {
+    DisablePrompt(true);
+  }
+
+  void Draw(iplug::igraphics::IGraphics& g) override
+  {
+    if (!sPlugin)
+      return;
+
+    using namespace iplug::igraphics;
+    const float intensity = static_cast<float>(sPlugin->GetParam(kIntensity)->Value());
+    const float density   = static_cast<float>(sPlugin->GetParam(kDensity)->Value());
+    const int mode       = static_cast<int>(sPlugin->GetParam(kMode)->Value());
+
+    if (intensity < 0.01f && density < 0.01f)
+      return;
+
+    const float glitchChance = intensity * density;
+    const float t = static_cast<float>(mTick++);
+    const float active = (mActive > 0.f) ? 1.f : 0.f;
+
+    if (active > 0.5f && intensity > 0.05f)
+    {
+      const int a = static_cast<int>(intensity * 180.f);
+      IColor c;
+      if (mode == 0)      c = IColor(a, NeonColors::NEON_CYAN_R, NeonColors::NEON_CYAN_G, NeonColors::NEON_CYAN_B);
+      else if (mode == 1) c = IColor(a, NeonColors::NEON_PINK_R, NeonColors::NEON_PINK_G, NeonColors::NEON_PINK_B);
+      else if (mode == 2) c = IColor(a, NeonColors::NEON_PURPLE_R, NeonColors::NEON_PURPLE_G, NeonColors::NEON_PURPLE_B);
+      else                c = IColor(a, 255, 255, 100);
+
+      const float y0 = mRECT.T;
+      const float y1 = mRECT.B;
+      const float spacing = 22.f;
+      for (float y = y0; y < y1; y += spacing)
+      {
+        const float ox = std::sin(y * 0.13f + t * 0.09f) * intensity * 25.f;
+        const float len = mRECT.W() * (0.4f + 0.6f * intensity);
+        g.DrawLine(c,
+                   mRECT.L + ox + std::sin(t * 0.17f) * 5.f, y,
+                   mRECT.L + ox + len + std::sin(t * 0.13f) * 3.f, y + 3.f,
+                   nullptr, 1.f);
+      }
+    }
+
+    const float nextGlitch = std::sin(t * 0.11f) * 0.5f + 0.5f;
+    if (nextGlitch < density * 0.4f)
+      mActive = 6.f;
+    else if (mActive > 0.f)
+      mActive -= 1.f;
+  }
+
+  void OnInit() override { mTick = 0; mActive = 0.f; }
+
+private:
+  int mTick;
+  float mActive = 0.f;
+};
+
+class PacketStreamControl final : public iplug::igraphics::IControl
+{
+public:
+  PacketStreamControl(const iplug::igraphics::IRECT& bounds, const char* font)
+    : iplug::igraphics::IControl(bounds, iplug::kNoParameter)
+    , mFont(font)
+  {
+    DisablePrompt(true);
+  }
+
+  void Draw(iplug::igraphics::IGraphics& g) override
+  {
+    using namespace iplug::igraphics;
+    const float t = static_cast<float>(mTick++);
+
+    g.FillRoundRect(IColor(20, 0, 0, 0), mRECT, 3.f, nullptr);
+
+    const float barH = 9.f;
+    const float gap = 4.f;
+    const float lineH = barH + gap;
+    const int lineCount = static_cast<int>((mRECT.H() - 4.f) / lineH);
+    const float glyphW = 7.f;
+    const int cols = static_cast<int>((mRECT.W() - 8.f) / glyphW);
+
+    const float peak = (sPlugin && sPlugin->GetParam(kIntensity)) ?
+      static_cast<float>(sPlugin->GetParam(kIntensity)->Value()) : 0.f;
+    const int mode = (sPlugin && sPlugin->GetParam(kMode)) ?
+      static_cast<int>(sPlugin->GetParam(kMode)->Value()) : 0;
+
+    IColor streamCol;
+    if (mode == 0)      streamCol = IColor(180, NeonColors::NEON_CYAN_R, NeonColors::NEON_CYAN_G, NeonColors::NEON_CYAN_B);
+    else if (mode == 1) streamCol = IColor(180, NeonColors::NEON_PINK_R, NeonColors::NEON_PINK_G, NeonColors::NEON_PINK_B);
+    else if (mode == 2) streamCol = IColor(180, NeonColors::NEON_PURPLE_R, NeonColors::NEON_PURPLE_G, NeonColors::NEON_PURPLE_B);
+    else                streamCol = IColor(180, 255, 200, 60);
+
+    IColor dimCol(100, NeonColors::TEXT_DIM_R, NeonColors::TEXT_DIM_G, NeonColors::TEXT_DIM_B);
+    IText streamTxt(9.f, streamCol, mFont, iplug::igraphics::EAlign::Near, iplug::igraphics::EVAlign::Top);
+    IText dimTxt(9.f, dimCol, mFont, iplug::igraphics::EAlign::Near, iplug::igraphics::EVAlign::Top);
+
+    for (int line = 0; line < lineCount; ++line)
+    {
+      const float lineY = mRECT.T + 4.f + line * lineH;
+      const float scrollSpeed = (mode == 2) ? -0.7f : ((mode == 1) ? (std::sin(t * 0.12f) > 0.5f ? 0.f : 1.5f) : 0.9f);
+      const float xOff = std::fmod((t * scrollSpeed * 8.f) * glyphW, mRECT.W());
+      const bool glitchLine = (std::sin(t * 0.07f + static_cast<float>(line) * 2.3f) * 0.5f + 0.5f) < peak * 0.3f;
+
+      char addr[16];
+      snprintf(addr, sizeof(addr), "%04X:", line * 16);
+      g.DrawText(dimTxt, addr, IRECT(mRECT.L + 4.f, lineY, mRECT.L + 44.f, lineY + barH), nullptr);
+
+      char hex[80], ascii[40];
+      int hi = 0, ai = 0;
+      for (int c = 0; c < cols && c < 8; ++c)
+      {
+        const float x = mRECT.L + 48.f + c * glyphW - xOff;
+        if (x < mRECT.L || x > mRECT.R - 4.f)
+          continue;
+
+        int val;
+        if (glitchLine) {
+          val = static_cast<int>(std::rand()) & 0xFF;
+        } else {
+          const float noise = std::sin(t * 0.03f + c * 0.7f + line * 1.1f) * 0.5f + 0.5f;
+          val = (mode == 0) ? (0xA0 + ((c * 7 + line * 13) % 0x30)) :
+                 (mode == 1) ? (0x80 + static_cast<int>(noise * 0x40)) :
+                 (mode == 2) ? (0xC0 - ((c * 5 + line * 9) % 0x20)) :
+                                (std::rand() & 0xFF);
+        }
+
+        char hexC[4];
+        snprintf(hexC, sizeof(hexC), "%02X ", val);
+        hex[hi++] = hexC[0];
+        hex[hi++] = hexC[1];
+        hex[hi++] = hexC[2];
+        hex[hi++] = ' ';
+        ascii[ai++] = (val >= 32 && val < 127) ? val : '.';
+      }
+      hex[hi] = '\0';
+      ascii[ai] = '\0';
+
+      if (glitchLine)
+        g.FillRoundRect(IColor(30, NeonColors::NEON_PINK_R, 0, 0),
+                        IRECT(mRECT.L + 4.f, lineY, mRECT.R - 4.f, lineY + barH), 2.f, nullptr);
+
+      g.DrawText(streamTxt, hex, IRECT(mRECT.L + 48.f, lineY, mRECT.L + 180.f, lineY + barH), nullptr);
+
+      IText ascTxt(9.f, IColor(100, 180, 180, 180), mFont, iplug::igraphics::EAlign::Near, iplug::igraphics::EVAlign::Top);
+      g.DrawText(ascTxt, ascii, IRECT(mRECT.L + 184.f, lineY, mRECT.R - 4.f, lineY + barH), nullptr);
+    }
+
+    IRECT headerRect(mRECT.L, mRECT.T, mRECT.R, mRECT.T + 14.f);
+    g.FillRect(IColor(12, 0, 0, 0), headerRect, nullptr);
+    IText hdrTxt(8.f, dimCol, mFont, iplug::igraphics::EAlign::Near, iplug::igraphics::EVAlign::Top);
+    g.DrawText(hdrTxt, "PKT_STREAM", headerRect, nullptr);
+    g.DrawRect(IColor(NeonColors::NEON_PURPLE_R, NeonColors::NEON_PURPLE_G, NeonColors::NEON_PURPLE_B),
+               IRECT(mRECT.L, mRECT.T + 14.f, mRECT.R, mRECT.T + 15.f), nullptr);
+  }
+
+  void OnInit() override { mTick = 0; }
+
+private:
+  const char* mFont;
+  int mTick;
+};
+
+class PeakVisualizerControl final : public iplug::igraphics::IControl
+{
+public:
+  PeakVisualizerControl(const iplug::igraphics::IRECT& bounds, const char* font, std::atomic<float>* peakRef)
+    : iplug::igraphics::IControl(bounds, iplug::kNoParameter)
+    , mFont(font)
+    , mPeakRef(peakRef)
+  {
+    DisablePrompt(true);
+  }
+
+  void Draw(iplug::igraphics::IGraphics& g) override
+  {
+    using namespace iplug::igraphics;
+    g.FillRoundRect(IColor(15, 0, 0, 0), mRECT, 2.f, nullptr);
+
+    const float t = static_cast<float>(mTick++);
+    const int nBars = static_cast<int>(mRECT.W() / 3.f);
+
+    const float peak = mPeakRef ? mPeakRef->load(std::memory_order_relaxed) : 0.f;
+    const int mode = (sPlugin && sPlugin->GetParam(kMode)) ?
+      static_cast<int>(sPlugin->GetParam(kMode)->Value()) : 0;
+    const float density = (sPlugin && sPlugin->GetParam(kDensity)) ?
+      static_cast<float>(sPlugin->GetParam(kDensity)->Value()) : 0.f;
+
+    float scrollDir = (mode == 2) ? -1.f : 1.f;
+    if (mode == 1 && std::sin(t * 0.2f) > 0.4f)
+      scrollDir = 0.f;
+
+    for (int i = 0; i < nBars; ++i)
+    {
+      const float x = mRECT.L + static_cast<float>(i) * 3.f;
+      float height;
+
+      if (mode == 3)
+      {
+        height = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX) * mRECT.H() * (0.3f + peak * 0.7f);
+      }
+      else
+      {
+        const float pos = (scrollDir > 0.f) ?
+          static_cast<float>(i) / static_cast<float>(nBars) :
+          static_cast<float>(nBars - i) / static_cast<float>(nBars);
+        height = mRECT.H() * (std::sin(pos * 6.f + t * 0.15f * scrollDir) * 0.4f + 0.5f) * peak;
+        height *= (0.7f + 0.3f * density);
+      }
+
+      IColor bc;
+      if (height < mRECT.H() * 0.3f)
+        bc = IColor(200, NeonColors::NEON_CYAN_R, NeonColors::NEON_CYAN_G, NeonColors::NEON_CYAN_B);
+      else if (height < mRECT.H() * 0.7f)
+        bc = IColor(200, NeonColors::NEON_PURPLE_R, NeonColors::NEON_PURPLE_G, NeonColors::NEON_PURPLE_B);
+      else
+        bc = IColor(200, NeonColors::NEON_PINK_R, NeonColors::NEON_PINK_G, NeonColors::NEON_PINK_B);
+
+      const float barY = mRECT.B - height;
+      g.FillRect(bc, IRECT(x, barY, x + 2.f, mRECT.B), nullptr);
+
+      if (height > 2.f)
+        g.FillRect(IColor(80, bc.R, bc.G, bc.B),
+                   IRECT(x, barY, x + 2.f, barY + 2.f), nullptr);
+    }
+
+    g.DrawRoundRect(IColor(NeonColors::FRAME_VAL, 0, 0, 0), mRECT, 2.f, nullptr, 0.5f);
+  }
+
+  void OnInit() override { mTick = 0; }
+
+private:
+  const char* mFont;
+  std::atomic<float>* mPeakRef;
+  int mTick = 0;
 };
 
 } // namespace databend::ui
