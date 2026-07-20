@@ -308,7 +308,6 @@ public:
     if (intensity < 0.01f && density < 0.01f)
       return;
 
-    const float glitchChance = intensity * density;
     const float t = static_cast<float>(mTick++);
     const float active = (mActive > 0.f) ? 1.f : 0.f;
 
@@ -454,67 +453,116 @@ private:
   int mTick;
 };
 
-class PeakVisualizerControl final : public iplug::igraphics::IControl
+class WaveformSpectrumControl final : public iplug::igraphics::IControl
 {
 public:
-  PeakVisualizerControl(const iplug::igraphics::IRECT& bounds, const char* font, std::atomic<float>* peakRef)
+  WaveformSpectrumControl(const iplug::igraphics::IRECT& bounds, const char* font)
     : iplug::igraphics::IControl(bounds, iplug::kNoParameter)
     , mFont(font)
-    , mPeakRef(peakRef)
   {
     DisablePrompt(true);
   }
 
   void Draw(iplug::igraphics::IGraphics& g) override
   {
+    if (!sPlugin)
+      return;
+
     using namespace iplug::igraphics;
-    g.FillRoundRect(IColor(15, 0, 0, 0), mRECT, 2.f, nullptr);
+    g.FillRoundRect(IColor(12, 0, 0, 0), mRECT, 2.f, nullptr);
 
     const float t = static_cast<float>(mTick++);
-    const int nBars = static_cast<int>(mRECT.W() / 3.f);
+    const int mode = static_cast<int>(sPlugin->GetParam(kMode)->Value());
+    const float intensity = static_cast<float>(sPlugin->GetParam(kIntensity)->Value());
+    const float density = static_cast<float>(sPlugin->GetParam(kDensity)->Value());
 
-    const float peak = mPeakRef ? mPeakRef->load(std::memory_order_relaxed) : 0.f;
-    const int mode = (sPlugin && sPlugin->GetParam(kMode)) ?
-      static_cast<int>(sPlugin->GetParam(kMode)->Value()) : 0;
-    const float density = (sPlugin && sPlugin->GetParam(kDensity)) ?
-      static_cast<float>(sPlugin->GetParam(kDensity)->Value()) : 0.f;
+    const float specH = mRECT.H() * 0.55f;
+    const float specT = mRECT.T + 4.f;
+    const int nBars = 32;
+    const float barW = (mRECT.W() - 4.f) / static_cast<float>(nBars);
+    const float gap = 1.f;
+    const float drawBarW = barW - gap;
 
-    float scrollDir = (mode == 2) ? -1.f : 1.f;
-    if (mode == 1 && std::sin(t * 0.2f) > 0.4f)
-      scrollDir = 0.f;
+    const float scrollSpeed = (mode == 0) ? 0.08f : (mode == 1) ? 0.22f : (mode == 2) ? -0.12f : 0.18f;
+    const float tOff = t * scrollSpeed;
 
     for (int i = 0; i < nBars; ++i)
     {
-      const float x = mRECT.L + static_cast<float>(i) * 3.f;
-      float height;
+      const float pos = static_cast<float>(i) / static_cast<float>(nBars);
+      float barH;
 
       if (mode == 3)
       {
-        height = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX) * mRECT.H() * (0.3f + peak * 0.7f);
+        barH = specH * (0.08f + 0.6f * static_cast<float>(std::sin(t * 0.4f + pos * 8.f) * 0.5f + 0.5f) * (0.3f + intensity * 0.7f));
+      }
+      else if (mode == 2)
+      {
+        barH = specH * (0.05f + 0.5f * static_cast<float>(std::sin((1.f - pos) * 7.f + tOff) * 0.5f + 0.5f) * (0.4f + intensity * 0.6f));
       }
       else
       {
-        const float pos = (scrollDir > 0.f) ?
-          static_cast<float>(i) / static_cast<float>(nBars) :
-          static_cast<float>(nBars - i) / static_cast<float>(nBars);
-        height = mRECT.H() * (std::sin(pos * 6.f + t * 0.15f * scrollDir) * 0.4f + 0.5f) * peak;
-        height *= (0.7f + 0.3f * density);
+        barH = specH * (0.1f + 0.5f * static_cast<float>(std::sin(pos * 7.f + tOff) * 0.5f + 0.5f) * (0.5f + intensity * 0.5f) * (0.7f + 0.3f * density));
       }
 
-      IColor bc;
-      if (height < mRECT.H() * 0.3f)
-        bc = IColor(200, NeonColors::NEON_CYAN_R, NeonColors::NEON_CYAN_G, NeonColors::NEON_CYAN_B);
-      else if (height < mRECT.H() * 0.7f)
-        bc = IColor(200, NeonColors::NEON_PURPLE_R, NeonColors::NEON_PURPLE_G, NeonColors::NEON_PURPLE_B);
+      if (mode == 1 && std::sin(t * 0.3f + pos * 5.f) > 0.5f)
+        barH *= 0.15f;
+
+      const float x = mRECT.L + 2.f + static_cast<float>(i) * barW;
+
+      IColor barCol;
+      if (barH < specH * 0.3f)
+        barCol = IColor(220, NeonColors::NEON_CYAN_R, NeonColors::NEON_CYAN_G, NeonColors::NEON_CYAN_B);
+      else if (barH < specH * 0.65f)
+        barCol = IColor(220, NeonColors::NEON_PURPLE_R, NeonColors::NEON_PURPLE_G, NeonColors::NEON_PURPLE_B);
       else
-        bc = IColor(200, NeonColors::NEON_PINK_R, NeonColors::NEON_PINK_G, NeonColors::NEON_PINK_B);
+        barCol = IColor(220, NeonColors::NEON_PINK_R, NeonColors::NEON_PINK_G, NeonColors::NEON_PINK_B);
 
-      const float barY = mRECT.B - height;
-      g.FillRect(bc, IRECT(x, barY, x + 2.f, mRECT.B), nullptr);
+      const float barY = specT + specH - barH;
 
-      if (height > 2.f)
-        g.FillRect(IColor(80, bc.R, bc.G, bc.B),
-                   IRECT(x, barY, x + 2.f, barY + 2.f), nullptr);
+      g.FillRect(IColor(barCol.A / 4, barCol.R, barCol.G, barCol.B),
+                 IRECT(x - 1.f, barY - 1.f, x + drawBarW + 1.f, specT + specH + 1.f), nullptr);
+      g.FillRect(barCol, IRECT(x, barY, x + drawBarW, specT + specH), nullptr);
+
+      if (barH > 3.f)
+        g.FillRect(IColor(barCol.A, barCol.R, barCol.G, barCol.B),
+                   IRECT(x, barY, x + drawBarW, barY + 2.f), nullptr);
+    }
+
+    const float waveT = specT + specH + 6.f;
+    const float waveH = mRECT.B - waveT - 4.f;
+    const float waveY = waveT + waveH * 0.5f;
+
+    g.DrawRect(IColor(25, NeonColors::FRAME_VAL, NeonColors::FRAME_VAL, NeonColors::FRAME_VAL),
+               IRECT(mRECT.L + 2.f, waveT, mRECT.R - 2.f, waveT + 1.f), nullptr);
+
+    const int nPts = static_cast<int>(mRECT.W() - 8.f);
+    const uint32_t wIdx = sPlugin->mWaveformWriteIdx.load(std::memory_order_relaxed);
+    const int bufSize = sPlugin->kWaveformSize;
+
+    const float xScale = (mRECT.W() - 8.f) / static_cast<float>(nPts);
+
+    float prevX = mRECT.L + 4.f;
+    float prevY = waveY;
+    for (int i = 0; i < nPts; ++i)
+    {
+      const float x = mRECT.L + 4.f + static_cast<float>(i) * xScale;
+
+      const int histIdx = (mode == 1 && std::sin(t * 0.4f + i * 0.3f) > 0.4f) ? 0 :
+        (static_cast<int>(wIdx) - nPts + i + bufSize) % bufSize;
+      const float val = sPlugin->mWaveformHistory[histIdx].load(std::memory_order_relaxed);
+      const float clampedVal = std::max(-1.f, std::min(1.f, val));
+      const float y = waveY - clampedVal * waveH * 0.45f;
+
+      if (i > 0)
+      {
+        g.DrawLine(IColor(200, NeonColors::NEON_PINK_R, NeonColors::NEON_PINK_G, NeonColors::NEON_PINK_B),
+                   prevX, prevY, x, y, nullptr, 1.5f);
+        g.DrawLine(IColor(60, NeonColors::NEON_PINK_R / 3, NeonColors::NEON_PINK_G / 3, NeonColors::NEON_PINK_B / 3),
+                   prevX, prevY - 1.f, x, y - 1.f, nullptr, 0.5f);
+      }
+
+      prevX = x;
+      prevY = y;
     }
 
     g.DrawRoundRect(IColor(NeonColors::FRAME_VAL, 0, 0, 0), mRECT, 2.f, nullptr, 0.5f);
@@ -524,7 +572,6 @@ public:
 
 private:
   const char* mFont;
-  std::atomic<float>* mPeakRef;
   int mTick = 0;
 };
 

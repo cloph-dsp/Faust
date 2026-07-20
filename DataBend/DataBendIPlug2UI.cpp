@@ -142,8 +142,7 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin)
 
   const float visLeft = content.L + 340.f;
   const IRECT visRect(visLeft, titleTop + 10.f, content.R - 8.f, titleTop + ZONE_TITLE_H - 8.f);
-  graphics->AttachControl(new PeakVisualizerControl(visRect, uiFont,
-    sPlugin ? &sPlugin->mInputPeak : nullptr));
+  graphics->AttachControl(new WaveformSpectrumControl(visRect, uiFont));
 
   const IRECT glitchRect(content.L, selectorTop + ZONE_SELECTOR_H + 2.f, content.R, selectorTop + ZONE_SELECTOR_H + 2.f + ZONE_GAP_H - 4.f);
   graphics->AttachControl(new GlitchOverlayControl(glitchRect));

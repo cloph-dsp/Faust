@@ -167,6 +167,9 @@ void DataBend::ResetState()
   mEventBlend = 0.f;
   mWriteIndex = 0;
   mHistoryFill = 0;
+  for (auto& s : mWaveformHistory)
+    s.store(0.f, std::memory_order_relaxed);
+  mWaveformWriteIdx.store(0u, std::memory_order_relaxed);
   mRateCountdown = 0;
   mRngState = 0xA341316Cu;
 
@@ -537,6 +540,19 @@ void DataBend::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       if (mEvent.remainingSamples <= 0)
         mEvent.active = false;
     }
+  }
+
+  {
+    float rmsSum = 0.f;
+    for (int i = 0; i < nFrames; ++i)
+    {
+      const float s = inputs[0] ? inputs[0][i] : 0.f;
+      rmsSum += s * s;
+    }
+    const float rms = std::sqrt(rmsSum / static_cast<float>(nFrames));
+    const uint32_t idx = mWaveformWriteIdx.load(std::memory_order_relaxed);
+    mWaveformHistory[idx % kWaveformSize].store(rms, std::memory_order_relaxed);
+    mWaveformWriteIdx.store((idx + 1u) % kWaveformSize, std::memory_order_relaxed);
   }
 }
 #endif

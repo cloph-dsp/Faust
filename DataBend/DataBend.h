@@ -70,6 +70,10 @@ public:
   std::atomic<float> mInputPeak { 0.f };
   std::atomic<float> mOutputPeak { 0.f };
 
+  static constexpr int kWaveformSize = 512;
+  std::atomic<float> mWaveformHistory[kWaveformSize] {};
+  std::atomic<uint32_t> mWaveformWriteIdx { 0u };
+
 #if IPLUG_DSP
   void ProcessBlock(sample** inputs, sample** outputs, int nFrames) override;
   void OnReset() override;
