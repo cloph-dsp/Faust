@@ -39,6 +39,8 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin)
   {
     uiFont = "SegUIReg";
   }
+  if (!uiFont)
+    uiFont = "Arial";
 
   graphics->EnableMouseOver(true);
   graphics->EnableTooltips(true);
@@ -113,7 +115,7 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin)
 
   // --- Title area: DATABEND with RGB shift + breathing LED ---
   const IRECT titleAreaRect(content.L, titleTop, content.L + 320.f, titleTop + ZONE_TITLE_H);
-  graphics->AttachControl(new NeonTitleControl(titleAreaRect, "DATABEND"));
+  graphics->AttachControl(new NeonTitleControl(titleAreaRect, "DATABEND", uiFont));
 
   // Brand mark top-right
   const IText brandText(16.f, dimText, uiFont, EAlign::Far, EVAlign::Top);

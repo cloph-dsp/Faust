@@ -26,8 +26,9 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin);
 class NeonTitleControl final : public iplug::igraphics::IControl
 {
 public:
-  NeonTitleControl(const iplug::igraphics::IRECT& bounds, const char*)
+  NeonTitleControl(const iplug::igraphics::IRECT& bounds, const char*, const char* font)
     : iplug::igraphics::IControl(bounds, iplug::kNoParameter)
+    , mFont(font)
   {
     DisablePrompt(true);
   }
@@ -36,7 +37,7 @@ public:
   {
     using NC = NeonColors;
     const char* txt = "DATABEND";
-    const iplug::igraphics::IText baseStyle(52.f, iplug::igraphics::COLOR_WHITE, nullptr,
+    const iplug::igraphics::IText baseStyle(52.f, iplug::igraphics::COLOR_WHITE, mFont,
                                             iplug::igraphics::EAlign::Center,
                                             iplug::igraphics::EVAlign::Middle);
 
@@ -50,6 +51,9 @@ public:
     g.DrawText(baseStyle.WithFGColor(iplug::igraphics::IColor(160, NC::NEON_PURPLE_R, NC::NEON_PURPLE_G, NC::NEON_PURPLE_B)), txt, pgr, nullptr);
     g.DrawText(baseStyle, txt, mRECT, nullptr);
   }
+
+private:
+  const char* mFont;
 };
 
 class ScanLinesControl final : public iplug::igraphics::IControl
