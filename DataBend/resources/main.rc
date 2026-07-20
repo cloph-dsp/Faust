@@ -1,0 +1,13 @@
+// Resource file for DataBend VST3
+// Embeds fonts directly into the DLL so no external files are required at runtime.
+#include "winres.h"
+
+#ifndef APSTUDIO_INVOKED
+
+#include "..\config.h"
+
+// ── Fonts ────────────────────────────────────────────────────────────────────
+LAYOUT_FN  TTF  LAYOUT_FN
+
+#endif    // not APSTUDIO_INVOKED
+

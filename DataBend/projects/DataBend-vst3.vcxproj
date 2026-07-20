@@ -92,6 +92,12 @@
     <ClInclude Include="..\DataBendIPlug2UI.h" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\resources\IronSans.ttf" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\resources\main.rc" />
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="..\DataBend.cpp" />
     <ClCompile Include="..\DataBendIPlug2UI.cpp" />
     <ClCompile Include="$(IPLUG2_ROOT)\Dependencies\IPlug\VST3_SDK\base\source\baseiids.cpp" />

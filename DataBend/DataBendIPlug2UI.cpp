@@ -31,16 +31,15 @@ void BuildLayout(iplug::igraphics::IGraphics* graphics, void* plugin)
   // Scan lines covering full canvas (drawn as last control so it's behind)
   graphics->AttachControl(new ScanLinesControl(graphics->GetBounds()));
 
-  // System fonts
-  const char* uiFont = nullptr;
-  if (graphics->LoadFont("SegUIReg", "Segoe UI", ETextStyle::Normal) ||
-      graphics->LoadFont("SegUIReg", "Arial", ETextStyle::Normal) ||
-      graphics->LoadFont("SegUIReg", "Verdana", ETextStyle::Normal))
-  {
-    uiFont = "SegUIReg";
+  const char* uiFont = "LayoutFont";
+  if (!graphics->LoadFont("LayoutFont", LAYOUT_FN)) {
+    if (!graphics->LoadFont("LayoutFont", "Segoe UI", ETextStyle::Normal)) {
+      if (!graphics->LoadFont("LayoutFont", "Arial", ETextStyle::Normal)) {
+        uiFont = "Verdana";
+        graphics->LoadFont("LayoutFont", "Verdana", ETextStyle::Normal);
+      }
+    }
   }
-  if (!uiFont)
-    uiFont = "Arial";
 
   graphics->EnableMouseOver(true);
   graphics->EnableTooltips(true);
