@@ -531,6 +531,9 @@ jobs:
           STAGE="Tuner VST/build-mac/stage-vst3"
           mkdir -p "$STAGE"
           cp -R "Tuner VST/build-mac/Products/Tuner.vst3" "$STAGE/"
+          cp "Tuner VST/resources/INSTALL_MACOS.md"          "$STAGE/"
+          cp "Tuner VST/resources/Fix-Security-Block.command" "$STAGE/"
+          chmod +x "$STAGE/Fix-Security-Block.command"
 
       - name: Upload VST3 artifact
         if: always()
@@ -649,6 +652,9 @@ jobs:
           if [ -d "Tuner VST/build-mac/Products/Tuner.clap" ]; then
             cp -R "Tuner VST/build-mac/Products/Tuner.clap" "$STAGE/"
           fi
+          cp "Tuner VST/resources/INSTALL_MACOS.md"          "$STAGE/"
+          cp "Tuner VST/resources/Fix-Security-Block.command" "$STAGE/"
+          chmod +x "$STAGE/Fix-Security-Block.command"
 
       - name: Upload CLAP artifact
         if: always()
@@ -778,14 +784,16 @@ jobs:
           # auval -v aufx <subtype> <manufacturer>
           # Tuner's AudioComponents:0:subtype=TnR1, manufacturer=Clph
           echo "Running auval -v aufx TnR1 Clph..."
-          auval -v aufx TnR1 Clph 2>&1 || true
-          AUVAL_BASIC=${PIPESTATUS[0]}
-          echo "  exit=$AUVAL_BASIC"
-          if [ $AUVAL_BASIC -ne 0 ]; then
+          # Branch on auval's exit code directly. The previous form
+          # (`auval ... 2>&1 || true` then reading ${PIPESTATUS[0]}) was broken:
+          # after `|| true` runs, PIPESTATUS reflects `true` (0), so a FAILING
+          # auval was reported as PASSED and never failed CI.
+          if auval -v aufx TnR1 Clph 2>&1; then
+            echo "auval VALIDATION: PASSED"
+          else
             echo "auval VALIDATION: FAILED -- macOS will reject this AU"
             exit 1
           fi
-          echo "auval VALIDATION: PASSED"
 
       - name: AU binary load test
         if: always()
@@ -813,6 +821,9 @@ jobs:
           if [ -d "Tuner VST/build-mac/Products/Tuner.component" ]; then
             cp -R "Tuner VST/build-mac/Products/Tuner.component" "$STAGE/"
           fi
+          cp "Tuner VST/resources/INSTALL_MACOS.md"          "$STAGE/"
+          cp "Tuner VST/resources/Fix-Security-Block.command" "$STAGE/"
+          chmod +x "$STAGE/Fix-Security-Block.command"
 
       - name: Upload AU artifact
         if: always()

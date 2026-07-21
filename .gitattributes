@@ -1,0 +1,3 @@
+# macOS double-click launchers must stay LF. A CRLF shebang ("#!/bin/bash\r")
+# makes macOS reject the script with "bad interpreter: /bin/bash^M".
+*.command text eol=lf

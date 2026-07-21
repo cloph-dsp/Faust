@@ -942,10 +942,13 @@ jobs:
             echo "================================================"
             echo "  auval VALIDATION — basic"
             echo "================================================"
-            auval -v aufx F95G Clph 2>&1 || true
-            AUVAL_BASIC=${PIPESTATUS[0]}
-            echo "  exit=$AUVAL_BASIC"
-            if [ $AUVAL_BASIC -ne 0 ]; then
+            # Branch on auval's exit code directly. The previous form
+            # (`auval ... 2>&1 || true` then ${PIPESTATUS[0]}) was broken: after
+            # `|| true` runs, PIPESTATUS reflects `true` (0), so a FAILING auval
+            # was reported as PASSED and never failed CI.
+            if auval -v aufx F95G Clph 2>&1; then
+              echo "auval VALIDATION: PASSED (basic)"
+            else
               echo "auval VALIDATION: FAILED (basic)"
               echo "The AU component failed basic validation — macOS will reject it."
               exit 1
@@ -999,6 +1002,8 @@ jobs:
           mkdir -p Freeze95/build-mac/stage-vst3
           cp -R Freeze95/build-mac/Products/Freeze95.vst3 Freeze95/build-mac/stage-vst3/
           cp Freeze95/resources/INSTALL_MACOS.md Freeze95/build-mac/stage-vst3/
+          cp Freeze95/resources/Fix-Security-Block.command Freeze95/build-mac/stage-vst3/
+          chmod +x Freeze95/build-mac/stage-vst3/Fix-Security-Block.command
 
       - name: Upload VST3 artifact
         if: always()
@@ -1013,6 +1018,8 @@ jobs:
           mkdir -p Freeze95/build-mac/stage-clap
           cp -R Freeze95/build-mac/Products/Freeze95.clap Freeze95/build-mac/stage-clap/
           cp Freeze95/resources/INSTALL_MACOS.md Freeze95/build-mac/stage-clap/
+          cp Freeze95/resources/Fix-Security-Block.command Freeze95/build-mac/stage-clap/
+          chmod +x Freeze95/build-mac/stage-clap/Fix-Security-Block.command
 
       - name: Upload CLAP artifact
         if: always()
@@ -1029,6 +1036,8 @@ jobs:
             mkdir -p Freeze95/build-mac/stage-au
             cp -R "$AU_BUNDLE" Freeze95/build-mac/stage-au/
             cp Freeze95/resources/INSTALL_MACOS.md Freeze95/build-mac/stage-au/
+            cp Freeze95/resources/Fix-Security-Block.command Freeze95/build-mac/stage-au/
+            chmod +x Freeze95/build-mac/stage-au/Fix-Security-Block.command
           fi
 
       - name: Upload AU artifact

@@ -1,15 +1,15 @@
-# Freeze95 — macOS Installation
+# Grungr — macOS Installation
 
 ## 1. Which file do I need?
 
 | Format | File | Use in |
 |--------|------|--------|
-| **Audio Unit (AU)** | `Freeze95.component` | **Logic Pro, GarageBand, MainStage** |
-| VST3 | `Freeze95.vst3` | Ableton Live, FL Studio, Reaper, Bitwig, Cubase |
-| CLAP | `Freeze95.clap` | Bitwig, Reaper, Studio One |
+| **Audio Unit (AU)** | `Grungr.component` | **Logic Pro, GarageBand, MainStage** |
+| VST3 | `Grungr.vst3` | Ableton Live, FL Studio, Reaper, Bitwig, Cubase |
+| CLAP | `Grungr.clap` | Bitwig, Reaper, Studio One |
 
 > **Logic Pro and GarageBand only load Audio Units.** They cannot use `.vst3` or
-> `.clap` files at all — you must install **`Freeze95.component`**.
+> `.clap` files at all — you must install **`Grungr.component`**.
 
 ## 2. Easiest install — double-click the helper
 
@@ -29,20 +29,20 @@ Copy the bundle you need into the matching per-user folder (no admin password):
 
 ```bash
 # Audio Unit — Logic / GarageBand / MainStage
-cp -R Freeze95.component ~/Library/Audio/Plug-Ins/Components/
+cp -R Grungr.component ~/Library/Audio/Plug-Ins/Components/
 
 # VST3
-cp -R Freeze95.vst3 ~/Library/Audio/Plug-Ins/VST3/
+cp -R Grungr.vst3 ~/Library/Audio/Plug-Ins/VST3/
 
 # CLAP
-cp -R Freeze95.clap ~/Library/Audio/Plug-Ins/CLAP/
+cp -R Grungr.clap ~/Library/Audio/Plug-Ins/CLAP/
 ```
 
 Then remove the quarantine flag — this is the step that "Allow Anyway" in System
 Settings only half does. Run it on whichever bundle you installed, e.g.:
 
 ```bash
-xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/Freeze95.component
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/Grungr.component
 ```
 
 > `~/Library` is your **user** Library (Finder → Go → hold ⌥ Option → Library),
@@ -58,10 +58,10 @@ Quit Logic, then either:
   rm -rf ~/Library/Caches/AudioUnitCache
   ```
   and reopen Logic, **or**
-- in Logic: **Logic Pro → Settings → Plug-in Manager**, select **Freeze95**, and
+- in Logic: **Logic Pro → Settings → Plug-in Manager**, select **Grungr**, and
   click **Reset & Rescan Selection**.
 
-Freeze95 then appears under **Audio Units → cloph-dsp**.
+Grungr then appears under **Audio Units → cloph-dsp**.
 
 ## 5. Still not showing up?
 
@@ -69,7 +69,7 @@ Run this in Terminal and read the last lines — it tells you exactly why macOS 
 rejecting the AU:
 
 ```bash
-auval -v aufx F95G Clph
+auval -v aufx GRNR CLPH
 ```
 
 - `AU VALIDATION SUCCEEDED` → the plugin is fine; just rescan in Logic (step 4).
@@ -77,4 +77,4 @@ auval -v aufx F95G Clph
   `~/Library/Audio/Plug-Ins/Components/` (or `/Library/...`). Re-check step 3.
 - A load/architecture error → make sure you downloaded the latest version.
 
-Still stuck? Email the full output of `auval -v aufx F95G Clph` and we'll sort it.
+Still stuck? Email the full output of `auval -v aufx GRNR CLPH` and we'll sort it.

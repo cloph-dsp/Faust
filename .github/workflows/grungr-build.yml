@@ -525,6 +525,18 @@ jobs:
           # AUv2: set remaining fields on the copied template
           PL="$PROD/Grungr.component/Contents/Info.plist"
           $PLISTBUDDY -c "Set :CFBundleIdentifier com.cloph.audiounit.Grungr" "$PL"
+          # Pin AudioComponents to match the IDs compiled into the binary
+          # (config.h: PLUG_UNIQUE_ID='GRNR', PLUG_MFR_ID='CLPH',
+          # AUV2_FACTORY=Grungr_Factory). OSType codes are CASE-SENSITIVE, so the
+          # manufacturer MUST be 'CLPH' — the template says 'Clph', which makes
+          # macOS advertise a component the factory can't instantiate, so Logic
+          # never lists it. Do NOT "fix" this by editing config.h to 'Clph':
+          # PLUG_MFR_ID feeds VST3_PROCESSOR_UID, so that would break project
+          # recall for existing Grungr VST3 users.
+          $PLISTBUDDY -c "Set :AudioComponents:0:type aufx"                      "$PL"
+          $PLISTBUDDY -c "Set :AudioComponents:0:subtype GRNR"                   "$PL"
+          $PLISTBUDDY -c "Set :AudioComponents:0:manufacturer CLPH"              "$PL"
+          $PLISTBUDDY -c "Set :AudioComponents:0:factoryFunction Grungr_Factory" "$PL"
 
           echo "Plists updated for VST3, CLAP, AUv2"
 
@@ -596,6 +608,27 @@ jobs:
             codesign -vvv "$BUNDLE" || true
           done
 
+      - name: Install AU component + run auval validation
+        run: |
+          set -uo pipefail
+          AU_BUNDLE="$GITHUB_WORKSPACE/Grungr/build-mac/Products/Grungr.component"
+          if [ ! -d "$AU_BUNDLE" ]; then echo "ERROR: AU bundle not built"; exit 1; fi
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -Rf "$AU_BUNDLE" ~/Library/Audio/Plug-Ins/Components/
+          # macos-latest runners are Apple Silicon (arm64), so this validates the
+          # universal build actually loads on arm64 as well as passing auval.
+          launchctl kickstart -k system/com.apple.audio.coreaudiod 2>/dev/null || \
+            sudo killall coreaudiod 2>/dev/null || true
+          sleep 1
+          # subtype=GRNR, manufacturer=CLPH — must match config.h + the pinned plist.
+          echo "Running auval -v aufx GRNR CLPH ..."
+          if auval -v aufx GRNR CLPH 2>&1; then
+            echo "auval VALIDATION: PASSED"
+          else
+            echo "auval VALIDATION: FAILED -- macOS/Logic will reject this AU"
+            exit 1
+          fi
+
       - name: Strip extended attributes
         run: |
           PROD="$GITHUB_WORKSPACE/Grungr/build-mac/Products"
@@ -611,24 +644,31 @@ jobs:
           [[ -d "$PROD/Grungr.vst3" ]]      && cp -R "$PROD/Grungr.vst3"      artifacts/vst3/
           [[ -d "$PROD/Grungr.clap" ]]      && cp -R "$PROD/Grungr.clap"      artifacts/clap/
           [[ -d "$PROD/Grungr.component" ]] && cp -R "$PROD/Grungr.component" artifacts/au/
+          # Ship install instructions + a double-click security-unblock helper in
+          # every zip so customers don't hit the Gatekeeper/quarantine wall.
+          for d in artifacts/vst3 artifacts/clap artifacts/au; do
+            cp "Grungr/resources/INSTALL_MACOS.md"          "$d/"
+            cp "Grungr/resources/Fix-Security-Block.command" "$d/"
+            chmod +x "$d/Fix-Security-Block.command"
+          done
 
       - name: Upload Grungr VST3 (macOS)
         uses: actions/upload-artifact@v4
         with:
           name: Grungr-VST3-macOS
-          path: artifacts/vst3/Grungr.vst3
+          path: artifacts/vst3/
           if-no-files-found: error
 
       - name: Upload Grungr CLAP (macOS)
         uses: actions/upload-artifact@v4
         with:
           name: Grungr-CLAP-macOS
-          path: artifacts/clap/Grungr.clap
+          path: artifacts/clap/
           if-no-files-found: warn
 
       - name: Upload Grungr AUv2 (macOS)
         uses: actions/upload-artifact@v4
         with:
           name: Grungr-AUv2-macOS
-          path: artifacts/au/Grungr.component
-          if-no-files-found: warn
+          path: artifacts/au/
+          if-no-files-found: error
