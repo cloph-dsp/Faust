@@ -200,7 +200,7 @@ public:
   NinetiesPhotoOverlay(const igraphics::IRECT& bounds, uint32_t seed)
   : IControl(bounds, -1)
   , mSeed(seed ? seed : 0x9E3779B1u)
-  , mWashBlend(igraphics::EBlend::Default, 0.12f)
+  , mWashBlend(igraphics::EBlend::Default, 0.09f)
   , mVignetteBlend(igraphics::EBlend::Default, 0.11f)
   , mGrainBlend(igraphics::EBlend::Default, 0.09f)
   {
