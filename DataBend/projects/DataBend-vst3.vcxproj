@@ -34,22 +34,22 @@
   <ImportGroup Label="ExtensionSettings" />
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="$(SolutionDir)config\DataBend-win.props" />
+    <Import Project="$(SolutionDir)\config\DataBend-win.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="$(SolutionDir)config\DataBend-win.props" />
+    <Import Project="$(SolutionDir)\config\DataBend-win.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <OutDir>$(SolutionDir)build-win\vst3\$(Platform)\$(Configuration)\</OutDir>
-    <IntDir>$(SolutionDir)build-win\vst3\$(Platform)\$(Configuration)\int\</IntDir>
+    <OutDir>$(SolutionDir)\build-win\vst3\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)\build-win\vst3\$(Platform)\$(Configuration)\int\</IntDir>
     <TargetExt>.vst3</TargetExt>
     <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <OutDir>$(SolutionDir)build-win\vst3\$(Platform)\$(Configuration)\</OutDir>
-    <IntDir>$(SolutionDir)build-win\vst3\$(Platform)\$(Configuration)\int\</IntDir>
+    <OutDir>$(SolutionDir)\build-win\vst3\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)\build-win\vst3\$(Platform)\$(Configuration)\int\</IntDir>
     <TargetExt>.vst3</TargetExt>
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
@@ -89,6 +89,13 @@
   <ItemGroup>
     <ClInclude Include="..\config.h" />
     <ClInclude Include="..\DataBend.h" />
+    <ClInclude Include="..\DataBendIPlug2UI.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\resources\IronSans.ttf" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\resources\main.rc" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\DataBend.cpp" />
@@ -136,12 +143,6 @@
     <ClCompile Include="$(IPLUG2_ROOT)\IPlug\IPlugTimer.cpp" />
     <ClCompile Include="$(IPLUG2_ROOT)\IPlug\VST3\IPlugVST3.cpp" />
     <ClCompile Include="$(IPLUG2_ROOT)\IPlug\VST3\IPlugVST3_ProcessorBase.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="..\resources\main.rc" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="..\resources\knob-body.svg" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

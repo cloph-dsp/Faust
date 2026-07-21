@@ -1,19 +1,13 @@
 // Resource file for DataBend VST3
-// Embeds the static SVG knob body directly into the DLL so the
-// custom SVGKnobControl class can paint the static body + rotating
-// pointer indicator without needing Contents/Resources at runtime.
-//
-// Per AGENTS.md "iPlug2 resource embedding": config.h defines the
-// *_FN string constants; main.rc mirrors them as resource entries
-// so RC.exe picks them up and embeds the asset bytes via EmbedVC.
-//
+// Embeds fonts directly into the DLL so no external files are required at runtime.
 #include "winres.h"
 
 #ifndef APSTUDIO_INVOKED
 
 #include "..\config.h"
 
-// ── Custom knob body (used by SVGKnobControl for all 8 continuous knobs) ──
-KNOB_BODY_FN  SVG  KNOB_BODY_FN
+// ── Fonts ────────────────────────────────────────────────────────────────────
+LAYOUT_FN  TTF  LAYOUT_FN
 
 #endif    // not APSTUDIO_INVOKED
+
