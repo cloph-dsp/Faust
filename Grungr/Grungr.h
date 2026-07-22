@@ -43,6 +43,10 @@ public:
   // logical size and uniformly scaled to fit the host window, so it is never
   // cropped (this fixes Reaper). Mirrors Freeze95.
   void OnParentWindowResize(int width, int height) override;
+  // Lock the editor to the plugin's aspect ratio during host resize so the
+  // window can't be dragged into a non-matching shape (which would letterbox
+  // the uniformly-scaled scene). Called by the VST3/CLAP size-constraint check.
+  bool ConstrainEditorResize(int& width, int& height) const override;
 #endif
 
 #if IPLUG_DSP // http://bit.ly/2S64BDd

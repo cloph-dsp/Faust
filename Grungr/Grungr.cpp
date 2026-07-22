@@ -163,6 +163,34 @@ void Grungr::OnParentWindowResize(int width, int height)
   pGraphics->Resize(PLUG_WIDTH, PLUG_HEIGHT, scale, false);
   grungr::ui::BuildOrRelayout(pGraphics, params);
 }
+
+// Keep the editor locked to the plugin's aspect ratio so a host resize can't
+// squash the window into a non-matching shape (which would letterbox the
+// uniformly-scaled scene above). iPlug2's VST3/CLAP size-constraint negotiation
+// calls this via checkSizeConstraint(); returning false applies the adjusted
+// (aspect-correct) rectangle. Combined with the scale-to-fit in
+// OnParentWindowResize(), the window stays aspect-correct AND the scene always
+// fills it -- no crop, no letterbox. (Grungr had this before the scale-mode
+// refactor; it was dropped there and is restored here.)
+bool Grungr::ConstrainEditorResize(int& width, int& height) const
+{
+  const float aspect = static_cast<float>(PLUG_WIDTH) / static_cast<float>(PLUG_HEIGHT);
+
+  width = std::clamp(width, PLUG_MIN_WIDTH, PLUG_MAX_WIDTH);
+  height = std::clamp(height, PLUG_MIN_HEIGHT, PLUG_MAX_HEIGHT);
+  height = static_cast<int>(static_cast<float>(width) / aspect + 0.5f);
+
+  if (height < PLUG_MIN_HEIGHT) {
+    height = PLUG_MIN_HEIGHT;
+    width = static_cast<int>(static_cast<float>(height) * aspect + 0.5f);
+  }
+  else if (height > PLUG_MAX_HEIGHT) {
+    height = PLUG_MAX_HEIGHT;
+    width = static_cast<int>(static_cast<float>(height) * aspect + 0.5f);
+  }
+
+  return false;
+}
 #endif
 
 void Grungr::OnRestoreState()
