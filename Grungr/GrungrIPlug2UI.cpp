@@ -1853,7 +1853,13 @@ void BuildOrRelayout(igraphics::IGraphics* pGraphics,
 
   const igraphics::IRECT uiBounds = EffectiveLayoutBounds(pGraphics->GetBounds());
   const ThemePalette palette = BuildThemePalette();
-  pGraphics->SetLayoutOnResize(true);
+  // Scale mode: lay out at the fixed logical size and let iPlug2 scale the whole
+  // scene to fit the host window, so the GUI is never cropped (this fixes
+  // Reaper). layoutOnResize MUST be false in Scale mode; Grungr's
+  // OnParentWindowResize() rebuilds at the new scale. Constraints match the
+  // config min/max (0.75 .. 2.0). Mirrors Freeze95.
+  pGraphics->SetLayoutOnResize(false);
+  pGraphics->SetScaleConstraints(0.75f, 2.0f);
 
   const bool controlsAlreadyAttached =
       (pGraphics->GetControlWithTag(kTagGrungeKnob) != nullptr) &&

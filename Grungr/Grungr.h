@@ -39,10 +39,10 @@ public:
 
 #if IPLUG_EDITOR
 public:
-  bool OnHostRequestingSupportedViewConfiguration(int width, int height) override;
-  void OnHostSelectedViewConfiguration(int width, int height) override;
+  // Scale-mode host resize (see Grungr.cpp): the UI is laid out at a fixed
+  // logical size and uniformly scaled to fit the host window, so it is never
+  // cropped (this fixes Reaper). Mirrors Freeze95.
   void OnParentWindowResize(int width, int height) override;
-  bool ConstrainEditorResize(int& width, int& height) const override;
 #endif
 
 #if IPLUG_DSP // http://bit.ly/2S64BDd

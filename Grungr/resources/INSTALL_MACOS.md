@@ -11,6 +11,14 @@
 > **Logic Pro and GarageBand only load Audio Units.** They cannot use `.vst3` or
 > `.clap` files at all — you must install **`Grungr.component`**.
 
+> **"I only see folders like `Contents`, `MacOS`, `Resources` — where's the
+> plugin file?"** `Grungr.component`, `Grungr.vst3` and `Grungr.clap` are
+> **bundles**: folders that macOS treats as a single plugin. That's the plugin —
+> don't open it. Install the whole `Grungr.vst3` / `.component` folder (Steps
+> 2–3). If you unzipped and landed *inside* a bundle (you see `Contents/` with
+> `MacOS`, `Resources`, `Info.plist`, `PkgInfo`), that's the innards — go back up
+> and copy the top-level `.vst3` / `.component` folder without opening it.
+
 ## 2. Easiest install — double-click the helper
 
 This download includes **`Fix-Security-Block.command`**.

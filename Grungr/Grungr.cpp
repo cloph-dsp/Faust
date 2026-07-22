@@ -123,43 +123,45 @@ Grungr::Grungr(const InstanceInfo& info)
 }
 
 #if IPLUG_EDITOR
-bool Grungr::OnHostRequestingSupportedViewConfiguration(int width, int height)
-{
-  return ConstrainEditorResize(width, height);
-}
-
-void Grungr::OnHostSelectedViewConfiguration(int width, int height)
-{
-  if (GetUI()) {
-    GetUI()->Resize(width, height, 1.f, true);
-  }
-}
-
+// Scale-mode host resize, mirroring Freeze95 (which resolved the same Reaper
+// crop). The UI is laid out at the fixed logical size PLUG_WIDTH x PLUG_HEIGHT
+// and the whole vector scene is uniformly scaled to fit whatever window the
+// host gives, so nothing is ever cropped. The previous Size-mode path
+// (Resize(w, h, 1.f, layoutOnResize=true) via the OnHost*ViewConfiguration
+// overrides) let Reaper open the editor at a size the plugin didn't dictate
+// and clipped the fixed-size scene. SetScaleConstraints() in BuildOrRelayout()
+// now bounds the scale, so ConstrainEditorResize() and the view-configuration
+// overrides are unnecessary -- iPlug2's defaults honour the scale constraints.
 void Grungr::OnParentWindowResize(int width, int height)
 {
-  ConstrainEditorResize(width, height);
-  OnHostSelectedViewConfiguration(width, height);
-}
-
-bool Grungr::ConstrainEditorResize(int& width, int& height) const
-{
-  const float aspect = static_cast<float>(PLUG_WIDTH) / static_cast<float>(PLUG_HEIGHT);
-
-  width = std::clamp(width, PLUG_MIN_WIDTH, PLUG_MAX_WIDTH);
-  height = std::clamp(height, PLUG_MIN_HEIGHT, PLUG_MAX_HEIGHT);
-  height = static_cast<int>(static_cast<float>(width) / aspect + 0.5f);
-
-  if (height < PLUG_MIN_HEIGHT) {
-    height = PLUG_MIN_HEIGHT;
-    width = static_cast<int>(static_cast<float>(height) * aspect + 0.5f);
-  }
-  else if (height > PLUG_MAX_HEIGHT) {
-    height = PLUG_MAX_HEIGHT;
-    width = static_cast<int>(static_cast<float>(height) * aspect + 0.5f);
+  IGraphics* pGraphics = GetUI();
+  if (!pGraphics) {
+    return;
   }
 
-  // VST3 and CLAP use false to apply the adjusted rectangle.
-  return false;
+  // Divide out the screen (DPI) scale: GetTotalScale() already folds in
+  // mScreenScale, so this keeps `scale` to just the host/user resize factor.
+  const float screenScale = pGraphics->GetScreenScale();
+  const float scaleX = static_cast<float>(width) / static_cast<float>(PLUG_WIDTH) / screenScale;
+  const float scaleY = static_cast<float>(height) / static_cast<float>(PLUG_HEIGHT) / screenScale;
+  // Bounds match the config min/max (360/480 = 0.75 .. 960/480 = 2.0) and the
+  // SetScaleConstraints() call in grungr::ui::BuildOrRelayout().
+  const float scale = std::clamp(std::min(scaleX, scaleY), 0.75f, 2.0f);
+
+  // Rebuild at the new scale so SVGs re-rasterise crisply and every control
+  // keeps its proportions (matches Freeze95). RemoveAllControls() makes
+  // BuildOrRelayout() take its full-build path.
+  grungr::ui::Params params;
+  params.grunge = kParamGrunge;
+  params.butt = kParamButt;
+  params.face = kParamFace;
+  params.loud = kParamLoud;
+  params.bypass = kParamBypass;
+  params.rawVoicing = kParamRawVoicing;
+
+  pGraphics->RemoveAllControls();
+  pGraphics->Resize(PLUG_WIDTH, PLUG_HEIGHT, scale, false);
+  grungr::ui::BuildOrRelayout(pGraphics, params);
 }
 #endif
 
